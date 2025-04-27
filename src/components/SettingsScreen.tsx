@@ -7,6 +7,8 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useConfigContext } from "@/context/ConfigContext";
+import GitHubIcon from "@/components/GitHubIcon";
+import { openPath } from '@tauri-apps/plugin-opener';
 
 interface SettingsScreenProps {
 	onExit: () => Promise<void>;
@@ -177,6 +179,15 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({
 						</li>
 					</ul>
 				</div>
+			</div>
+
+			{ /* フッター */ }
+			<div className="absolute bottom-3 text-sm text-muted-foreground flex flex-row space-x-2">
+				<span>zmk-battery-center v{__APP_VERSION__}</span>
+				{/* <a onClick={async () => {await openPath('https://github.com/kot149/zmk-battery-center')}}> */}
+				<a target="_blank" href="https://github.com/kot149/zmk-battery-center">
+					<GitHubIcon className="text-red-500" size={19} />
+				</a>
 			</div>
 		</div>
 	);
