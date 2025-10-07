@@ -53,5 +53,6 @@
     "resources": [
       "icons/icon_template.png"
     ]
-  }
+  },
+  "signingIdentity": "-"
 }
