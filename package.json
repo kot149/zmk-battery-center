@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint . --ext ts,tsx",
-    "lint:fix": "eslint . --ext ts,tsx --fix"
+    "lint:fix": "eslint . --ext ts,tsx --fix",
+    "bump-version": "bun scripts/bump_up.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
