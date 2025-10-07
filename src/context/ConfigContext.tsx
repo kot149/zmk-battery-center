@@ -1,4 +1,4 @@
-import { createContext, useContext, Dispatch, SetStateAction, ReactNode, useState, useEffect } from 'react';
+import { createContext, useContext, Dispatch, SetStateAction, ReactNode, useState, useEffect, useCallback } from 'react';
 import { defaultConfig, loadSavedConfig, setConfig as storeSetConfig, type Config } from '../utils/config';
 import { useTheme, type Theme } from '@/context/theme-provider';
 import { logger } from '@/utils/log';
@@ -17,7 +17,21 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 	const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 	const { setTheme } = useTheme();
 
-	// Load initial config
+	const updateConfigWithPersistence = useCallback(async (newConfig: Config) => {
+		await storeSetConfig(newConfig);
+		await emit<Config>('config-changed', newConfig);
+	}, []);
+
+	const updateConfig = useCallback((updates: SetStateAction<Config>) => {
+		setConfig(prevConfig => {
+			const newConfig = typeof updates === 'function' ? updates(prevConfig) : updates;
+			if (isConfigLoaded) {
+				updateConfigWithPersistence(newConfig);
+			}
+			return newConfig;
+		});
+	}, [isConfigLoaded, updateConfigWithPersistence]);
+
 	useEffect(() => {
 		let isMounted = true;
 		(async () => {
@@ -33,23 +47,11 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 		return () => { isMounted = false; };
 	}, [setTheme]);
 
-	// Persist config and notify changes
-	useEffect(() => {
-		if (isConfigLoaded) {
-			(async () => {
-				await storeSetConfig(config);
-				// Emit event for tray to listen
-				await emit<Config>('config-changed', config);
-			})();
-		}
-	}, [config, isConfigLoaded]);
-
-	// Listen for config updates from tray.ts and window.ts
 	useEffect(() => {
 		const unlistenPromise = listen<Partial<Config>>('update-config', (event) => {
 			const updates = event.payload;
 			logger.info(`Received update-config event: ${JSON.stringify(updates)}`);
-			setConfig(prevConfig => ({
+			updateConfig(prevConfig => ({
 				...prevConfig,
 				...updates,
 			}));
@@ -58,10 +60,10 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 		return () => {
 			unlistenPromise.then(unlisten => unlisten());
 		};
-	}, []);
+	}, [updateConfig]);
 
 	return (
-		<ConfigContext.Provider value={{ config, setConfig, isConfigLoaded }}>
+		<ConfigContext.Provider value={{ config, setConfig: updateConfig, isConfigLoaded }}>
 			{children}
 		</ConfigContext.Provider>
 	);
