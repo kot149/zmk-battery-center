@@ -15,6 +15,7 @@ const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Warn;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(LOG_LEVEL)
