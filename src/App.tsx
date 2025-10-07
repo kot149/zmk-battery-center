@@ -1,6 +1,6 @@
 import "./App.css";
 import { listBatteryDevices, getBatteryInfo, BleDeviceInfo, BatteryInfo } from "./utils/ble";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { mockRegisteredDevices } from "./utils/mockData";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
@@ -131,7 +131,7 @@ function App() {
 		handleCloseModal();
 	};
 
-	const updateBatteryInfo = async (device: RegisteredDevice) => {
+	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
 		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos);
 
@@ -177,7 +177,7 @@ function App() {
 			}
 			await sleep(500);
 		}
-	};
+	}, [config]);
 
 	const handleCloseModal = () => {
 		setState(State.main);
@@ -208,7 +208,7 @@ function App() {
 				}, 100);
 			}
 		});
-	}, [registeredDevices, state]);
+	}, [registeredDevices, state, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
 		// Save registered devices
@@ -233,7 +233,7 @@ function App() {
 			isUnmounted = true;
 			clearInterval(interval);
 		};
-	}, [registeredDevices, config.fetchInterval]);
+	}, [registeredDevices, config.fetchInterval, isDeviceLoaded, updateBatteryInfo]);
 
 	return (
 		<div id="app" className={`relative w-90 flex flex-col bg-background text-foreground rounded-lg p-2 ${
