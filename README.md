@@ -26,7 +26,7 @@ Download the binary/installer from [Releases](https://github.com/kot149/zmk-batt
 > ```sh
 > sudo xattr -d com.apple.quarantine /Applications/zmk-battery-center.app
 > ```
-> Typically it's located at `/Applications/zmk-battery-center.app`, but change it to the actual path if it's different.
+> Typically it's located at `/Applications/zmk-battery-center.app`, but change it to the actual path if it's not there.
 
 If you worry about security, you can build the app yourself from source code. See [Development](#development) section for more details.
 
@@ -38,7 +38,7 @@ If you worry about security, you can build the app yourself from source code. Se
   ```sh
   sudo xattr -d com.apple.quarantine /Applications/zmk-battery-center.app
   ```
-  Typically it's located at `/Applications/zmk-battery-center.app`, but change it to the actual path if it's different.
+  Typically it's located at `/Applications/zmk-battery-center.app`, but change it to the actual path if it's not there.
 
 ### My keyboard does not show up / Peripheral side battery level is not displayed
 
