@@ -1,6 +1,7 @@
-import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi';
+import { LogicalPosition, LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi';
 import { Position, moveWindow } from '@tauri-apps/plugin-positioner';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { currentMonitor } from '@tauri-apps/api/window';
 import { isTrayPositionSet } from './tray';
 import { invoke } from '@tauri-apps/api/core';
 import { logger } from './log';
@@ -24,8 +25,14 @@ async function saveWindowPosition(position?: { x: number, y: number }){
         const window = getCurrentWebviewWindow();
         position = await window.position();
     }
+
+    // Convert logical position to physical position
+    const monitor = await currentMonitor();
+    const scaleFactor = monitor?.scaleFactor ?? 1;
+    const logicalPosition = new LogicalPosition(position.x / scaleFactor, position.y / scaleFactor);
+
     if(!isWindowMoving && !isWindowMovingByPlugin){
-        await emit('update-config', { windowPosition: { x: position.x, y: position.y } });
+        await emit('update-config', { windowPosition: { x: logicalPosition.x, y: logicalPosition.y } });
         logger.info(`Window moved to tray center`);
     }
 }
@@ -92,7 +99,7 @@ export async function moveWindowTo(x: number, y: number) {
     const window = getCurrentWebviewWindow();
     logger.debug(`Moving window to ${x}, ${y}`);
     isWindowMovingByPlugin = true;
-    await window.setPosition(new PhysicalPosition(x, y));
+    await window.setPosition(new LogicalPosition(x, y));
     isWindowMovingByPlugin = false;
     await saveWindowPosition();
 }
