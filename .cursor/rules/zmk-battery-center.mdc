@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Use Bun as frontend package manager. Do not use npm or yarn.
