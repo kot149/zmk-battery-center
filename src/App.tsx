@@ -96,9 +96,9 @@ function App() {
 				setDevices(result as BleDeviceInfo[]);
 				setState(State.addDeviceModal);
 			}
-		} catch (e: any) {
+		} catch (e: unknown) {
 			if (!finished) {
-				let msg = e.toString();
+				let msg = e instanceof Error ? e.message : String(e);
 				if (isMac && !msg.includes("Bluetooth permission")) {
 					msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
 				}
