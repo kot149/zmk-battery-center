@@ -40,6 +40,7 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 				setConfig(loaded);
 				setIsConfigLoaded(true);
 				setTheme(loaded.theme as Theme);
+				await emit<Config>('config-changed', loaded);
 				logger.info(`Loaded config: ${JSON.stringify(loaded, null, 4)}`);
 				logger.info(`Theme set to: ${loaded.theme}`);
 			}
