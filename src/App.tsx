@@ -14,6 +14,7 @@ import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
 import { NotificationType } from "./utils/config";
 import { sleep } from "./utils/common";
+import { platform } from "@tauri-apps/plugin-os";
 
 export type RegisteredDevice = {
 	id: string;
@@ -73,7 +74,7 @@ function App() {
 		let timeoutId: number | null = null;
 		let finished = false;
 
-		const isMac = navigator.userAgent.includes("Macintosh") || navigator.userAgent.includes("Mac OS X");
+		const isMac = platform() === 'macos';
 
 		try {
 			const timeoutPromise = new Promise<never>((_, reject) => {
