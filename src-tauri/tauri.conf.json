@@ -52,6 +52,9 @@
     ],
     "resources": [
       "icons/icon_template.png"
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
   }
 }
