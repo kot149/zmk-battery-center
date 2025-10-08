@@ -22,11 +22,13 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
 Download the binary/installer from [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
 > [!important]
-> On macOS, the app is blocked from opening as it is not signed. Remove the app from quarantine by running the following command in the terminal:
-> ```sh
-> sudo xattr -d com.apple.quarantine /Applications/zmk-battery-center.app
-> ```
-> Typically it's located at `/Applications/zmk-battery-center.app`, but change it to the actual path if it's not there.
+> On macOS, the app is blocked from opening as it is not signed. Allow the app to open by either:
+> - Open System Settings > Privacy & Security > Security and click `Open Anyway`.
+> - Or, run the following command in the terminal to remove the app from quarantine:
+>   ```sh
+>   sudo xattr -d com.apple.quarantine /Applications/zmk-battery-center.app
+>   ```
+>   Typically it's located at `/Applications/zmk-battery-center.app`, but change it to the actual path if it's not there.
 
 If you worry about security, you can build the app yourself from source code. See [Development](#development) section for more details.
 
@@ -34,7 +36,9 @@ If you worry about security, you can build the app yourself from source code. Se
 
 ### Cannot open the app on macOS
 
-- On macOS, the app is blocked from opening as it is not signed. Remove the app from quarantine by running the following command in the terminal:
+On macOS, the app is blocked from opening as it is not signed. Allow the app to open by either:
+- Open System Settings > Privacy & Security > Security and click `Open Anyway`.
+- Or, run the following command in the terminal to remove the app from quarantine:
   ```sh
   sudo xattr -d com.apple.quarantine /Applications/zmk-battery-center.app
   ```
