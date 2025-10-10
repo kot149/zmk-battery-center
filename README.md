@@ -26,6 +26,7 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
 ```sh
 powershell -ExecutionPolicy Bypass -Command "iex (irm 'https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_win.ps1')"
 ```
+[View install script](scripts/install_win.ps1)
 
 This requires admin privileges. If you don't have admin privileges, manually install with `*-setup.exe` in [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
@@ -34,6 +35,7 @@ This requires admin privileges. If you don't have admin privileges, manually ins
 ```sh
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_mac.sh)"
 ```
+[View install script](scripts/install_mac.sh)
 
 ### Install manually
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
