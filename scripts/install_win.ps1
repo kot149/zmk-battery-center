@@ -19,9 +19,9 @@ try {
     Write-Host "Downloading from $url..."
     Invoke-WebRequest -Uri $url -OutFile $outFile
 
-    # Execute the silent installation
+    # Execute the silent installation as admin
     Write-Host "Installing $outFile..."
-    Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet" -Wait
+    Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet" -Wait -Verb RunAs
 
     # Delete the temporary file
     Write-Host "Cleaning up..."
