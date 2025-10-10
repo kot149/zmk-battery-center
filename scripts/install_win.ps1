@@ -1,10 +1,8 @@
-# install-latest.ps1
-
-# エラーが発生したら処理を中断する
+# Stop on error
 $ErrorActionPreference = "Stop"
 
 try {
-    # 1. 最新リリースのMSIファイルのURLを取得
+    # Get the URL of the latest MSI file
     Write-Host "Fetching the latest release information..."
     $apiUrl = "https://api.github.com/repos/kot149/zmk-battery-center/releases/latest"
     $latestRelease = Invoke-RestMethod -Uri $apiUrl
@@ -16,18 +14,16 @@ try {
 
     $url = $asset.browser_download_url
 
-    # 2. 一時ファイルとして保存するパスを定義
+    # Download the file to a temporary file
     $outFile = Join-Path $env:TEMP "zmk-battery-center.msi"
-
-    # 3. ファイルをダウンロード
     Write-Host "Downloading from $url..."
     Invoke-WebRequest -Uri $url -OutFile $outFile
 
-    # 4. サイレントインストールを実行
+    # Execute the silent installation
     Write-Host "Installing $outFile..."
     Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet" -Wait
 
-    # 5. 一時ファイルを削除
+    # Delete the temporary file
     Write-Host "Cleaning up..."
     Remove-Item $outFile
 
