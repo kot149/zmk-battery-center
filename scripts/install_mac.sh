@@ -10,7 +10,7 @@ echo "Starting zmk-battery-center installation..."
 
 # Get the latest version tag from GitHub API
 echo "Fetching the latest version..."
-LATEST_VERSION=$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+LATEST_VERSION=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
 
 if [ -z "$LATEST_VERSION" ]; then
     echo "Error: Could not fetch the latest version."
@@ -37,7 +37,7 @@ DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${LATEST_VERSION}/${
 ARCHIVE_TMP_PATH="${TMP_DIR}/${ARCHIVE_FILENAME}"
 
 echo "Downloading: ${DOWNLOAD_URL}"
-wget -O "${ARCHIVE_TMP_PATH}" "${DOWNLOAD_URL}"
+curl -L -o "${ARCHIVE_TMP_PATH}" "${DOWNLOAD_URL}"
 
 # Extract the archive and install the application
 echo "Extracting archive..."
