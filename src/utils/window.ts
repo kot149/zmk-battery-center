@@ -49,14 +49,14 @@ export async function resizeWindow(x: number, y: number) {
 
 	const window = getCurrentWebviewWindow();
 	if (window) {
-		window.setSize(new LogicalSize(width, height));
+		await window.setSize(new LogicalSize(width, height));
 	}
 }
 
 export async function resizeWindowToContent() {
     const width = document.getElementById('app')?.clientWidth ?? 0;
     const height = document.getElementById('app')?.clientHeight ?? 0;
-    resizeWindow(width, height);
+    await resizeWindow(width, height);
 }
 
 export function isWindowVisible() {
@@ -102,7 +102,7 @@ export async function moveWindowTo(x: number, y: number) {
     const window = getCurrentWebviewWindow();
     logger.debug(`Moving window to ${x}, ${y}`);
     isWindowMovingByPlugin = true;
-    const position = platform() === 'macos' ? new LogicalPosition(x, y) : new PhysicalPosition(x, y);
+    const position = await platform() === 'macos' ? new LogicalPosition(x, y) : new PhysicalPosition(x, y);
     await window.setPosition(position);
     isWindowMovingByPlugin = false;
     await saveWindowPosition();

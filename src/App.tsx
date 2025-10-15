@@ -198,17 +198,15 @@ function App() {
 
 	// Handle window size change
 	useEffect(() => {
-		resizeWindowToContent().then(() => {
+		const handleResize = async () => {
+			await resizeWindowToContent();
 			if(isConfigLoaded && !config.manualWindowPositioning){
-				moveWindowToTrayCenter();
-				setTimeout(() => {
-					moveWindowToTrayCenter();
-				}, 50);
-				setTimeout(() => {
-					moveWindowToTrayCenter();
-				}, 100);
+				// Add a small delay to ensure resize is complete before moving window
+				await sleep(50);
+				await moveWindowToTrayCenter();
 			}
-		});
+		};
+		handleResize();
 	}, [registeredDevices, state, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
