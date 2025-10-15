@@ -1,8 +1,7 @@
 use tauri;
 use tauri::{
-    image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter,
 };
 
 pub fn init_tray(app_handle: AppHandle) {
