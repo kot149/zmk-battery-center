@@ -12,6 +12,7 @@ import { platform } from '@tauri-apps/plugin-os';
 let isWindowMoving = false;
 let isWindowMovingByPlugin = false;
 let isWindowFocused = false;
+let isWindowResizing = false;
 let moveTimeout: NodeJS.Timeout | null = null;
 let focusTimeout: NodeJS.Timeout | null = null;
 
@@ -41,15 +42,26 @@ async function saveWindowPosition(position?: { x: number, y: number }){
 }
 
 export async function resizeWindow(x: number, y: number) {
-	logger.info(`resizeWindow: ${x}x${y}`);
-    const scaleFactor = await invoke<number>('get_windows_text_scale_factor');
-    const width = x * scaleFactor;
-    const height = y * scaleFactor;
-    logger.info(`scaled size: ${width}x${height}`);
+	// Skip if a resize is already in progress
+	if (isWindowResizing) {
+		logger.debug(`Skipping resize - already in progress`);
+		return;
+	}
 
-	const window = getCurrentWebviewWindow();
-	if (window) {
-		await window.setSize(new LogicalSize(width, height));
+	isWindowResizing = true;
+	try {
+		logger.info(`resizeWindow: ${x}x${y}`);
+		const scaleFactor = await invoke<number>('get_windows_text_scale_factor');
+		const width = x * scaleFactor;
+		const height = y * scaleFactor;
+		logger.info(`scaled size: ${width}x${height}`);
+
+		const window = getCurrentWebviewWindow();
+		if (window) {
+			await window.setSize(new LogicalSize(width, height));
+		}
+	} finally {
+		isWindowResizing = false;
 	}
 }
 
