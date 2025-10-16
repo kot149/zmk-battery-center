@@ -9,11 +9,12 @@ pub fn init_tray(app_handle: AppHandle) {
 
     #[cfg(target_os = "macos")]
     {
+        use tauri::Manager;
         if let Ok(icon_path) = app_handle
             .path()
             .resolve("icons/icon_template.png", tauri::path::BaseDirectory::Resource)
         {
-            if let Ok(icon) = Image::from_path(&icon_path) {
+            if let Ok(icon) = tauri::image::Image::from_path(&icon_path) {
                 let _ = tray.set_icon(Some(icon));
             }
         }
