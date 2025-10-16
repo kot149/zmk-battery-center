@@ -12,6 +12,7 @@ import { platform } from '@tauri-apps/plugin-os';
 let isWindowMoving = false;
 let isWindowMovingByPlugin = false;
 let isWindowFocused = false;
+let isWindowResizing = false;
 let moveTimeout: NodeJS.Timeout | null = null;
 let focusTimeout: NodeJS.Timeout | null = null;
 
@@ -41,22 +42,33 @@ async function saveWindowPosition(position?: { x: number, y: number }){
 }
 
 export async function resizeWindow(x: number, y: number) {
-	logger.info(`resizeWindow: ${x}x${y}`);
-    const scaleFactor = await invoke<number>('get_windows_text_scale_factor');
-    const width = x * scaleFactor;
-    const height = y * scaleFactor;
-    logger.info(`scaled size: ${width}x${height}`);
+	// Skip if a resize is already in progress
+	if (isWindowResizing) {
+		logger.debug(`Skipping resize - already in progress`);
+		return;
+	}
 
-	const window = getCurrentWebviewWindow();
-	if (window) {
-		window.setSize(new LogicalSize(width, height));
+	isWindowResizing = true;
+	try {
+		logger.info(`resizeWindow: ${x}x${y}`);
+		const scaleFactor = await invoke<number>('get_windows_text_scale_factor');
+		const width = x * scaleFactor;
+		const height = y * scaleFactor;
+		logger.info(`scaled size: ${width}x${height}`);
+
+		const window = getCurrentWebviewWindow();
+		if (window) {
+			await window.setSize(new LogicalSize(width, height));
+		}
+	} finally {
+		isWindowResizing = false;
 	}
 }
 
 export async function resizeWindowToContent() {
     const width = document.getElementById('app')?.clientWidth ?? 0;
     const height = document.getElementById('app')?.clientHeight ?? 0;
-    resizeWindow(width, height);
+    await resizeWindow(width, height);
 }
 
 export function isWindowVisible() {
@@ -102,7 +114,7 @@ export async function moveWindowTo(x: number, y: number) {
     const window = getCurrentWebviewWindow();
     logger.debug(`Moving window to ${x}, ${y}`);
     isWindowMovingByPlugin = true;
-    const position = platform() === 'macos' ? new LogicalPosition(x, y) : new PhysicalPosition(x, y);
+    const position = await platform() === 'macos' ? new LogicalPosition(x, y) : new PhysicalPosition(x, y);
     await window.setPosition(position);
     isWindowMovingByPlugin = false;
     await saveWindowPosition();
