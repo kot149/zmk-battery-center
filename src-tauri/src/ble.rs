@@ -24,12 +24,16 @@ pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
         .await
         .ok_or("Bluetooth adapter not found")
         .map_err(|e| e.to_string())?;
+
     adapter.wait_available().await.map_err(|e| e.to_string())?;
+
     let devices = adapter
         .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
         .await
         .map_err(|e| e.to_string())?;
+
     let mut result = Vec::new();
+
     for device in devices.into_iter() {
         let name = match device.name() {
             Ok(n) => n.to_string(),
@@ -38,6 +42,7 @@ pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
         let id = format!("{:?}", device.id());
         result.push(BleDeviceInfo { name, id });
     }
+
     Ok(result)
 }
 
@@ -47,53 +52,54 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
         .await
         .ok_or("Bluetooth adapter not found")
         .map_err(|e| e.to_string())?;
+
     adapter.wait_available().await.map_err(|e| e.to_string())?;
+
     let devices = adapter
         .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
         .await
         .map_err(|e| e.to_string())?;
-    let mut target_device = None;
-    for device in devices.into_iter() {
-        if format!("{:?}", device.id()) == id {
-            target_device = Some(device);
-            break;
-        }
-    }
-    let device = target_device.ok_or("Device not found")?;
+
+    let Some(target_device) = devices.iter().find(|device| format!("{:?}", device.id()) == id) else {
+        return Err("Device not found".to_string());
+    };
+
     adapter
-        .connect_device(&device)
+        .connect_device(&target_device)
         .await
         .map_err(|e| e.to_string())?;
-    let services = device.services().await.map_err(|e| e.to_string())?;
+
     let mut battery_infos = Vec::new();
-    for service in services {
-        if service.uuid() == BATTERY_SERVICE_UUID {
-            let characteristics = service.characteristics().await.map_err(|e| e.to_string())?;
-            for characteristic in characteristics {
-                if characteristic.uuid() == BATTERY_LEVEL_UUID {
-                    let value = characteristic.read().await.map_err(|e| e.to_string())?;
-                    let battery_level = value.get(0).copied();
-                    let mut user_descriptor = None;
-                    let descriptors = characteristic
-                        .descriptors()
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    for descriptor in descriptors {
-                        if descriptor.uuid() == CHARACTERISTIC_USER_DESCRIPTION {
-                            let desc_value = descriptor.read().await.map_err(|e| e.to_string())?;
-                            if let Ok(desc_str) = String::from_utf8(desc_value.clone()) {
-                                user_descriptor = Some(desc_str);
-                            }
-                        }
-                    }
-                    battery_infos.push(BatteryInfo {
-                        battery_level,
-                        user_descriptor,
-                    });
+
+    let services = target_device.services().await.map_err(|e| e.to_string())?;
+
+    for battery_service in services.iter().filter(|service| service.uuid() == BATTERY_SERVICE_UUID) {
+        let characteristics = battery_service.characteristics().await.map_err(|e| e.to_string())?;
+
+        if let Some(battery_level_characteristic) = characteristics.iter().find(|c| c.uuid() == BATTERY_LEVEL_UUID) {
+            let value = battery_level_characteristic.read().await.map_err(|e| e.to_string())?;
+            let battery_level = value.get(0).copied();
+            let mut user_description = None;
+            let descriptors = battery_level_characteristic
+                .descriptors()
+                .await
+                .map_err(|e| e.to_string())?;
+
+            if let Some(user_description_descriptor) = descriptors.iter().find(|d| d.uuid() == CHARACTERISTIC_USER_DESCRIPTION) {
+                let desc_value = user_description_descriptor.read().await.map_err(|e| e.to_string())?;
+                if let Ok(desc_str) = String::from_utf8(desc_value.clone()) {
+                    user_description = Some(desc_str);
                 }
             }
+
+            battery_infos.push(BatteryInfo {
+                battery_level,
+                user_descriptor: user_description,
+            });
         }
     }
-    adapter.disconnect_device(&device).await.map_err(|e| e.to_string())?;
+
+    adapter.disconnect_device(&target_device).await.map_err(|e| e.to_string())?;
+
     Ok(battery_infos)
 }
