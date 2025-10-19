@@ -94,5 +94,6 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
             }
         }
     }
+    adapter.disconnect_device(&device).await.map_err(|e| e.to_string())?;
     Ok(battery_infos)
 }
