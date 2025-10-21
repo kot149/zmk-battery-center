@@ -15,6 +15,9 @@ import { sendNotification } from "./utils/notification";
 import { NotificationType } from "./utils/config";
 import { sleep } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
+import { useWindowEvents } from "@/hooks/useWindowEvents";
+import { useTrayEvents } from "@/hooks/useTrayEvents";
+import { emit } from '@tauri-apps/api/event';
 
 export type RegisteredDevice = {
 	id: string;
@@ -52,9 +55,30 @@ function App() {
 
 	const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
 	const [error, setError] = useState("");
-	const { config, isConfigLoaded} = useConfigContext();
+	const { config, isConfigLoaded } = useConfigContext();
 
 	const [state, setState] = useState<State>(State.main);
+
+	// Initialize window and tray event listeners
+	const handleWindowPositionChange = useCallback((position: { x: number; y: number }) => {
+		emit('update-config', { windowPosition: position });
+	}, []);
+
+	const handleManualWindowPositioningChange = useCallback((enabled: boolean) => {
+		emit('update-config', { manualWindowPositioning: enabled });
+	}, []);
+
+	useWindowEvents({
+		config,
+		isConfigLoaded,
+		onWindowPositionChange: handleWindowPositionChange,
+	});
+
+	useTrayEvents({
+		config,
+		isConfigLoaded,
+		onManualWindowPositioningChange: handleManualWindowPositioningChange,
+	});
 
 	// Load saved devices
 	useEffect(() => {

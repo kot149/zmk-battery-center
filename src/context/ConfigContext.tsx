@@ -1,4 +1,4 @@
-import { createContext, useContext, Dispatch, SetStateAction, ReactNode, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, Dispatch, SetStateAction, ReactNode, useState, useEffect, useCallback, useRef } from 'react';
 import { defaultConfig, loadSavedConfig, setConfig as storeSetConfig, type Config } from '../utils/config';
 import { useTheme, type Theme } from '@/context/theme-provider';
 import { logger } from '@/utils/log';
@@ -16,17 +16,21 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 	const [config, setConfig] = useState<Config>(defaultConfig);
 	const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 	const { setTheme } = useTheme();
+	const isUpdatingFromEventRef = useRef(false);
 
-	const updateConfigWithPersistence = useCallback(async (newConfig: Config) => {
+	const updateConfigWithPersistence = useCallback(async (newConfig: Config, skipEmit = false) => {
 		await storeSetConfig(newConfig);
-		await emit<Config>('config-changed', newConfig);
+		// Only emit config-changed if this is a user-initiated change, not from an event
+		if (!skipEmit) {
+			await emit<Config>('config-changed', newConfig);
+		}
 	}, []);
 
-	const updateConfig = useCallback((updates: SetStateAction<Config>) => {
+	const updateConfig = useCallback((updates: SetStateAction<Config>, skipEmit = false) => {
 		setConfig(prevConfig => {
 			const newConfig = typeof updates === 'function' ? updates(prevConfig) : updates;
 			if (isConfigLoaded) {
-				updateConfigWithPersistence(newConfig);
+				updateConfigWithPersistence(newConfig, skipEmit);
 			}
 			return newConfig;
 		});
@@ -52,10 +56,14 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 		const unlistenPromise = listen<Partial<Config>>('update-config', (event) => {
 			const updates = event.payload;
 			logger.info(`Received update-config event: ${JSON.stringify(updates)}`);
+
+			// Set flag to prevent infinite loop
+			isUpdatingFromEventRef.current = true;
 			updateConfig(prevConfig => ({
 				...prevConfig,
 				...updates,
-			}));
+			}), true); // Skip emitting config-changed to prevent loop
+			isUpdatingFromEventRef.current = false;
 		});
 
 		return () => {
