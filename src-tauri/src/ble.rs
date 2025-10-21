@@ -65,7 +65,7 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
     };
 
     adapter
-        .connect_device(&target_device)
+        .connect_device(target_device)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -78,7 +78,7 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
 
         if let Some(battery_level_characteristic) = characteristics.iter().find(|c| c.uuid() == BATTERY_LEVEL_UUID) {
             let value = battery_level_characteristic.read().await.map_err(|e| e.to_string())?;
-            let battery_level = value.get(0).copied();
+            let battery_level = value.first().copied();
             let mut user_description = None;
             let descriptors = battery_level_characteristic
                 .descriptors()
@@ -99,7 +99,7 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
         }
     }
 
-    adapter.disconnect_device(&target_device).await.map_err(|e| e.to_string())?;
+    adapter.disconnect_device(target_device).await.map_err(|e| e.to_string())?;
 
     Ok(battery_infos)
 }

@@ -1,5 +1,3 @@
-use tauri;
-
 #[cfg(target_os = "windows")]
 use windows::UI::ViewManagement::UISettings;
 

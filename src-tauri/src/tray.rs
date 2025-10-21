@@ -1,4 +1,3 @@
-use tauri;
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
     AppHandle, Emitter,
@@ -39,6 +38,11 @@ pub fn init_tray(app_handle: AppHandle) {
             } => {
                 let _ = app.emit("tray_left_click", event.clone());
             }
+            TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                ..
+            } => {}
             _ => {}
         }
     });
