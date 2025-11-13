@@ -76,7 +76,7 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
     for battery_service in services.iter().filter(|service| service.uuid() == BATTERY_SERVICE_UUID) {
         let characteristics = battery_service.characteristics().await.map_err(|e| e.to_string())?;
 
-        if let Some(battery_level_characteristic) = characteristics.iter().find(|c| c.uuid() == BATTERY_LEVEL_UUID) {
+        for battery_level_characteristic in characteristics.iter().filter(|c| c.uuid() == BATTERY_LEVEL_UUID) {
             let value = battery_level_characteristic.read().await.map_err(|e| e.to_string())?;
             let battery_level = value.first().copied();
             let mut user_description = None;
