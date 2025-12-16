@@ -124,3 +124,4 @@ You can also build using [GitHub Actions](.github/workflows).
 - [Mighty-Mitts](https://github.com/codyd51/Mighty-Mitts): System tray app for macOS
 - [zmk-split-battery](https://github.com/Maksim-Isakau/zmk-split-battery): System tray app for Windows
 - [zmkBATx](https://github.com/mh4x0f/zmkBATx): System tray app for Linux
+- [ZmkBatteryClient](https://github.com/JanValiska/ZmkBatteryClient): [Waybar](https://github.com/Alexays/Waybar) custom module
