@@ -25,8 +25,8 @@ const Modal: React.FC<ModalProps> = ({
 }) => {
 	const [isClosing, setIsClosing] = useState(false);
 	const [animate, setAnimate] = useState(false);
-	const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
-	const animateTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+	const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const animateTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 	const shouldShow = open || isClosing;
 
