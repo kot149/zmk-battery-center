@@ -99,7 +99,7 @@ jobs:
           "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Upload Tauri Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.args != '' && format('tauri-artifacts-{0}-{1}', matrix.platform, matrix.args) || format('tauri-artifacts-{0}', matrix.platform) }}
           path: |
