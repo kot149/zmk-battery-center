@@ -28,7 +28,7 @@ tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
 bluest = "0.6.7"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
-uuid = "1.16.0"
+uuid = "1.19.0"
 tauri-plugin-store = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-log = "2"
