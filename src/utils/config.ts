@@ -44,7 +44,7 @@ let configStoreInstance: Store | null = null;
 
 async function getConfigStore() {
 	if (!configStoreInstance) {
-		configStoreInstance = await load('config.json', { autoSave: true });
+		configStoreInstance = await load('config.json', { autoSave: true, defaults: defaultConfig });
 	}
 	return configStoreInstance;
 }

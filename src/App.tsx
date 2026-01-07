@@ -83,7 +83,7 @@ function App() {
 	// Load saved devices
 	useEffect(() => {
 		const fetchRegisteredDevices = async () => {
-			const deviceStore = await load('devices.json', { autoSave: true });
+			const deviceStore = await load('devices.json', { autoSave: true, defaults: {} });
 			const devices = await deviceStore.get<RegisteredDevice[]>("devices");
 			setRegisteredDevices(devices || []);
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
@@ -239,7 +239,7 @@ function App() {
 		// Save registered devices
 		if(isDeviceLoaded){
 			const saveRegisteredDevices = async () => {
-				const deviceStore = await load('devices.json', { autoSave: true });
+				const deviceStore = await load('devices.json', { autoSave: true, defaults: {} });
 				await deviceStore.set("devices", registeredDevices);
 				logger.info('Saved registered devices');
 			};
