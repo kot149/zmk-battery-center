@@ -180,9 +180,9 @@ function App() {
 						if(!isLowBatteryPrev[i] && isLowBattery[i]){
 							sendNotification(`${device.name}${
 								infoArray.length >= 2 ?
-									' ' + (infoArray[i].user_descriptor ?? 'Central') + ' '
+									' ' + (infoArray[i].user_descriptor ?? 'Central')
 									: ''
-							}has low battery.`);
+							} has low battery.`);
 							logger.info(`${device.name} has low battery.`);
 						}
 					}
