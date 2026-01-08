@@ -2,6 +2,11 @@ name: "Tauri Build & Release"
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag in the format vX.Y.Z (must match package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml)"
+        required: true
+        type: string
   push:
     tags:
       - v*
@@ -10,6 +15,19 @@ permissions:
   contents: write
 
 jobs:
+  verify-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Verify versions match (package.json / tauri.conf.json / Cargo.toml / git tag)
+        run: bun scripts/verify_versions.ts --tag "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+
   # create-release:
   #   runs-on: ubuntu-latest
   #   steps:
@@ -28,6 +46,7 @@ jobs:
   #         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
   build-and-release-tauri:
+    needs: verify-versions
     strategy:
       fail-fast: true
       matrix:

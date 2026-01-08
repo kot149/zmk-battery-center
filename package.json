@@ -11,6 +11,7 @@
     "tauri": "tauri",
     "lint": "eslint . --ext ts,tsx",
     "lint:fix": "eslint . --ext ts,tsx --fix",
+    "check-versions": "bun scripts/verify_versions.ts",
     "bump-version": "bun scripts/bump_up.ts"
   },
   "dependencies": {
