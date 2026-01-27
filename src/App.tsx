@@ -251,7 +251,7 @@ function App() {
 
 		const interval = setInterval(() => {
 			if(isUnmounted) return;
-			registeredDevices.forEach(updateBatteryInfo);
+			Promise.all(registeredDevices.map(updateBatteryInfo));
 		}, config.fetchInterval);
 
 		return () => {
