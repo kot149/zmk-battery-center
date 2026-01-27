@@ -92,6 +92,10 @@ You can manually move the window to the correct position to address this issue.
      ```sh
      bun install
      ```
+2. Install Cargo tools
+     ```sh
+     cargo install cargo-about cargo-deny
+     ```
 2. Run in development mode
      ```sh
      bun tauri dev
