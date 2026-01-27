@@ -9,6 +9,8 @@ pub struct JsLicense {
     pub repository: Option<String>,
     pub publisher: Option<String>,
     pub path: Option<String>,
+    #[serde(rename = "licenseText")]
+    pub license_text: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -18,6 +20,8 @@ pub struct CargoLicense {
     pub license: Option<String>,
     pub authors: Option<Vec<String>>,
     pub repository: Option<String>,
+    #[serde(rename = "licenseText")]
+    pub license_text: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

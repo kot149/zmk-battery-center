@@ -1,7 +1,72 @@
 import { useState, useEffect, useMemo, Suspense } from 'react';
-import { useLicenses, mergeLicenses } from './hooks/useLicenses';
+import { useLicenses, mergeLicenses, License } from './hooks/useLicenses';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import "./App.css";
+
+function LicenseItem({ license }: { license: License }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    const handleOpenUrl = (url: string) => {
+        openUrl(url);
+    };
+
+    return (
+        <div className="bg-card rounded-lg border border-border">
+            <div
+                className={`p-3 ${license.licenseText ? 'cursor-pointer hover:bg-secondary/50' : ''}`}
+                onClick={() => license.licenseText && setIsExpanded(!isExpanded)}
+            >
+                <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate flex items-center gap-2">
+                            {license.licenseText && (
+                                <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                                    &#9654;
+                                </span>
+                            )}
+                            {license.name}
+                            <span className="text-muted-foreground font-normal">
+                                v{license.version}
+                            </span>
+                        </div>
+                        {license.author && (
+                            <div className="text-sm text-muted-foreground truncate ml-5">
+                                by {license.author}
+                            </div>
+                        )}
+                    </div>
+                    <div className="shrink-0">
+                        <span className="inline-block px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded">
+                            {license.license ?? 'Unknown'}
+                        </span>
+                    </div>
+                </div>
+                {license.repository && (
+                    <a
+                        href={license.repository}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline truncate block mt-1 ml-5"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            handleOpenUrl(license.repository!);
+                        }}
+                    >
+                        {license.repository}
+                    </a>
+                )}
+            </div>
+            {isExpanded && license.licenseText && (
+                <div className="border-t border-border p-3">
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-background p-3 rounded max-h-64 overflow-y-auto">
+                        {license.licenseText}
+                    </pre>
+                </div>
+            )}
+        </div>
+    );
+}
 
 function LicensesList() {
     const licensesData = useLicenses();
@@ -26,10 +91,6 @@ function LicensesList() {
         );
     }, [allLicenses, searchQuery]);
 
-    const handleOpenUrl = (url: string) => {
-        openUrl(url);
-    };
-
     return (
         <div className="dark h-screen bg-background text-foreground flex flex-col overflow-hidden">
             {/* Header */}
@@ -50,45 +111,10 @@ function LicensesList() {
             <div className="flex-1 overflow-y-auto p-4">
                 <div className="space-y-2">
                     {filteredLicenses.map((license) => (
-                        <div
+                        <LicenseItem
                             key={`${license.name}@${license.version}`}
-                            className="bg-card p-3 rounded-lg border border-border"
-                        >
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-medium truncate">
-                                        {license.name}
-                                        <span className="text-muted-foreground font-normal ml-2">
-                                            v{license.version}
-                                        </span>
-                                    </div>
-                                    {license.author && (
-                                        <div className="text-sm text-muted-foreground truncate">
-                                            by {license.author}
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="shrink-0">
-                                    <span className="inline-block px-2 py-1 text-xs bg-secondary text-secondary-foreground rounded">
-                                        {license.license ?? 'Unknown'}
-                                    </span>
-                                </div>
-                            </div>
-                            {license.repository && (
-                                <a
-                                    href={license.repository}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-primary hover:underline truncate block mt-1"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        handleOpenUrl(license.repository!);
-                                    }}
-                                >
-                                    {license.repository}
-                                </a>
-                            )}
-                        </div>
+                            license={license}
+                        />
                     ))}
                 </div>
                 {filteredLicenses.length === 0 && (

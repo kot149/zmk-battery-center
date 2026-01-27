@@ -28,6 +28,7 @@ interface CargoLicense {
 	license: string;
 	authors: string[];
 	repository?: string;
+	licenseText?: string;
 }
 
 interface JsLicense {
@@ -37,6 +38,7 @@ interface JsLicense {
 	repository?: string;
 	publisher?: string;
 	path: string;
+	licenseText?: string;
 }
 
 async function ensureOutputDir(): Promise<void> {
@@ -115,21 +117,75 @@ async function generateCargoLicenses(): Promise<void> {
 		await fs.unlink(path.join(OUTPUT_DIR, "cargo-about-raw.json"));
 
 		// Format license information
-		const licenses: CargoLicense[] = [];
+		// Use a map to aggregate licenses per package (for packages with multiple licenses like "MIT OR Apache-2.0")
+		const packageMap = new Map<
+			string,
+			{
+				name: string;
+				version: string;
+				licenses: Set<string>;
+				authors: string[];
+				repository?: string;
+				licenseTexts: Map<string, string>;
+			}
+		>();
 
+		// Extract license information from cargo-about output
 		if (aboutData.licenses) {
 			for (const licenseGroup of aboutData.licenses) {
+				const licenseId = licenseGroup.id || licenseGroup.name || "Unknown";
+				const licenseText = licenseGroup.text || undefined;
+
 				for (const pkg of licenseGroup.used_by || []) {
-					licenses.push({
-						name: pkg.crate.name,
-						version: pkg.crate.version,
-						license: licenseGroup.id || licenseGroup.name || "Unknown",
-						authors: pkg.crate.authors || [],
-						repository: pkg.crate.repository,
-					});
+					const key = `${pkg.crate.name}@${pkg.crate.version}`;
+
+					if (!packageMap.has(key)) {
+						packageMap.set(key, {
+							name: pkg.crate.name,
+							version: pkg.crate.version,
+							licenses: new Set(),
+							authors: pkg.crate.authors || [],
+							repository: pkg.crate.repository,
+							licenseTexts: new Map(),
+						});
+					}
+
+					const entry = packageMap.get(key)!;
+					entry.licenses.add(licenseId);
+					if (licenseText) {
+						entry.licenseTexts.set(licenseId, licenseText);
+					}
 				}
 			}
 		}
+
+		// Convert map to array and combine license information
+		const licenses: CargoLicense[] = Array.from(packageMap.values()).map(
+			(pkg) => {
+				const licenseIds = Array.from(pkg.licenses).sort();
+				// Combine license texts with headers
+				let combinedLicenseText: string | undefined;
+				if (pkg.licenseTexts.size > 0) {
+					if (pkg.licenseTexts.size === 1) {
+						combinedLicenseText = pkg.licenseTexts.values().next().value;
+					} else {
+						combinedLicenseText = licenseIds
+							.filter((id) => pkg.licenseTexts.has(id))
+							.map((id) => `=== ${id} ===\n\n${pkg.licenseTexts.get(id)}`)
+							.join("\n\n");
+					}
+				}
+
+				return {
+					name: pkg.name,
+					version: pkg.version,
+					license: licenseIds.join(" OR "),
+					authors: pkg.authors,
+					repository: pkg.repository,
+					licenseText: combinedLicenseText,
+				};
+			}
+		);
 
 		// Sort by name
 		licenses.sort((a, b) => a.name.localeCompare(b.name));
@@ -169,6 +225,7 @@ async function generateJsLicenses(): Promise<void> {
 			repository?: string;
 			publisher?: string;
 			path?: string;
+			licenseFile?: string;
 		};
 
 		// Extract package name and version
@@ -189,6 +246,26 @@ async function generateJsLicenses(): Promise<void> {
 			continue;
 		}
 
+		// Read license text from licenseFile provided by license-checker
+		let licenseText: string | undefined;
+		if (pkgInfo.licenseFile) {
+			// Check if the file is actually a license file (not README.md, etc.)
+			const fileName = path.basename(pkgInfo.licenseFile).toLowerCase();
+			const isLicenseFile =
+				fileName.startsWith("license") ||
+				fileName.startsWith("licence") ||
+				fileName.startsWith("copying") ||
+				fileName === "unlicense";
+
+			if (isLicenseFile) {
+				try {
+					licenseText = await fs.readFile(pkgInfo.licenseFile, "utf-8");
+				} catch {
+					// Ignore read errors
+				}
+			}
+		}
+
 		licenses.push({
 			name,
 			version,
@@ -196,6 +273,7 @@ async function generateJsLicenses(): Promise<void> {
 			repository: pkgInfo.repository,
 			publisher: pkgInfo.publisher,
 			path: pkgInfo.path || "",
+			licenseText,
 		});
 	}
 
@@ -212,6 +290,8 @@ async function generateJsLicenses(): Promise<void> {
 		throw error;
 	}
 }
+
+
 
 async function main(): Promise<void> {
 	const args = process.argv.slice(2);

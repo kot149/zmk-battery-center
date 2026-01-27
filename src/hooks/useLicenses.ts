@@ -7,6 +7,7 @@ interface JsLicense {
     license: string | null;
     repository: string | null;
     publisher: string | null;
+    licenseText: string | null;
 }
 
 interface CargoLicense {
@@ -15,6 +16,7 @@ interface CargoLicense {
     license: string | null;
     authors: string[] | null;
     repository: string | null;
+    licenseText: string | null;
 }
 
 export interface LicensesData {
@@ -28,6 +30,7 @@ export interface License {
     license: string | null;
     repository: string | null;
     author: string | null;
+    licenseText: string | null;
 }
 
 // Create the promise once, outside of the component
@@ -57,6 +60,7 @@ export function mergeLicenses(licensesData: LicensesData): License[] {
                 license: license.license,
                 repository: license.repository,
                 author: license.publisher ?? null,
+                licenseText: license.licenseText ?? null,
             });
         }
     }
@@ -71,6 +75,7 @@ export function mergeLicenses(licensesData: LicensesData): License[] {
                 license: license.license,
                 repository: license.repository,
                 author: license.authors?.join(', ') ?? null,
+                licenseText: license.licenseText ?? null,
             });
         }
     }
