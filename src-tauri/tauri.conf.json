@@ -35,6 +35,8 @@
   },
   "bundle": {
     "active": true,
+    "license": "MIT",
+    "licenseFile": "../LICENSE.md",
     "targets": [
       "dmg",
       "app",

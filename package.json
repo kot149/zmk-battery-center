@@ -3,6 +3,11 @@
   "private": true,
   "version": "0.3.4",
   "type": "module",
+  "license": "MIT",
+  "author": "kot149",
+  "repository": "https://github.com/kot149/zmk-battery-center",
+  "homepage": "https://github.com/kot149/zmk-battery-center",
+  "bugs": "https://github.com/kot149/zmk-battery-center/issues",
   "scripts": {
     "dev": "vite",
     "build:ui": "tsc && vite build",
