@@ -6,14 +6,14 @@ updates:
   - package-ecosystem: "bun"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "quarterly"
 
   - package-ecosystem: "cargo"
     directory: "/src-tauri"
     schedule:
-      interval: "weekly"
+      interval: "quarterly"
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "quarterly"
