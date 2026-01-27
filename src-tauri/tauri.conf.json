@@ -22,6 +22,17 @@
         "shadow": false,
         "transparent": true,
         "resizable": false
+      },
+      {
+        "label": "licenses",
+        "title": "zmk-battery-center - Open Source Licenses",
+        "url": "licenses.html",
+        "width": 600,
+        "height": 500,
+        "visible": false,
+        "center": true,
+        "resizable": true,
+        "decorations": true
       }
     ],
     "trayIcon": {
@@ -53,7 +64,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "icons/icon_template.png"
+      "icons/icon_template.png",
+      "../licenses/*.json"
     ],
     "macOS": {
       "signingIdentity": "-"

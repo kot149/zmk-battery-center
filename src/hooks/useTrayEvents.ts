@@ -7,6 +7,7 @@ import { exitApp } from '@/utils/common';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { logger } from '@/utils/log';
 import { Config } from '@/utils/config';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 interface UseTrayEventsOptions {
     config: Config;
@@ -107,6 +108,19 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                 },
                             },
                         ]
+                    },
+                    {
+                        id: 'licenses',
+                        text: 'Licenses',
+                        action: async () => {
+                            const licensesWindow = await WebviewWindow.getByLabel('licenses');
+                            if (licensesWindow) {
+                                await licensesWindow.show();
+                                await licensesWindow.setFocus();
+                            } else {
+                                logger.error('Licenses window not found');
+                            }
+                        }
                     },
                     {
                         id: 'about',
