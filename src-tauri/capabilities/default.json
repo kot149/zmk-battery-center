@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "licenses"],
   "permissions": [
     "core:default",
     "core:window:allow-show",
@@ -10,6 +10,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-set-size",
     "core:window:allow-start-dragging",
+    "core:webview:allow-create-webview-window",
     "positioner:default",
     "opener:allow-open-url",
     "opener:allow-default-urls",

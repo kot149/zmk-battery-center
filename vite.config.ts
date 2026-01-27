@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const host = process.env.TAURI_DEV_HOST;
+const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
@@ -12,7 +13,16 @@ export default defineConfig(async () => ({
 
   resolve: {
     alias: {
-      '@': path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'src'),
+      '@': path.resolve(dirname, 'src'),
+    },
+  },
+
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(dirname, 'index.html'),
+        licenses: path.resolve(dirname, 'licenses.html'),
+      },
     },
   },
 
