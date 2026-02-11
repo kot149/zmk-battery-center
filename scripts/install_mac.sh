@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bashsh -c "$(curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_mac.sh)"
 set -e
 
 REPO="kot149/zmk-battery-center"
