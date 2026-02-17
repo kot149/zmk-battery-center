@@ -58,6 +58,8 @@ pub fn run() {
             common::exit_app,
             ble::list_battery_devices,
             ble::get_battery_info,
+            ble::start_battery_notification_monitor,
+            ble::stop_battery_notification_monitor,
             window::get_windows_text_scale_factor,
         ])
         .setup(|app| {

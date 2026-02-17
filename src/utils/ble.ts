@@ -22,6 +22,16 @@ export type BatteryInfo = {
 	user_descriptor: string | null;
 };
 
+export type BatteryInfoNotificationEvent = {
+	id: string;
+	battery_info: BatteryInfo;
+};
+
+export type BatteryMonitorStatusEvent = {
+	id: string;
+	connected: boolean;
+};
+
 /**
  * Get device list
  * @returns {Promise<BleDeviceInfo[]>}
@@ -37,4 +47,21 @@ export async function listBatteryDevices(): Promise<BleDeviceInfo[]> {
  */
 export async function getBatteryInfo(id: string): Promise<BatteryInfo[]> {
 	return await invoke("get_battery_info", { id });
+}
+
+/**
+ * Start notification-based monitoring for a specified device.
+ * Returns the latest battery info snapshot available at monitor start.
+ */
+export async function startBatteryNotificationMonitor(
+	id: string
+): Promise<BatteryInfo[]> {
+	return await invoke("start_battery_notification_monitor", { id });
+}
+
+/**
+ * Stop notification-based monitoring for a specified device.
+ */
+export async function stopBatteryNotificationMonitor(id: string): Promise<void> {
+	await invoke("stop_battery_notification_monitor", { id });
 }

@@ -10,9 +10,15 @@ export enum NotificationType {
 	Connected = 'connected',
 }
 
+export enum BatteryMonitorMode {
+	Polling = 'polling',
+	Notification = 'notification',
+}
+
 export type Config = {
 	theme: Theme;
 	fetchInterval: number;
+	batteryMonitorMode: BatteryMonitorMode;
 	autoStart: boolean;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
@@ -26,6 +32,7 @@ export type Config = {
 export const defaultConfig: Config = {
 	theme: 'dark' as Theme,
 	fetchInterval: 30000,
+	batteryMonitorMode: BatteryMonitorMode.Polling,
 	autoStart: false,
 	pushNotification: false,
 	pushNotificationWhen: {
@@ -40,6 +47,21 @@ export const defaultConfig: Config = {
 	},
 };
 
+function normalizeBatteryMonitorMode(mode: unknown): BatteryMonitorMode {
+	if (mode === BatteryMonitorMode.Polling || mode === BatteryMonitorMode.Notification) {
+		return mode;
+	}
+	// Backward compatibility for local configs saved with old value.
+	if (mode === 'notification_only') {
+		return BatteryMonitorMode.Notification;
+	}
+	// Backward compatibility for local configs saved with the removed mode.
+	if (mode === 'bluez_observer') {
+		return BatteryMonitorMode.Notification;
+	}
+	return defaultConfig.batteryMonitorMode;
+}
+
 let configStoreInstance: Store | null = null;
 
 async function getConfigStore() {
@@ -52,9 +74,13 @@ async function getConfigStore() {
 export async function loadSavedConfig(): Promise<Config> {
 	const config = await getConfigStore().then((store: Store) => store.get<Config>('config'));
 	logger.info(`Loaded config: ${JSON.stringify(config, null, 4)}`);
-	return {
+	const merged = {
 		...defaultConfig,
 		...config,
+	};
+	return {
+		...merged,
+		batteryMonitorMode: normalizeBatteryMonitorMode(merged.batteryMonitorMode),
 	};
 };
 
