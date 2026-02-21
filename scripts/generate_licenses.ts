@@ -77,6 +77,76 @@ function parseLicenseIds(licenseField: string): string[] {
 		.filter(Boolean);
 }
 
+const LICENSE_FILE_NAMES = ["license", "licence", "copying", "unlicense"];
+
+function isLicenseFileName(fileName: string): boolean {
+	const lower = fileName.toLowerCase();
+	return (
+		LICENSE_FILE_NAMES.some((n) => lower.startsWith(n)) || lower === "unlicense"
+	);
+}
+
+async function findLicenseFromParentOrSibling(
+	pkgPath: string,
+	licenseIds: string[] | undefined
+): Promise<string | undefined> {
+	if (!pkgPath) return undefined;
+
+	const pkgDir = path.resolve(pkgPath);
+	const parentDir = path.dirname(pkgDir);
+	const nodeModules =
+		path.basename(parentDir).startsWith("@")
+			? path.dirname(parentDir)
+			: parentDir;
+	if (
+		path.basename(nodeModules) !== "node_modules" ||
+		!pkgDir.includes("node_modules")
+	) {
+		return undefined;
+	}
+
+	const searchDirs: string[] = [];
+	const relParts = path.relative(nodeModules, pkgDir).split(path.sep);
+	if (relParts[0]?.startsWith("@")) {
+		const scope = relParts[0];
+		const scopeDir = path.join(nodeModules, scope);
+		try {
+			const siblings = await fs.readdir(scopeDir);
+			for (const s of siblings) {
+				if (s.startsWith(".")) continue;
+				searchDirs.push(path.join(scopeDir, s));
+			}
+		} catch {}
+		const unscopedName = scope.replace(/^@/, "");
+		searchDirs.push(path.join(nodeModules, unscopedName));
+	}
+
+	for (const dir of searchDirs) {
+		if (dir === pkgDir) continue;
+		try {
+			const entries = await fs.readdir(dir, { withFileTypes: true });
+			for (const ent of entries) {
+				if (!ent.isFile()) continue;
+				const base = path.basename(ent.name, path.extname(ent.name));
+				if (!isLicenseFileName(base)) continue;
+				const fullPath = path.join(dir, ent.name);
+				try {
+					const raw = await fs.readFile(fullPath, "utf-8");
+					if (raw.trim().length === 0) continue;
+					return isSpdxMetadata(raw)
+						? resolveSpdxMetadataToLicenseText(raw, licenseIds)
+						: raw;
+				} catch {
+					continue;
+				}
+			}
+		} catch {
+			continue;
+		}
+	}
+	return undefined;
+}
+
 function resolveSpdxMetadataToLicenseText(
 	spdxText: string,
 	fallbackLicenseIds?: string[]
@@ -313,17 +383,11 @@ async function generateJsLicenses(): Promise<void> {
 		// Read license text from licenseFile provided by license-checker
 		let licenseText: string | undefined;
 		if (pkgInfo.licenseFile) {
-			// Check if the file is actually a license file (not README.md, etc.)
 			const fileName = path.basename(pkgInfo.licenseFile).toLowerCase();
-			const isLicenseFile =
-				fileName.startsWith("license") ||
-				fileName.startsWith("licence") ||
-				fileName.startsWith("copying") ||
-				fileName === "unlicense";
-
-			if (isLicenseFile) {
+			const base = fileName.replace(/\.[^.]+$/, "");
+			if (isLicenseFileName(base)) {
 				try {
-					let raw = await fs.readFile(pkgInfo.licenseFile, "utf-8");
+					const raw = await fs.readFile(pkgInfo.licenseFile, "utf-8");
 					licenseText = isSpdxMetadata(raw)
 						? resolveSpdxMetadataToLicenseText(
 								raw,
@@ -336,6 +400,13 @@ async function generateJsLicenses(): Promise<void> {
 					// Ignore read errors
 				}
 			}
+		}
+
+		if (!licenseText && pkgInfo.path) {
+			licenseText = await findLicenseFromParentOrSibling(
+				pkgInfo.path,
+				pkgInfo.licenses ? parseLicenseIds(pkgInfo.licenses) : undefined
+			);
 		}
 
 		licenses.push({
