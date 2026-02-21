@@ -7,6 +7,7 @@ import { exitApp } from '@/utils/common';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { logger } from '@/utils/log';
 import { Config } from '@/utils/config';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
 interface UseTrayEventsOptions {
     config: Config;
@@ -107,6 +108,26 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                 },
                             },
                         ]
+                    },
+                    {
+                        id: 'licenses',
+                        text: 'Licenses',
+                        action: async () => {
+                            let licensesWindow = await WebviewWindow.getByLabel('licenses');
+                            if (!licensesWindow) {
+                                licensesWindow = new WebviewWindow('licenses', {
+                                    url: 'licenses.html',
+                                    title: 'zmk-battery-center - Open Source Licenses',
+                                    width: 600,
+                                    height: 500,
+                                    center: true,
+                                    resizable: true,
+                                    decorations: true,
+                                });
+                            }
+                            await licensesWindow.show();
+                            await licensesWindow.setFocus();
+                        }
                     },
                     {
                         id: 'about',

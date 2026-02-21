@@ -35,6 +35,8 @@
   },
   "bundle": {
     "active": true,
+    "license": "MIT",
+    "licenseFile": "../LICENSE.md",
     "targets": [
       "dmg",
       "app",
@@ -51,7 +53,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "icons/icon_template.png"
+      "icons/icon_template.png",
+      "../licenses/*.json"
     ],
     "macOS": {
       "signingIdentity": "-"

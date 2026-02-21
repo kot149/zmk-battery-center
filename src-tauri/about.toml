@@ -1,0 +1,52 @@
+# cargo-about configuration
+# See: https://embarkstudios.github.io/cargo-about/cli/generate/config.html
+
+accepted = [
+    "MIT",
+    "MIT-0",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "0BSD",
+    "Unlicense",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "BSL-1.0",
+    "LGPL-2.1-or-later",
+]
+
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# clearlydefined.ioからの取得を無効化（GPL-2.0のdeprecated identifier問題を回避）
+no-clearly-defined = true
+
+# dlopen2 doesn't have a license field in Cargo.toml but uses MIT
+[dlopen2]
+accepted = ["MIT"]
+
+[dlopen2.clarify]
+license = "MIT"
+override-git-commit = "master"
+
+[[dlopen2.clarify.git]]
+path = "LICENSE"
+checksum = "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2"
+license = "MIT"
+
+# dlopen2_derive also uses MIT (same repo)
+[dlopen2_derive]
+accepted = ["MIT"]
+
+[dlopen2_derive.clarify]
+license = "MIT"
+override-git-commit = "master"
+
+[[dlopen2_derive.clarify.git]]
+path = "LICENSE"
+checksum = "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2"
+license = "MIT"
