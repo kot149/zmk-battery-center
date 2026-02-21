@@ -88,8 +88,20 @@ pub fn get_licenses(app: tauri::AppHandle) -> Result<LicensesData, String> {
     let cargo_licenses: Vec<CargoLicense> = serde_json::from_str(&cargo_licenses_content)
         .map_err(|e| format!("Failed to parse cargo-licenses.json: {}", e))?;
 
+    let mut all_js_licenses = js_licenses;
+
+    let manual_licenses_path = licenses_dir.join("manual-licenses.json");
+    if manual_licenses_path.exists() {
+        if let Ok(manual_content) = std::fs::read_to_string(&manual_licenses_path) {
+            if let Ok(manual_licenses) = serde_json::from_str::<Vec<JsLicense>>(&manual_content)
+            {
+                all_js_licenses.extend(manual_licenses);
+            }
+        }
+    }
+
     Ok(LicensesData {
-        js_licenses,
+        js_licenses: all_js_licenses,
         cargo_licenses,
     })
 }

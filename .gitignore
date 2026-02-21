@@ -24,4 +24,6 @@ dist-ssr
 *.sw?
 
 # Generated licenses
-licenses/
+licenses/cargo-licenses.json
+licenses/js-licenses.json
+!licenses/manual-licenses.json
