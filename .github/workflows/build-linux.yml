@@ -50,7 +50,7 @@ jobs:
         # webkitgtk 4.0 is for Tauri v1 - webkitgtk 4.1 is for Tauri v2.
         # You can remove the one that doesn't apply to your app to speed up the workflow a bit.
 
-      - name: install frontend dependencies
+      - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
       - name: Restore bun cache
@@ -66,6 +66,12 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+
+      - name: Install cargo-about
+        run: cargo install cargo-about
+
+      - name: Generate licenses
+        run: bun scripts/generate_licenses.ts --skip-verify
 
       # If tagName and releaseId are omitted tauri-action will only build the app and won't try to upload any assets.
       - uses: tauri-apps/tauri-action@v0
