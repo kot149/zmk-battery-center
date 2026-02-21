@@ -17,6 +17,7 @@
 import * as fs from "fs/promises";
 import { execSync } from "child_process";
 import * as path from "path";
+import spdxFull from "spdx-license-list/full";
 
 const OUTPUT_DIR = "licenses";
 const CARGO_OUTPUT = path.join(OUTPUT_DIR, "cargo-licenses.json");
@@ -45,6 +46,57 @@ interface JsLicense {
 	publisher?: string;
 	path: string;
 	licenseText?: string;
+}
+
+function isSpdxMetadata(text: string): boolean {
+	const trimmed = text.trim();
+	return (
+		trimmed.startsWith("SPDXVersion:") ||
+		(trimmed.includes("PackageLicenseDeclared:") &&
+			(trimmed.includes("PackageName:") || trimmed.includes("DataLicense:")))
+	);
+}
+
+function extractDeclaredLicensesFromSpdx(text: string): string[] {
+	const ids: string[] = [];
+	const regex = /PackageLicenseDeclared:\s*(.+)/g;
+	let m: RegExpExecArray | null;
+	while ((m = regex.exec(text)) !== null) {
+		const id = m[1].trim();
+		if (id && !ids.includes(id)) {
+			ids.push(id);
+		}
+	}
+	return ids;
+}
+
+function parseLicenseIds(licenseField: string): string[] {
+	return licenseField
+		.split(/\s+(?:OR|AND)\s+/)
+		.map((id) => id.trim())
+		.filter(Boolean);
+}
+
+function resolveSpdxMetadataToLicenseText(
+	spdxText: string,
+	fallbackLicenseIds?: string[]
+): string | undefined {
+	const declaredIds = extractDeclaredLicensesFromSpdx(spdxText);
+	const licenseIds =
+		declaredIds.length > 0 ? declaredIds : fallbackLicenseIds ?? [];
+	if (licenseIds.length === 0) return undefined;
+
+	const texts: string[] = [];
+	for (const id of licenseIds) {
+		const entry = spdxFull[id as keyof typeof spdxFull];
+		if (entry?.licenseText) {
+			texts.push(
+				licenseIds.length > 1 ? `=== ${id} ===\n\n${entry.licenseText}` : entry.licenseText
+			);
+		}
+	}
+	if (texts.length === 0) return undefined;
+	return texts.join("\n\n");
 }
 
 async function ensureOutputDir(): Promise<void> {
@@ -159,7 +211,13 @@ async function generateCargoLicenses(): Promise<void> {
 					const entry = packageMap.get(key)!;
 					entry.licenses.add(licenseId);
 					if (licenseText) {
-						entry.licenseTexts.set(licenseId, licenseText);
+						const resolved =
+							isSpdxMetadata(licenseText)
+								? resolveSpdxMetadataToLicenseText(licenseText, [licenseId])
+								: licenseText;
+						if (resolved) {
+							entry.licenseTexts.set(licenseId, resolved);
+						}
 					}
 				}
 			}
@@ -265,7 +323,15 @@ async function generateJsLicenses(): Promise<void> {
 
 			if (isLicenseFile) {
 				try {
-					licenseText = await fs.readFile(pkgInfo.licenseFile, "utf-8");
+					let raw = await fs.readFile(pkgInfo.licenseFile, "utf-8");
+					licenseText = isSpdxMetadata(raw)
+						? resolveSpdxMetadataToLicenseText(
+								raw,
+								pkgInfo.licenses
+									? parseLicenseIds(pkgInfo.licenses)
+									: undefined
+						  )
+						: raw;
 				} catch {
 					// Ignore read errors
 				}
