@@ -113,13 +113,20 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                         id: 'licenses',
                         text: 'Licenses',
                         action: async () => {
-                            const licensesWindow = await WebviewWindow.getByLabel('licenses');
-                            if (licensesWindow) {
-                                await licensesWindow.show();
-                                await licensesWindow.setFocus();
-                            } else {
-                                logger.error('Licenses window not found');
+                            let licensesWindow = await WebviewWindow.getByLabel('licenses');
+                            if (!licensesWindow) {
+                                licensesWindow = new WebviewWindow('licenses', {
+                                    url: 'licenses.html',
+                                    title: 'zmk-battery-center - Open Source Licenses',
+                                    width: 600,
+                                    height: 500,
+                                    center: true,
+                                    resizable: true,
+                                    decorations: true,
+                                });
                             }
+                            await licensesWindow.show();
+                            await licensesWindow.setFocus();
                         }
                     },
                     {
