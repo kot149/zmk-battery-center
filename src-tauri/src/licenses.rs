@@ -44,6 +44,14 @@ fn find_licenses_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Strin
         if licenses_dir.join("js-licenses.json").exists() {
             return Ok(licenses_dir);
         }
+
+        // Check _up_/licenses subdirectory
+        // When tauri.conf.json specifies "../licenses/*.json" as resources,
+        // Tauri replaces ".." with "_up_" in the bundled path.
+        let up_licenses_dir = resource_path.join("_up_").join("licenses");
+        if up_licenses_dir.join("js-licenses.json").exists() {
+            return Ok(up_licenses_dir);
+        }
     }
 
     // For development: try relative path from src-tauri
