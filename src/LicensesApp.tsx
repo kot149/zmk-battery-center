@@ -19,11 +19,13 @@ function LicenseItem({ license }: { license: License }) {
                 <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                         <div className="font-medium truncate flex items-center gap-2">
-                            {license.licenseText && (
-                                <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                                    &#9654;
-                                </span>
-                            )}
+                            <span className="inline-flex w-4 shrink-0 items-center justify-center text-xs">
+                                {license.licenseText && (
+                                    <span className={`transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                                        &#9654;
+                                    </span>
+                                )}
+                            </span>
                             {license.name}
                             { license.version && (
                                 <span className="text-muted-foreground font-normal">
@@ -32,7 +34,7 @@ function LicenseItem({ license }: { license: License }) {
                             )}
                         </div>
                         {license.author && (
-                            <div className="text-sm text-muted-foreground truncate ml-5">
+                            <div className="text-sm text-muted-foreground truncate ml-6">
                                 by {license.author}
                             </div>
                         )}
@@ -48,7 +50,7 @@ function LicenseItem({ license }: { license: License }) {
                         href={license.repository}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-sm text-primary hover:underline truncate block mt-1 ml-5"
+                        className="text-sm text-primary hover:underline truncate block mt-1 ml-6"
                         onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
