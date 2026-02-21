@@ -116,7 +116,7 @@ function isLicenseDenied(license: string): boolean {
 }
 
 function verifyCargoLicenses(): boolean {
-	console.log("\n=== Verifying Cargo licenses with cargo-deny ===");
+	console.log("\nVerifying Cargo licenses with cargo-deny...");
 
 	if (!checkCargoDenyInstalled()) {
 		console.warn(
@@ -144,7 +144,7 @@ function verifyCargoLicenses(): boolean {
 }
 
 function verifyJsLicenses(): boolean {
-	console.log("\n=== Verifying JS licenses ===");
+	console.log("\nVerifying JS licenses...");
 
 	try {
 		const result = execSync(
@@ -235,7 +235,6 @@ function main(): void {
 	const jsOnly = args.includes("--js-only");
 
 	console.log("License Checker for zmk-battery-center");
-	console.log("=======================================");
 
 	let hasError = false;
 
@@ -250,8 +249,6 @@ function main(): void {
 			hasError = true;
 		}
 	}
-
-	console.log("\n=======================================");
 
 	if (hasError) {
 		console.error("\x1b[31mLicense check failed!\x1b[0m");

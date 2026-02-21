@@ -63,7 +63,7 @@ function checkCargoAboutInstalled(): boolean {
  * Run license verification using check_licenses.ts
  */
 function runLicenseCheck(cargoOnly: boolean, jsOnly: boolean): boolean {
-	console.log("\n=== Running license verification ===");
+	console.log("\nRunning license verification...");
 
 	try {
 		const args: string[] = [];
@@ -81,7 +81,7 @@ function runLicenseCheck(cargoOnly: boolean, jsOnly: boolean): boolean {
 }
 
 async function generateCargoLicenses(): Promise<void> {
-	console.log("\n=== Generating Cargo licenses ===");
+	console.log("\nGenerating Cargo licenses...");
 
 	if (!checkCargoAboutInstalled()) {
 		console.error("\x1b[31mError: cargo-about is not installed.\x1b[0m");
@@ -202,7 +202,7 @@ async function generateCargoLicenses(): Promise<void> {
 }
 
 async function generateJsLicenses(): Promise<void> {
-	console.log("\n=== Generating JS licenses ===");
+	console.log("\nGenerating JS licenses...");
 
 	try {
 		// Run license-checker via bun
@@ -300,7 +300,6 @@ async function main(): Promise<void> {
 	const skipVerify = args.includes("--skip-verify");
 
 	console.log("License Generator for zmk-battery-center");
-	console.log("=========================================");
 
 	await ensureOutputDir();
 
@@ -332,8 +331,6 @@ async function main(): Promise<void> {
 			console.error("\x1b[31mFailed to generate JS licenses\x1b[0m");
 		}
 	}
-
-	console.log("\n=========================================");
 
 	if (hasError) {
 		console.log("\x1b[33mCompleted with errors. See above for details.\x1b[0m");
