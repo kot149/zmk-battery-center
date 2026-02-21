@@ -25,9 +25,11 @@ function LicenseItem({ license }: { license: License }) {
                                 </span>
                             )}
                             {license.name}
-                            <span className="text-muted-foreground font-normal">
-                                v{license.version}
-                            </span>
+                            { license.version && (
+                                <span className="text-muted-foreground font-normal">
+                                    v{license.version}
+                                </span>
+                            )}
                         </div>
                         {license.author && (
                             <div className="text-sm text-muted-foreground truncate ml-5">
