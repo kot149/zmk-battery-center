@@ -1,12 +1,11 @@
-use std::path::PathBuf;
-
-const DEV_DATA_DIR: &str = ".dev-data";
-const DATA_DIR_ENV: &str = "ZMK_BATTERY_CENTER_DATA_DIR";
-
 #[tauri::command]
 pub fn get_dev_store_path() -> Option<String> {
     #[cfg(debug_assertions)]
     {
+        use std::path::PathBuf;
+        const DEV_DATA_DIR: &str = ".dev-data";
+        const DATA_DIR_ENV: &str = "ZMK_BATTERY_CENTER_DATA_DIR";
+
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").ok()?;
         let manifest_path = PathBuf::from(&manifest_dir);
         let project_root = manifest_path
