@@ -1,7 +1,6 @@
 import "./App.css";
 import { listBatteryDevices, getBatteryInfo, BleDeviceInfo, BatteryInfo } from "./utils/ble";
 import { useState, useEffect, useCallback } from "react";
-import { mockRegisteredDevices } from "./utils/mockData";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
@@ -34,25 +33,18 @@ enum State {
 	fetchingBatteryInfo = 'fetchingBatteryInfo',
 }
 
-// Debug mode
-const IS_DEV = process.env.NODE_ENV === 'development';
+const DEVICES_FILENAME = 'devices.json';
+
+async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
+	const storePath = await getStorePath(DEVICES_FILENAME);
+	const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
+	const devices = await deviceStore.get<RegisteredDevice[]>("devices");
+	return devices || [];
+}
 
 function App() {
-	const [isDebugMode, setIsDebugMode] = useState(false);
-	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[]>(isDebugMode ? mockRegisteredDevices : []);
+	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[]>([]);
 	const [isDeviceLoaded, setIsDeviceLoaded] = useState(false);
-
-	const toggleDebugMode = () => {
-		setIsDebugMode(prev => {
-			if (!prev) {
-				setRegisteredDevices(mockRegisteredDevices);
-			} else {
-				setRegisteredDevices([]);
-			}
-			return !prev;
-		});
-	};
-
 	const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
 	const [error, setError] = useState("");
 	const { config, isConfigLoaded } = useConfigContext();
@@ -83,10 +75,8 @@ function App() {
 	// Load saved devices
 	useEffect(() => {
 		const fetchRegisteredDevices = async () => {
-			const storePath = await getStorePath('devices.json');
-			const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
-			const devices = await deviceStore.get<RegisteredDevice[]>("devices");
-			setRegisteredDevices(devices || []);
+			const devices = await loadDevicesFromFile();
+			setRegisteredDevices(devices);
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
 			setIsDeviceLoaded(true);
 		};
@@ -239,7 +229,7 @@ function App() {
 	useEffect(() => {
 		if (isDeviceLoaded) {
 			const saveRegisteredDevices = async () => {
-				const storePath = await getStorePath('devices.json');
+				const storePath = await getStorePath(DEVICES_FILENAME);
 				const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
 				await deviceStore.set("devices", registeredDevices);
 				logger.info('Saved registered devices');
@@ -278,18 +268,6 @@ function App() {
 						{/* Drag area */}
 						{ config.manualWindowPositioning && (
 							<div data-tauri-drag-region className="fixed top-0 left-0 w-full h-14 bg-transparent z-0 cursor-grab active:cursor-grabbing"></div>
-						)}
-
-						{/* Debug mode toggle button */}
-						{IS_DEV && (
-							<div className="fixed top-4 left-4">
-								<button
-									className={`px-3 py-1 rounded-lg text-sm ${isDebugMode ? 'bg-yellow-600' : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted'} hover:opacity-80 transition duration-200`}
-									onClick={toggleDebugMode}
-								>
-									{isDebugMode ? 'Debug Mode' : 'Production Mode'}
-								</button>
-							</div>
 						)}
 
 						{/* Top-right buttons */}
