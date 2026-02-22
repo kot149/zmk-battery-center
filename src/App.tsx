@@ -9,7 +9,7 @@ import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
 import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
 import Modal from "./components/Modal";
 import { useConfigContext } from "@/context/ConfigContext";
-import { load } from '@tauri-apps/plugin-store';
+import { load, getStorePath } from '@/utils/storage';
 import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
 import { NotificationType } from "./utils/config";
@@ -83,7 +83,8 @@ function App() {
 	// Load saved devices
 	useEffect(() => {
 		const fetchRegisteredDevices = async () => {
-			const deviceStore = await load('devices.json', { autoSave: true, defaults: {} });
+			const storePath = await getStorePath('devices.json');
+			const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
 			const devices = await deviceStore.get<RegisteredDevice[]>("devices");
 			setRegisteredDevices(devices || []);
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
@@ -236,10 +237,10 @@ function App() {
 	}, [registeredDevices, state, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
-		// Save registered devices
-		if(isDeviceLoaded){
+		if (isDeviceLoaded) {
 			const saveRegisteredDevices = async () => {
-				const deviceStore = await load('devices.json', { autoSave: true, defaults: {} });
+				const storePath = await getStorePath('devices.json');
+				const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
 				await deviceStore.set("devices", registeredDevices);
 				logger.info('Saved registered devices');
 			};

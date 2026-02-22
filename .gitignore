@@ -27,3 +27,6 @@ dist-ssr
 licenses/cargo-licenses.json
 licenses/js-licenses.json
 !licenses/manual-licenses.json
+
+# Dev storage (development: config/devices saved to project .dev-data/)
+.dev-data/

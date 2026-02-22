@@ -4,6 +4,7 @@ use tauri_plugin_autostart::MacosLauncher;
 mod ble;
 mod common;
 mod licenses;
+mod storage;
 mod tray;
 mod window;
 
@@ -61,6 +62,7 @@ pub fn run() {
             ble::get_battery_info,
             window::get_windows_text_scale_factor,
             licenses::get_licenses,
+            storage::get_dev_store_path,
         ])
         .setup(|app| {
             tray::init_tray(app.handle().clone());
