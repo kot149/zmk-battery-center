@@ -6,7 +6,8 @@
     "linux"
   ],
   "windows": [
-    "main"
+    "main",
+    "licenses"
   ],
   "permissions": [
     "positioner:default",
