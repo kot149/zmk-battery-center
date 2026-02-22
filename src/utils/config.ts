@@ -1,4 +1,4 @@
-import { load, type Store } from '@/utils/storage';
+import { load, type Store, getStorePath } from '@/utils/storage';
 import { Theme } from '@/context/theme-provider';
 import { enable as enableAutostart, isEnabled as isAutostartEnabled, disable as disableAutostart } from '@tauri-apps/plugin-autostart';
 import { requestNotificationPermission } from './notification';
@@ -44,7 +44,7 @@ let configStoreInstance: Store | null = null;
 
 async function getConfigStore() {
 	if (!configStoreInstance) {
-		const storePath = await import('@/utils/storage').then(m => m.getStorePath('config.json'));
+		const storePath = await getStorePath('config.json');
 		configStoreInstance = await load(storePath, { autoSave: true, defaults: defaultConfig });
 	}
 	return configStoreInstance;
