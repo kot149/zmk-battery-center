@@ -47,21 +47,6 @@ export const defaultConfig: Config = {
 	},
 };
 
-function normalizeBatteryMonitorMode(mode: unknown): BatteryMonitorMode {
-	if (mode === BatteryMonitorMode.Polling || mode === BatteryMonitorMode.Notification) {
-		return mode;
-	}
-	// Backward compatibility for local configs saved with old value.
-	if (mode === 'notification_only') {
-		return BatteryMonitorMode.Notification;
-	}
-	// Backward compatibility for local configs saved with the removed mode.
-	if (mode === 'bluez_observer') {
-		return BatteryMonitorMode.Notification;
-	}
-	return defaultConfig.batteryMonitorMode;
-}
-
 let configStoreInstance: Store | null = null;
 
 async function getConfigStore() {
@@ -75,13 +60,9 @@ async function getConfigStore() {
 export async function loadSavedConfig(): Promise<Config> {
 	const config = await getConfigStore().then((store: Store) => store.get<Config>('config'));
 	logger.info(`Loaded config: ${JSON.stringify(config, null, 4)}`);
-	const merged = {
+	return {
 		...defaultConfig,
 		...config,
-	};
-	return {
-		...merged,
-		batteryMonitorMode: normalizeBatteryMonitorMode(merged.batteryMonitorMode),
 	};
 };
 
