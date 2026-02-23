@@ -422,10 +422,10 @@ function App() {
 			Promise.all(registeredDevices.map(updateBatteryInfo));
 		}, config.fetchInterval);
 
-			return () => {
-				isUnmounted = true;
-				clearInterval(interval);
-			};
+		return () => {
+			isUnmounted = true;
+			clearInterval(interval);
+		};
 	}, [registeredDevices, config.fetchInterval, isDeviceLoaded, updateBatteryInfo, isPollingMode]);
 
 	return (
@@ -459,12 +459,12 @@ function App() {
 							</Button>
 
 							{/* Reload button */}
-								<Button
-									className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 text-foreground hover:bg-secondary disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
-									onClick={handleReload}
-									aria-label="Reload"
-									disabled={registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode}
-								>
+							<Button
+								className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 text-foreground hover:bg-secondary disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
+								onClick={handleReload}
+								aria-label="Reload"
+								disabled={registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode}
+							>
 								<ArrowPathIcon className="size-5" />
 							</Button>
 
