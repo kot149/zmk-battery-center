@@ -1,6 +1,6 @@
 import React from "react";
 import Button from "./Button";
-import { NotificationType } from "../utils/config";
+import { BatteryMonitorMode, NotificationType } from "../utils/config";
 import { useTheme, type Theme } from "@/context/theme-provider";
 import { Moon, Sun } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -100,7 +100,11 @@ const Settings: React.FC<SettingsScreenProps> = ({
 								{ label: '30 min', value: 1_800_000 },
 							];
 							return (
-								<Select value={config.fetchInterval.toString()} onValueChange={value => setConfig(c => ({ ...c, fetchInterval: Number(value) }))}>
+									<Select
+										value={config.fetchInterval.toString()}
+										onValueChange={value => setConfig(c => ({ ...c, fetchInterval: Number(value) }))}
+										disabled={config.batteryMonitorMode !== BatteryMonitorMode.Polling}
+									>
 									<SelectTrigger size="sm">
 										<SelectValue placeholder="Select" />
 									</SelectTrigger>
@@ -116,6 +120,23 @@ const Settings: React.FC<SettingsScreenProps> = ({
 						})()}
 					</div>
 				</div>
+
+				{/* Battery monitor mode */}
+				<div className="flex justify-between">
+					<span>Monitor mode</span>
+						<Select
+							value={config.batteryMonitorMode}
+							onValueChange={value => setConfig(c => ({ ...c, batteryMonitorMode: value as BatteryMonitorMode }))}
+						>
+						<SelectTrigger size="sm">
+							<SelectValue placeholder="Select" />
+						</SelectTrigger>
+							<SelectContent>
+								<SelectItem value={BatteryMonitorMode.Polling}>Polling</SelectItem>
+								<SelectItem value={BatteryMonitorMode.Notification}>GATT notification</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
 
 				{/* Auto start at login */}
 				<div className="flex justify-between">

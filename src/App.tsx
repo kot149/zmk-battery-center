@@ -1,6 +1,15 @@
 import "./App.css";
-import { listBatteryDevices, getBatteryInfo, BleDeviceInfo, BatteryInfo } from "./utils/ble";
-import { useState, useEffect, useCallback } from "react";
+import {
+	listBatteryDevices,
+	getBatteryInfo,
+	startBatteryNotificationMonitor,
+	stopBatteryNotificationMonitor,
+	BleDeviceInfo,
+	BatteryInfo,
+	BatteryInfoNotificationEvent,
+	BatteryMonitorStatusEvent,
+} from "./utils/ble";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
@@ -11,12 +20,12 @@ import { useConfigContext } from "@/context/ConfigContext";
 import { load, getStorePath } from '@/utils/storage';
 import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
-import { NotificationType } from "./utils/config";
+import { BatteryMonitorMode, NotificationType } from "./utils/config";
 import { sleep } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
-import { emit } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 
 export type RegisteredDevice = {
 	id: string;
@@ -31,6 +40,17 @@ enum State {
 	settings = 'settings',
 	fetchingDevices = 'fetchingDevices',
 	fetchingBatteryInfo = 'fetchingBatteryInfo',
+}
+
+function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): BatteryInfo[] {
+	const key = nextInfo.user_descriptor ?? null;
+	const idx = batteryInfos.findIndex(info => (info.user_descriptor ?? null) === key);
+	if (idx === -1) {
+		return [...batteryInfos, nextInfo];
+	}
+	const next = [...batteryInfos];
+	next[idx] = nextInfo;
+	return next;
 }
 
 const DEVICES_FILENAME = 'devices.json';
@@ -48,8 +68,11 @@ function App() {
 	const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
 	const [error, setError] = useState("");
 	const { config, isConfigLoaded } = useConfigContext();
+	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
 
 	const [state, setState] = useState<State>(State.main);
+	const isPollingMode = config.batteryMonitorMode === BatteryMonitorMode.Polling;
+	const isNotificationMonitorMode = !isPollingMode;
 
 	// Initialize window and tray event listeners
 	const handleWindowPositionChange = useCallback((position: { x: number; y: number }) => {
@@ -131,11 +154,23 @@ function App() {
 	}
 
 	const handleAddDevice = async (id: string) => {
-		if (!registeredDevices.some(d => d.id === id)) {
-			const device = devices.find(d => d.id === id);
-			if (!device) return;
-			setState(State.fetchingBatteryInfo);
-			const info = await getBatteryInfo(id);
+		if (registeredDevices.some(d => d.id === id)) {
+			handleCloseModal();
+			return;
+		}
+
+		const device = devices.find(d => d.id === id);
+		if (!device) return;
+
+		setState(State.fetchingBatteryInfo);
+		setError("");
+		try {
+			const info = isNotificationMonitorMode
+				? await startBatteryNotificationMonitor(id)
+				: await getBatteryInfo(id);
+			if (isNotificationMonitorMode) {
+				activeNotificationMonitorsRef.current.add(id);
+			}
 			const newDevice: RegisteredDevice = {
 				id: device.id,
 				name: device.name,
@@ -143,8 +178,12 @@ function App() {
 				isDisconnected: false
 			};
 			setRegisteredDevices(prev => [...prev, newDevice]);
+			handleCloseModal();
+		} catch (e: unknown) {
+			const msg = e instanceof Error ? e.message : String(e);
+			setError(`Failed to add device: ${msg}`);
+			setState(State.addDeviceModal);
 		}
-		handleCloseModal();
 	};
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
@@ -206,6 +245,9 @@ function App() {
 	};
 
 	const handleReload = async () => {
+		if (!isPollingMode) {
+			return;
+		}
 		setState(State.fetchingBatteryInfo);
 		await Promise.all(registeredDevices.map(updateBatteryInfo));
 		setState(State.main);
@@ -227,6 +269,137 @@ function App() {
 	}, [registeredDevices, state, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
+		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
+			const payload = event.payload;
+			setRegisteredDevices(prev => prev.map(device => {
+				if (device.id !== payload.id) {
+					return device;
+				}
+				return {
+					...device,
+					batteryInfos: upsertBatteryInfo(device.batteryInfos, payload.battery_info),
+					isDisconnected: false,
+				};
+			}));
+		});
+
+		return () => {
+			unlistenPromise.then(unlisten => unlisten());
+		};
+	}, []);
+
+	useEffect(() => {
+		const unlistenPromise = listen<BatteryMonitorStatusEvent>("battery-monitor-status", event => {
+			const payload = event.payload;
+			let notificationMessage: string | null = null;
+
+			setRegisteredDevices(prev => prev.map(device => {
+				if (device.id !== payload.id) {
+					return device;
+				}
+
+				const nextDisconnected = !payload.connected;
+				if (device.isDisconnected === nextDisconnected) {
+					return device;
+				}
+
+				if (payload.connected) {
+					if (config.pushNotification && config.pushNotificationWhen[NotificationType.Connected]) {
+						notificationMessage = `${device.name} has been connected.`;
+					}
+				} else if (config.pushNotification && config.pushNotificationWhen[NotificationType.Disconnected]) {
+					notificationMessage = `${device.name} has been disconnected.`;
+				}
+
+				return { ...device, isDisconnected: nextDisconnected };
+			}));
+
+			if (notificationMessage) {
+				void sendNotification(notificationMessage);
+			}
+		});
+
+		return () => {
+			unlistenPromise.then(unlisten => unlisten());
+		};
+	}, [config.pushNotification, config.pushNotificationWhen]);
+
+	useEffect(() => {
+		if (!isConfigLoaded || !isDeviceLoaded) {
+			return;
+		}
+
+		let isCancelled = false;
+
+		const syncNotificationMonitors = async () => {
+			const active = activeNotificationMonitorsRef.current;
+			const desired = isNotificationMonitorMode
+				? new Set(registeredDevices.map(device => device.id))
+				: new Set<string>();
+
+			const idsToStop = [...active].filter(id => !desired.has(id));
+			for (const id of idsToStop) {
+				try {
+					await stopBatteryNotificationMonitor(id);
+				} catch (e) {
+					logger.warn(`Failed to stop notification monitor for ${id}: ${String(e)}`);
+				}
+				active.delete(id);
+			}
+
+			if (!isNotificationMonitorMode) {
+				return;
+			}
+
+			const monitorsToStart = [...desired].filter(id => !active.has(id));
+			for (const id of monitorsToStart) {
+				try {
+					const info = await startBatteryNotificationMonitor(id);
+					if (isCancelled) {
+						await stopBatteryNotificationMonitor(id);
+						continue;
+					}
+					active.add(id);
+					const infoArray = Array.isArray(info) ? info : [info];
+					setRegisteredDevices(prev => prev.map(device => device.id === id
+						? { ...device, batteryInfos: infoArray, isDisconnected: false }
+						: device
+					));
+				} catch {
+					setRegisteredDevices(prev => prev.map(device => {
+						if (device.id !== id || device.isDisconnected) {
+							return device;
+						}
+						return { ...device, isDisconnected: true };
+					}));
+				}
+			}
+		};
+
+		syncNotificationMonitors();
+
+		return () => {
+			isCancelled = true;
+		};
+	}, [
+		registeredDevices,
+		isNotificationMonitorMode,
+		isConfigLoaded,
+		isDeviceLoaded,
+	]);
+
+	useEffect(() => {
+		const activeMonitors = activeNotificationMonitorsRef.current;
+		return () => {
+			const activeMonitorIds = [...activeMonitors.keys()];
+			activeMonitors.clear();
+			for (const id of activeMonitorIds) {
+				void stopBatteryNotificationMonitor(id);
+			}
+		};
+	}, []);
+
+	useEffect(() => {
 		if (isDeviceLoaded) {
 			const saveRegisteredDevices = async () => {
 				const storePath = await getStorePath(DEVICES_FILENAME);
@@ -238,6 +411,10 @@ function App() {
 		}
 
 		// Update battery info periodically
+		if (!isPollingMode) {
+			return;
+		}
+
 		let isUnmounted = false;
 
 		const interval = setInterval(() => {
@@ -245,11 +422,11 @@ function App() {
 			Promise.all(registeredDevices.map(updateBatteryInfo));
 		}, config.fetchInterval);
 
-		return () => {
-			isUnmounted = true;
-			clearInterval(interval);
-		};
-	}, [registeredDevices, config.fetchInterval, isDeviceLoaded, updateBatteryInfo]);
+			return () => {
+				isUnmounted = true;
+				clearInterval(interval);
+			};
+	}, [registeredDevices, config.fetchInterval, isDeviceLoaded, updateBatteryInfo, isPollingMode]);
 
 	return (
 		<div id="app" className={`relative w-90 flex flex-col bg-background text-foreground rounded-lg p-2 ${
@@ -282,12 +459,12 @@ function App() {
 							</Button>
 
 							{/* Reload button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 text-foreground hover:bg-secondary disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
-								onClick={handleReload}
-								aria-label="Reload"
-								disabled={registeredDevices.length === 0 || state === State.fetchingBatteryInfo}
-							>
+								<Button
+									className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 text-foreground hover:bg-secondary disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
+									onClick={handleReload}
+									aria-label="Reload"
+									disabled={registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode}
+								>
 								<ArrowPathIcon className="size-5" />
 							</Button>
 
