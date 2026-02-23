@@ -319,6 +319,16 @@ async fn battery_notification_worker(
         }
         log::debug!("BLE I/O: connect response success device_id={device_id}");
 
+        // Subscribe to connection events
+        let conn_events_result = adapter.device_connection_events(&target_device).await;
+        let mut conn_events = match conn_events_result {
+            Ok(s) => Some(s),
+            Err(e) => {
+                log::warn!("BLE I/O: failed to subscribe to connection events device_id={device_id}: {e}");
+                None
+            }
+        };
+
         log::debug!(
             "BLE I/O: notify subscribe request device_id={} descriptor={}",
             device_id,
@@ -437,6 +447,33 @@ async fn battery_notification_worker(
                             }
                             break;
                         }
+                    }
+                }
+                // Detect disconnection
+                conn_event = async {
+                    match conn_events.as_mut() {
+                        Some(s) => s.next().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    if matches!(conn_event, Some(bluest::ConnectionEvent::Disconnected) | None) {
+                        log::warn!(
+                            "BLE I/O: device disconnected (connection event) device_id={} descriptor={}",
+                            device_id,
+                            context.user_descriptor.as_deref().unwrap_or("Central")
+                        );
+                        if is_worker_connected {
+                            is_worker_connected = false;
+                            update_monitor_connection_state(
+                                &app,
+                                &device_id,
+                                worker_id,
+                                false,
+                                &monitor_connection_state,
+                            )
+                            .await;
+                        }
+                        break;
                     }
                 }
             }
