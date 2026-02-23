@@ -311,6 +311,8 @@ async fn battery_notification_worker(
                 .await;
             }
             if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                log::debug!("BLE I/O: notification worker disconnecting on stop (connect failed) device_id={device_id}");
+                let _ = adapter.disconnect_device(&target_device).await;
                 return;
             }
             continue;
@@ -343,6 +345,8 @@ async fn battery_notification_worker(
                     .await;
                 }
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                    log::debug!("BLE I/O: notification worker disconnecting on stop (notify failed) device_id={device_id}");
+                    let _ = adapter.disconnect_device(&target_device).await;
                     return;
                 }
                 continue;
@@ -370,6 +374,8 @@ async fn battery_notification_worker(
                 changed = stop_rx.changed() => {
                     if changed.is_err() || *stop_rx.borrow() {
                         log::debug!("BLE I/O: notification worker stop event device_id={device_id}");
+                        log::debug!("BLE I/O: notification worker disconnecting on stop device_id={device_id}");
+                        let _ = adapter.disconnect_device(&target_device).await;
                         return;
                     }
                 }
@@ -437,6 +443,8 @@ async fn battery_notification_worker(
         }
 
         if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+            log::debug!("BLE I/O: notification worker disconnecting on stop (stream ended) device_id={device_id}");
+            let _ = adapter.disconnect_device(&target_device).await;
             return;
         }
     }
@@ -451,7 +459,11 @@ async fn stop_battery_notification_monitor_internal(id: &str) {
     if let Some(monitor) = monitor {
         let _ = monitor.stop_tx.send(true);
         for handle in monitor.join_handles {
-            handle.abort();
+            let abort_handle = handle.abort_handle();
+            if tokio::time::timeout(Duration::from_secs(10), handle).await.is_err() {
+                log::warn!("BLE I/O: notification worker did not stop in time, aborting");
+                abort_handle.abort();
+            }
         }
     }
 }
