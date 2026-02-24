@@ -639,6 +639,30 @@ async fn battery_connection_watcher(
     }
 }
 
+pub async fn stop_all_monitors() {
+    let all_monitors: Vec<(String, MonitorTask)> = {
+        let mut monitors = MONITORS.lock().await;
+        monitors.drain().collect()
+    };
+
+    log::debug!("BLE I/O: stopping all monitors count={}", all_monitors.len());
+
+    for (id, monitor) in all_monitors {
+        log::debug!("BLE I/O: sending stop signal to monitor device_id={id}");
+        let _ = monitor.stop_tx.send(true);
+        for handle in monitor.join_handles {
+            let abort_handle = handle.abort_handle();
+            if tokio::time::timeout(Duration::from_secs(10), handle).await.is_err() {
+                log::warn!("BLE I/O: monitor did not stop in time, aborting device_id={id}");
+                abort_handle.abort();
+            }
+        }
+        log::debug!("BLE I/O: monitor stopped device_id={id}");
+    }
+
+    log::debug!("BLE I/O: all monitors stopped");
+}
+
 async fn stop_battery_notification_monitor_internal(id: &str) {
     let monitor = {
         let mut monitors = MONITORS.lock().await;
