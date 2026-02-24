@@ -99,7 +99,7 @@ function App() {
 	useEffect(() => {
 		const fetchRegisteredDevices = async () => {
 			const devices = await loadDevicesFromFile();
-			setRegisteredDevices(devices);
+			setRegisteredDevices(devices.map(d => ({ ...d, isDisconnected: true })));
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
 			setIsDeviceLoaded(true);
 		};
