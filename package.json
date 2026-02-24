@@ -43,9 +43,6 @@
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.0"
   },
-  "overrides": {
-    "tapable": "2.2.1"
-  },
   "devDependencies": {
     "@tauri-apps/cli": "^2.10.0",
     "@types/node": "^25.3.0",
