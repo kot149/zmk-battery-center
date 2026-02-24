@@ -62,7 +62,7 @@ pub fn run() {
             ble::get_battery_info,
             ble::start_battery_notification_monitor,
             ble::stop_battery_notification_monitor,
-            ble::stop_all_monitors,
+            ble::stop_all_battery_monitors,
             window::get_windows_text_scale_factor,
             licenses::get_licenses,
             storage::get_dev_store_path,

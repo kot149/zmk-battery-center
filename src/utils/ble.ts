@@ -70,5 +70,5 @@ export async function stopBatteryNotificationMonitor(id: string): Promise<void> 
  * Stop all active notification monitors at once.
  */
 export async function stopAllBatteryMonitors(): Promise<void> {
-	await invoke("stop_all_monitors");
+	await invoke("stop_all_battery_monitors");
 }
