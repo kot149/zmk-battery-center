@@ -549,13 +549,23 @@ async fn battery_connection_watcher(
         };
         drop(discover); // stop scanning
 
-        // Subscribe to connection events before checking connected status,
-        // so we don't miss a Connected event that fires right after the check.
+        log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
+        // On macOS, bluest connection should be Established before subscribing to device_connection_events().
+        // See https://docs.rs/bluest/latest/bluest/struct.Adapter.html#method.device_connection_events
+        if let Err(e) = adapter.connect_device(&target_device).await {
+            log::warn!("BLE I/O: connection watcher connect_device failed device_id={device_id}: {e}");
+            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                return;
+            }
+            continue 'outer;
+        }
+
         let mut conn_events = match adapter.device_connection_events(&target_device).await {
             Ok(s) => s,
             Err(e) => {
                 log::warn!("BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}");
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                    let _ = adapter.disconnect_device(&target_device).await;
                     return;
                 }
                 continue 'outer;
@@ -576,6 +586,7 @@ async fn battery_connection_watcher(
                 tokio::select! {
                     changed = stop_rx.changed() => {
                         if changed.is_err() || *stop_rx.borrow() {
+                            let _ = adapter.disconnect_device(&target_device).await;
                             return;
                         }
                     }
@@ -587,10 +598,16 @@ async fn battery_connection_watcher(
                             }
                             Some(bluest::ConnectionEvent::Disconnected) => {
                                 log::debug!("BLE I/O: connection watcher got Disconnected while waiting device_id={device_id}");
+                                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                                    let _ = adapter.disconnect_device(&target_device).await;
+                                    return;
+                                }
+                                continue 'outer;
                             }
                             None => {
                                 log::warn!("BLE I/O: connection watcher connection events stream ended device_id={device_id}");
                                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                                    let _ = adapter.disconnect_device(&target_device).await;
                                     return;
                                 }
                                 continue 'outer;
@@ -601,16 +618,6 @@ async fn battery_connection_watcher(
             }
         } else {
             log::debug!("BLE I/O: connection watcher device already connected device_id={device_id}");
-        }
-
-        // Device is now connected. Establish the bluest connection and get characteristics.
-        log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
-        if let Err(e) = adapter.connect_device(&target_device).await {
-            log::warn!("BLE I/O: connection watcher connect_device failed device_id={device_id}: {e}");
-            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                return;
-            }
-            continue 'outer;
         }
 
         let contexts = match get_battery_characteristic_contexts(&target_device).await {
