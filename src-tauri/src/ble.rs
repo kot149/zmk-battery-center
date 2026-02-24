@@ -639,6 +639,7 @@ async fn battery_connection_watcher(
     }
 }
 
+#[tauri::command]
 pub async fn stop_all_monitors() {
     let all_monitors: Vec<(String, MonitorTask)> = {
         let mut monitors = MONITORS.lock().await;

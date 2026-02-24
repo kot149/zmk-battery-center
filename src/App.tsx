@@ -4,6 +4,7 @@ import {
 	getBatteryInfo,
 	startBatteryNotificationMonitor,
 	stopBatteryNotificationMonitor,
+	stopAllBatteryMonitors,
 	BleDeviceInfo,
 	BatteryInfo,
 	BatteryInfoNotificationEvent,
@@ -348,6 +349,7 @@ function App() {
 			}
 
 			if (!isNotificationMonitorMode) {
+				await stopAllBatteryMonitors();
 				return;
 			}
 

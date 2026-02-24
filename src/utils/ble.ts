@@ -65,3 +65,10 @@ export async function startBatteryNotificationMonitor(
 export async function stopBatteryNotificationMonitor(id: string): Promise<void> {
 	await invoke("stop_battery_notification_monitor", { id });
 }
+
+/**
+ * Stop all active notification monitors at once.
+ */
+export async function stopAllBatteryMonitors(): Promise<void> {
+	await invoke("stop_all_monitors");
+}
