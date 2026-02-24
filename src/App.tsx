@@ -361,10 +361,15 @@ function App() {
 					}
 					active.add(id);
 					const infoArray = Array.isArray(info) ? info : [info];
-					setRegisteredDevices(prev => prev.map(device => device.id === id
-						? { ...device, batteryInfos: infoArray, isDisconnected: false }
-						: device
-					));
+					// Empty array means the device was not connected at startup and a
+					// connection watcher was launched. Keep isDisconnected:true until
+					// the watcher emits a battery-info-notification event on connection.
+					if (infoArray.length > 0) {
+						setRegisteredDevices(prev => prev.map(device => device.id === id
+							? { ...device, batteryInfos: infoArray, isDisconnected: false }
+							: device
+						));
+					}
 				} catch {
 					setRegisteredDevices(prev => prev.map(device => {
 						if (device.id !== id || device.isDisconnected) {

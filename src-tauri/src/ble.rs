@@ -487,6 +487,222 @@ async fn battery_notification_worker(
     }
 }
 
+async fn battery_connection_watcher(
+    app: AppHandle,
+    adapter: Adapter,
+    device_id: String,
+    mut stop_rx: watch::Receiver<bool>,
+) {
+    log::debug!("BLE I/O: connection watcher started device_id={device_id}");
+
+    'outer: loop {
+        if *stop_rx.borrow() {
+            log::debug!("BLE I/O: connection watcher stopped by signal device_id={device_id}");
+            return;
+        }
+
+        // obtain a Device handle via discover_devices.
+        // connected devices are yielded first; unconnected ones appear once BLE scanning begins.
+        log::debug!("BLE I/O: connection watcher starting discover_devices device_id={device_id}");
+        let mut discover = match adapter
+            .discover_devices(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("BLE I/O: connection watcher discover_devices failed device_id={device_id}: {e}");
+                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
+                    return;
+                }
+                continue 'outer;
+            }
+        };
+
+        // Wait until the target device appears in the stream.
+        let target_device = loop {
+            tokio::select! {
+                changed = stop_rx.changed() => {
+                    if changed.is_err() || *stop_rx.borrow() {
+                        return;
+                    }
+                }
+                result = discover.next() => {
+                    match result {
+                        Some(Ok(device)) if is_target_device(&device, &device_id) => {
+                            log::debug!("BLE I/O: connection watcher found target device device_id={device_id}");
+                            break device;
+                        }
+                        Some(Ok(_)) => {} // not our target
+                        Some(Err(e)) => {
+                            log::warn!("BLE I/O: connection watcher discover error device_id={device_id}: {e}");
+                        }
+                        None => {
+                            log::warn!("BLE I/O: connection watcher discover stream ended device_id={device_id}");
+                            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                                return;
+                            }
+                            continue 'outer;
+                        }
+                    }
+                }
+            }
+        };
+        drop(discover); // stop scanning
+
+        // Subscribe to connection events before checking connected status,
+        // so we don't miss a Connected event that fires right after the check.
+        let mut conn_events = match adapter.device_connection_events(&target_device).await {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}");
+                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                    return;
+                }
+                continue 'outer;
+            }
+        };
+
+        // Check whether the device is already connected (returned in the connected-first batch).
+        let already_connected = adapter
+            .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
+            .await
+            .map(|devs| devs.iter().any(|d| is_target_device(d, &device_id)))
+            .unwrap_or(false);
+
+        if !already_connected {
+            // Wait for ConnectionEvent::Connected.
+            log::debug!("BLE I/O: connection watcher waiting for ConnectionEvent::Connected device_id={device_id}");
+            loop {
+                tokio::select! {
+                    changed = stop_rx.changed() => {
+                        if changed.is_err() || *stop_rx.borrow() {
+                            return;
+                        }
+                    }
+                    event = conn_events.next() => {
+                        match event {
+                            Some(bluest::ConnectionEvent::Connected) => {
+                                log::debug!("BLE I/O: connection watcher got ConnectionEvent::Connected device_id={device_id}");
+                                break;
+                            }
+                            Some(bluest::ConnectionEvent::Disconnected) => {
+                                log::debug!("BLE I/O: connection watcher got Disconnected while waiting device_id={device_id}");
+                            }
+                            None => {
+                                log::warn!("BLE I/O: connection watcher connection events stream ended device_id={device_id}");
+                                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                                    return;
+                                }
+                                continue 'outer;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            log::debug!("BLE I/O: connection watcher device already connected device_id={device_id}");
+        }
+
+        // Device is now connected. Establish the bluest connection and get characteristics.
+        log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
+        if let Err(e) = adapter.connect_device(&target_device).await {
+            log::warn!("BLE I/O: connection watcher connect_device failed device_id={device_id}: {e}");
+            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                return;
+            }
+            continue 'outer;
+        }
+
+        let contexts = match get_battery_characteristic_contexts(&target_device).await {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("BLE I/O: connection watcher failed to get characteristics device_id={device_id}: {e}");
+                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                    let _ = adapter.disconnect_device(&target_device).await;
+                    return;
+                }
+                continue 'outer;
+            }
+        };
+
+        let mut notify_contexts = Vec::new();
+        for context in contexts.iter().cloned() {
+            match context.characteristic.properties().await {
+                Ok(props) if props.notify || props.indicate => notify_contexts.push(context),
+                _ => {}
+            }
+        }
+
+        if notify_contexts.is_empty() {
+            log::warn!("BLE I/O: connection watcher no notify characteristics device_id={device_id}");
+            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
+                let _ = adapter.disconnect_device(&target_device).await;
+                return;
+            }
+            continue 'outer;
+        }
+
+        // Send initial battery readings to the frontend.
+        let initial_infos = read_battery_infos_best_effort(&contexts).await;
+        for info in &initial_infos {
+            let _ = app.emit(
+                BATTERY_INFO_NOTIFICATION_EVENT,
+                BatteryInfoNotificationEvent {
+                    id: device_id.clone(),
+                    battery_info: info.clone(),
+                },
+            );
+        }
+
+        log::debug!(
+            "BLE I/O: connection watcher starting {} workers device_id={device_id}",
+            notify_contexts.len()
+        );
+
+        let monitor_connection_state = Arc::new(Mutex::new(MonitorConnectionState::default()));
+        let mut sub_handles = Vec::new();
+
+        for (worker_id, context) in notify_contexts.into_iter().enumerate() {
+            let app_c = app.clone();
+            let adapter_c = adapter.clone();
+            let device_c = target_device.clone();
+            let id_c = device_id.clone();
+            let stop_rx_c = stop_rx.clone();
+            let state_c = monitor_connection_state.clone();
+
+            sub_handles.push(tokio::spawn(async move {
+                battery_notification_worker(
+                    app_c,
+                    adapter_c,
+                    device_c,
+                    id_c,
+                    worker_id,
+                    state_c,
+                    context,
+                    stop_rx_c,
+                )
+                .await;
+            }));
+        }
+
+        // Wait for all sub-workers to finish (disconnection or stop signal).
+        for h in sub_handles {
+            let _ = h.await;
+        }
+
+        log::debug!("BLE I/O: connection watcher all workers finished, restarting device_id={device_id}");
+
+        if *stop_rx.borrow() {
+            let _ = adapter.disconnect_device(&target_device).await;
+            return;
+        }
+        if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+            let _ = adapter.disconnect_device(&target_device).await;
+            return;
+        }
+    }
+}
+
 async fn stop_battery_notification_monitor_internal(id: &str) {
     let monitor = {
         let mut monitors = MONITORS.lock().await;
@@ -562,82 +778,105 @@ pub async fn start_battery_notification_monitor(
 ) -> Result<Vec<BatteryInfo>, String> {
     log::debug!("BLE I/O: start notification monitor request device_id={}", id);
     let adapter = get_adapter().await?;
-    let target_device = get_target_device(&adapter, &id).await?;
-
-    log::debug!("BLE I/O: connect request (notification) device_id={id}");
-    adapter
-        .connect_device(&target_device)
-        .await
-        .map_err(|e| e.to_string())?;
-    log::debug!("BLE I/O: connect response success (notification) device_id={id}");
-
-    let contexts = get_battery_characteristic_contexts(&target_device).await?;
-    if contexts.is_empty() {
-        return Err("Battery level characteristic not found".to_string());
-    }
 
     stop_battery_notification_monitor_internal(&id).await;
 
-    let initial_battery_infos = read_battery_infos_best_effort(&contexts).await;
     let (stop_tx, stop_rx) = watch::channel(false);
-    let mut join_handles = Vec::new();
-    let monitor_connection_state = Arc::new(Mutex::new(MonitorConnectionState::default()));
+    let join_handles;
+    let initial_battery_infos;
 
-    let mut notify_contexts = Vec::new();
-    for context in contexts.iter().cloned() {
-        let properties = context
-            .characteristic
-            .properties()
-            .await
-            .map_err(|e| e.to_string())?;
-        if properties.notify || properties.indicate {
-            notify_contexts.push(context);
+    match get_target_device(&adapter, &id).await {
+        Ok(target_device) => {
+            log::debug!("BLE I/O: connect request (notification) device_id={id}");
+            adapter
+                .connect_device(&target_device)
+                .await
+                .map_err(|e| e.to_string())?;
+            log::debug!("BLE I/O: connect response success (notification) device_id={id}");
+
+            let contexts = get_battery_characteristic_contexts(&target_device).await?;
+            if contexts.is_empty() {
+                return Err("Battery level characteristic not found".to_string());
+            }
+
+            initial_battery_infos = read_battery_infos_best_effort(&contexts).await;
+
+            let mut notify_contexts = Vec::new();
+            for context in contexts.iter().cloned() {
+                let properties = context
+                    .characteristic
+                    .properties()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                if properties.notify || properties.indicate {
+                    notify_contexts.push(context);
+                }
+            }
+
+            if notify_contexts.is_empty() {
+                return Err(
+                    "Battery level notification is not supported by this device".to_string(),
+                );
+            }
+
+            log::debug!(
+                "BLE I/O: notification characteristics ready device_id={} total={} notify_capable={}",
+                id,
+                contexts.len(),
+                notify_contexts.len()
+            );
+
+            let monitor_connection_state =
+                Arc::new(Mutex::new(MonitorConnectionState::default()));
+            let mut handles = Vec::new();
+
+            for (worker_id, context) in notify_contexts.into_iter().enumerate() {
+                let app_cloned = app.clone();
+                let adapter_cloned = adapter.clone();
+                let device_cloned = target_device.clone();
+                let id_cloned = id.clone();
+                let stop_rx_cloned = stop_rx.clone();
+                let connection_state_cloned = monitor_connection_state.clone();
+
+                handles.push(tokio::spawn(async move {
+                    battery_notification_worker(
+                        app_cloned,
+                        adapter_cloned,
+                        device_cloned,
+                        id_cloned,
+                        worker_id,
+                        connection_state_cloned,
+                        context,
+                        stop_rx_cloned,
+                    )
+                    .await;
+                }));
+            }
+            join_handles = handles;
         }
-    }
+        Err(e) => {
+            // Device is not connected yet. Start a connection watcher that uses
+            // discover_devices to obtain a Device handle and then listens for
+            // ConnectionEvent::Connected before starting the notification workers.
+            log::info!(
+                "BLE I/O: device not found, starting connection watcher device_id={id}: {e}"
+            );
+            initial_battery_infos = vec![];
 
-    if notify_contexts.is_empty() {
-        return Err("Battery level notification is not supported by this device".to_string());
-    }
+            let app_c = app.clone();
+            let adapter_c = adapter.clone();
+            let id_c = id.clone();
+            let stop_rx_c = stop_rx.clone();
 
-    log::debug!(
-        "BLE I/O: notification characteristics ready device_id={} total={} notify_capable={}",
-        id,
-        contexts.len(),
-        notify_contexts.len()
-    );
-
-    for (worker_id, context) in notify_contexts.into_iter().enumerate() {
-        let app_cloned = app.clone();
-        let adapter_cloned = adapter.clone();
-        let device_cloned = target_device.clone();
-        let id_cloned = id.clone();
-        let stop_rx_cloned = stop_rx.clone();
-        let connection_state_cloned = monitor_connection_state.clone();
-
-        join_handles.push(tokio::spawn(async move {
-            battery_notification_worker(
-                app_cloned,
-                adapter_cloned,
-                device_cloned,
-                id_cloned,
-                worker_id,
-                connection_state_cloned,
-                context,
-                stop_rx_cloned,
-            )
-            .await;
-        }));
+            join_handles = vec![tokio::spawn(async move {
+                battery_connection_watcher(app_c, adapter_c, id_c, stop_rx_c).await;
+            })];
+        }
     }
 
     {
         let mut monitors = MONITORS.lock().await;
-        monitors.insert(
-            id,
-            MonitorTask {
-                stop_tx,
-                join_handles,
-            },
-        );
+        monitors.insert(id, MonitorTask { stop_tx, join_handles });
     }
 
     log::debug!("BLE I/O: start notification monitor response success");
