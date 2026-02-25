@@ -10,6 +10,14 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 use uuid::Uuid;
 
+struct CachedDevice {
+    device: Device,
+    contexts: Option<Vec<BatteryCharacteristicContext>>,
+}
+
+static DEVICE_CACHE: LazyLock<Mutex<HashMap<String, CachedDevice>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 const BATTERY_SERVICE_UUID: Uuid = Uuid::from_u128(0x0000180F_0000_1000_8000_00805F9B34FB);
 const BATTERY_LEVEL_UUID: Uuid = Uuid::from_u128(0x00002A19_0000_1000_8000_00805F9B34FB);
 const BATTERY_INFO_NOTIFICATION_EVENT: &str = "battery-info-notification";
@@ -87,6 +95,15 @@ fn is_target_device(device: &Device, id: &str) -> bool {
 }
 
 async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String> {
+    // Try cache first
+    {
+        let cache = DEVICE_CACHE.lock().await;
+        if let Some(cached) = cache.get(id) {
+            log::debug!("BLE I/O: using cached device handle id={id}");
+            return Ok(cached.device.clone());
+        }
+    }
+
     log::debug!("BLE I/O: searching target device id={id}");
     let devices = adapter
         .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
@@ -107,6 +124,15 @@ async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String
         format_device_id_for_store(&target),
         name
     );
+
+    // Cache the device handle
+    {
+        let mut cache = DEVICE_CACHE.lock().await;
+        cache.insert(id.to_string(), CachedDevice {
+            device: target.clone(),
+            contexts: None,
+        });
+    }
 
     Ok(target)
 }
@@ -334,8 +360,6 @@ async fn battery_notification_worker(
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     log::debug!("BLE I/O: notification worker stop event device_id={device_id}");
-                    log::debug!("BLE I/O: notification worker disconnecting on stop device_id={device_id}");
-                    let _ = adapter.disconnect_device(&target_device).await;
                     return;
                 }
             }
@@ -468,6 +492,15 @@ async fn battery_connection_watcher(
         };
         drop(discover); // stop scanning
 
+        // Cache the device handle
+        {
+            let mut cache = DEVICE_CACHE.lock().await;
+            cache.insert(device_id.clone(), CachedDevice {
+                device: target_device.clone(),
+                contexts: None,
+            });
+        }
+
         log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
         // On macOS, bluest connection should be Established before subscribing to device_connection_events().
         // See https://docs.rs/bluest/latest/bluest/struct.Adapter.html#method.device_connection_events
@@ -484,7 +517,6 @@ async fn battery_connection_watcher(
             Err(e) => {
                 log::warn!("BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}");
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                    let _ = adapter.disconnect_device(&target_device).await;
                     return;
                 }
                 continue 'outer;
@@ -505,7 +537,6 @@ async fn battery_connection_watcher(
                 tokio::select! {
                     changed = stop_rx.changed() => {
                         if changed.is_err() || *stop_rx.borrow() {
-                            let _ = adapter.disconnect_device(&target_device).await;
                             return;
                         }
                     }
@@ -518,7 +549,6 @@ async fn battery_connection_watcher(
                             Some(bluest::ConnectionEvent::Disconnected) => {
                                 log::debug!("BLE I/O: connection watcher got Disconnected while waiting device_id={device_id}");
                                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                                    let _ = adapter.disconnect_device(&target_device).await;
                                     return;
                                 }
                                 continue 'outer;
@@ -526,7 +556,6 @@ async fn battery_connection_watcher(
                             None => {
                                 log::warn!("BLE I/O: connection watcher connection events stream ended device_id={device_id}");
                                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                                    let _ = adapter.disconnect_device(&target_device).await;
                                     return;
                                 }
                                 continue 'outer;
@@ -540,11 +569,24 @@ async fn battery_connection_watcher(
         }
 
         let contexts = match get_battery_characteristic_contexts(&target_device).await {
-            Ok(c) => c,
+            Ok(c) => {
+                // Cache the contexts
+                {
+                    let mut cache = DEVICE_CACHE.lock().await;
+                    if let Some(cached) = cache.get_mut(&device_id) {
+                        cached.contexts = Some(c.clone());
+                    } else {
+                        cache.insert(device_id.clone(), CachedDevice {
+                            device: target_device.clone(),
+                            contexts: Some(c.clone()),
+                        });
+                    }
+                }
+                c
+            }
             Err(e) => {
                 log::warn!("BLE I/O: connection watcher failed to get characteristics device_id={device_id}: {e}");
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                    let _ = adapter.disconnect_device(&target_device).await;
                     return;
                 }
                 continue 'outer;
@@ -562,7 +604,6 @@ async fn battery_connection_watcher(
         if notify_contexts.is_empty() {
             log::warn!("BLE I/O: connection watcher no notify characteristics device_id={device_id}");
             if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
-                let _ = adapter.disconnect_device(&target_device).await;
                 return;
             }
             continue 'outer;
@@ -628,12 +669,18 @@ async fn battery_connection_watcher(
 
         log::debug!("BLE I/O: connection watcher all workers finished, restarting device_id={device_id}");
 
+        // Invalidate cached contexts since the connection may have been lost
+        {
+            let mut cache = DEVICE_CACHE.lock().await;
+            if let Some(cached) = cache.get_mut(&device_id) {
+                cached.contexts = None;
+            }
+        }
+
         if *stop_rx.borrow() {
-            let _ = adapter.disconnect_device(&target_device).await;
             return;
         }
         if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-            let _ = adapter.disconnect_device(&target_device).await;
             return;
         }
     }
@@ -719,17 +766,46 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
         .map_err(|e| e.to_string())?;
     log::debug!("BLE I/O: connect response success (polling) device_id={id}");
 
-    let contexts = get_battery_characteristic_contexts(&target_device).await?;
-    let battery_infos = read_battery_infos_strict(&contexts).await?;
+    // Try to use cached contexts first
+    let contexts = {
+        let cache = DEVICE_CACHE.lock().await;
+        cache.get(&id).and_then(|c| c.contexts.clone())
+    };
+    let contexts = match contexts {
+        Some(c) => {
+            log::debug!("BLE I/O: using cached characteristic contexts (polling) device_id={id}");
+            c
+        }
+        None => {
+            let c = get_battery_characteristic_contexts(&target_device).await?;
+            // Cache the contexts
+            {
+                let mut cache = DEVICE_CACHE.lock().await;
+                if let Some(cached) = cache.get_mut(&id) {
+                    cached.contexts = Some(c.clone());
+                } else {
+                    cache.insert(id.clone(), CachedDevice {
+                        device: target_device.clone(),
+                        contexts: Some(c.clone()),
+                    });
+                }
+            }
+            c
+        }
+    };
 
-    log::debug!("BLE I/O: disconnect request (polling) device_id={id}");
-    adapter
-        .disconnect_device(&target_device)
-        .await
-        .map_err(|e| e.to_string())?;
-    log::debug!("BLE I/O: disconnect response success (polling) device_id={id}");
-
-    Ok(battery_infos)
+    match read_battery_infos_strict(&contexts).await {
+        Ok(battery_infos) => Ok(battery_infos),
+        Err(e) => {
+            // Invalidate cache on read failure (device may have disconnected/reconnected)
+            log::warn!("BLE I/O: read failed, invalidating cache device_id={id}: {e}");
+            {
+                let mut cache = DEVICE_CACHE.lock().await;
+                cache.remove(&id);
+            }
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]
@@ -758,6 +834,19 @@ pub async fn start_battery_notification_monitor(
             let contexts = get_battery_characteristic_contexts(&target_device).await?;
             if contexts.is_empty() {
                 return Err("Battery level characteristic not found".to_string());
+            }
+
+            // Cache the contexts
+            {
+                let mut cache = DEVICE_CACHE.lock().await;
+                if let Some(cached) = cache.get_mut(&id) {
+                    cached.contexts = Some(contexts.clone());
+                } else {
+                    cache.insert(id.clone(), CachedDevice {
+                        device: target_device.clone(),
+                        contexts: Some(contexts.clone()),
+                    });
+                }
             }
 
             initial_battery_infos = read_battery_infos_best_effort(&contexts).await;
