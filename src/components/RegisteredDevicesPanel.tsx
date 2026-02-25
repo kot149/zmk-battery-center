@@ -7,11 +7,13 @@ import { EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
 interface DeviceListProps {
 	registeredDevices: RegisteredDevice[];
 	setRegisteredDevices: React.Dispatch<React.SetStateAction<RegisteredDevice[]>>;
+	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
 }
 
 const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	registeredDevices,
 	setRegisteredDevices,
+	onRemoveDevice,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
 	const handleMenuOpen = (id: string) => setMenuOpen(id);
@@ -70,7 +72,14 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 										)}
 										<Button
 											className="w-full text-left !text-sm !px-3 !py-2 bg-popover text-destructive hover:bg-muted"
-											onClick={() => { setRegisteredDevices(prev => prev.filter(d => d.id !== device.id)); handleMenuClose(); }}
+											onClick={async () => {
+												if (onRemoveDevice) {
+													await onRemoveDevice(device);
+												} else {
+													setRegisteredDevices(prev => prev.filter(d => d.id !== device.id));
+												}
+												handleMenuClose();
+											}}
 										>
 											Remove
 										</Button>

@@ -245,6 +245,18 @@ function App() {
 		await fetchDevices();
 	};
 
+	const handleRemoveDevice = useCallback(async (device: RegisteredDevice) => {
+		if (isNotificationMonitorMode) {
+			try {
+				await stopBatteryNotificationMonitor(device.id);
+				activeNotificationMonitorsRef.current.delete(device.id);
+			} catch (e) {
+				logger.warn(`Failed to stop notification monitor for ${device.id}: ${String(e)}`);
+			}
+		}
+		setRegisteredDevices(prev => prev.filter(d => d.id !== device.id));
+	}, [isNotificationMonitorMode]);
+
 	const handleReload = async () => {
 		if (!isPollingMode) {
 			return;
@@ -532,6 +544,7 @@ function App() {
 							<RegisteredDevicesPanel
 								registeredDevices={registeredDevices}
 								setRegisteredDevices={setRegisteredDevices}
+								onRemoveDevice={handleRemoveDevice}
 							/>
 						</main>
 					)}
