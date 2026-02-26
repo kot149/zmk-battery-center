@@ -1,7 +1,7 @@
 {
   "name": "zmk-battery-center",
   "private": true,
-  "version": "0.3.4",
+  "version": "0.4.0",
   "type": "module",
   "license": "MIT",
   "author": "kot149",
