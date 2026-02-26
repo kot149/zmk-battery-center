@@ -87,6 +87,7 @@ fn is_target_device(device: &Device, id: &str) -> bool {
 }
 
 #[inline]
+#[cfg_attr(target_os = "linux", allow(unused_variables))]
 async fn disconnect_device(adapter: &Adapter, device: &Device) {
     // Do not call disconnect_device() on Linux because it causes OS-level disconnection.
     // See https://docs.rs/bluest/latest/bluest/struct.Adapter.html#method.disconnect_device
