@@ -50,8 +50,25 @@ function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): 
 		return [...batteryInfos, nextInfo];
 	}
 	const next = [...batteryInfos];
-	next[idx] = nextInfo;
+	// Retain the previous battery_level when the new value is null
+	const merged = nextInfo.battery_level !== null
+		? nextInfo
+		: { ...nextInfo, battery_level: batteryInfos[idx].battery_level };
+	next[idx] = merged;
 	return next;
+}
+
+/**
+ * Merge new battery info array with existing one, retaining the previous
+ * battery_level for each entry when the new value is null.
+ */
+function mergeBatteryInfos(prev: BatteryInfo[], next: BatteryInfo[]): BatteryInfo[] {
+	return next.map(info => {
+		if (info.battery_level !== null) return info;
+		const key = info.user_descriptor ?? null;
+		const existing = prev.find(p => (p.user_descriptor ?? null) === key);
+		return existing ? { ...info, battery_level: existing.battery_level } : info;
+	});
 }
 
 const DEVICES_FILENAME = 'devices.json';
@@ -225,7 +242,10 @@ function App() {
 			try {
 				const info = await getBatteryInfo(device.id);
 				const infoArray = Array.isArray(info) ? info : [info];
-				setRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, batteryInfos: infoArray, isDisconnected: false } : d));
+				setRegisteredDevices(prev => prev.map(d => {
+					if (d.id !== device.id) return d;
+					return { ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false };
+				}));
 
 				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
 					await sendNotification(`${device.name} has been connected.`);
@@ -406,7 +426,7 @@ function App() {
 					// the watcher emits a battery-info-notification event on connection.
 					if (infoArray.length > 0) {
 						setRegisteredDevices(prev => prev.map(device => device.id === id
-							? { ...device, batteryInfos: infoArray, isDisconnected: false }
+							? { ...device, batteryInfos: mergeBatteryInfos(device.batteryInfos, infoArray), isDisconnected: false }
 							: device
 						));
 					}
