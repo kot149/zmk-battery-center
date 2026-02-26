@@ -43,7 +43,8 @@
       "msi",
       "nsis",
       "deb",
-      "rpm"
+      "rpm",
+      "appimage"
     ],
     "icon": [
       "icons/32x32.png",
