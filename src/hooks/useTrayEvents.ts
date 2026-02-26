@@ -4,6 +4,7 @@ import { TrayIcon, TrayIconEvent } from '@tauri-apps/api/tray';
 import { Menu, Submenu, CheckMenuItem } from '@tauri-apps/api/menu';
 import { isWindowVisible, showWindow, hideWindow, moveWindowToTrayCenter, setWindowFocus, setTrayPositionSet } from '@/utils/window';
 import { exitApp } from '@/utils/common';
+import { stopAllBatteryMonitors } from '@/utils/ble';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { logger } from '@/utils/log';
 import { Config } from '@/utils/config';
@@ -80,7 +81,8 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                             {
                                 id: 'refresh',
                                 text: 'Refresh window',
-                                action: () => {
+                                action: async () => {
+                                    await stopAllBatteryMonitors();
                                     location.reload();
                                     showWindow();
                                     if (!manualWindowPositioningRef.current) {

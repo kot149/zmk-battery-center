@@ -1,6 +1,6 @@
 import React from "react";
 import Button from "./Button";
-import { NotificationType } from "../utils/config";
+import { FETCH_INTERVAL_AUTO, NotificationType } from "../utils/config";
 import { useTheme, type Theme } from "@/context/theme-provider";
 import { Moon, Sun } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -90,6 +90,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 					<div>
 						{(() => {
 							const options = [
+								{ label: 'Auto (experimental)', value: FETCH_INTERVAL_AUTO },
 								{ label: '10 sec', value: 10_000 },
 								{ label: '30 sec', value: 30_000 },
 								{ label: '1 min', value: 60_000 },
@@ -100,13 +101,16 @@ const Settings: React.FC<SettingsScreenProps> = ({
 								{ label: '30 min', value: 1_800_000 },
 							];
 							return (
-								<Select value={config.fetchInterval.toString()} onValueChange={value => setConfig(c => ({ ...c, fetchInterval: Number(value) }))}>
+									<Select
+										value={config.fetchInterval.toString()}
+										onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
+									>
 									<SelectTrigger size="sm">
 										<SelectValue placeholder="Select" />
 									</SelectTrigger>
 									<SelectContent>
 										{options.map(opt => (
-											<SelectItem key={opt.value} value={opt.value.toString()}>
+											<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
 												{opt.label}
 											</SelectItem>
 										))}

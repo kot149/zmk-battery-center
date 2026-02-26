@@ -10,9 +10,12 @@ export enum NotificationType {
 	Connected = 'connected',
 }
 
+export const FETCH_INTERVAL_AUTO = 'auto' as const;
+export type FetchInterval = number | typeof FETCH_INTERVAL_AUTO;
+
 export type Config = {
 	theme: Theme;
-	fetchInterval: number;
+	fetchInterval: FetchInterval;
 	autoStart: boolean;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
@@ -25,7 +28,7 @@ export type Config = {
 
 export const defaultConfig: Config = {
 	theme: 'dark' as Theme,
-	fetchInterval: 30000,
+	fetchInterval: FETCH_INTERVAL_AUTO,
 	autoStart: false,
 	pushNotification: false,
 	pushNotificationWhen: {
