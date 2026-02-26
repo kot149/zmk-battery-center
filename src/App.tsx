@@ -10,7 +10,7 @@ import {
 	BatteryInfoNotificationEvent,
 	BatteryMonitorStatusEvent,
 } from "./utils/ble";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
@@ -63,6 +63,8 @@ async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 	return devices || [];
 }
 
+const NOOP = () => {};
+
 function App() {
 	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[]>([]);
 	const [isDeviceLoaded, setIsDeviceLoaded] = useState(false);
@@ -78,6 +80,15 @@ function App() {
 	const [state, setState] = useState<State>(State.main);
 	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
 	const isNotificationMonitorMode = !isPollingMode;
+
+	const registeredDeviceIds = useMemo(
+		() => new Set(registeredDevices.map(d => d.id)),
+		[registeredDevices]
+	);
+	const availableDevices = useMemo(
+		() => devices.filter(d => !registeredDeviceIds.has(d.id)),
+		[devices, registeredDeviceIds]
+	);
 
 	// Initialize window and tray event listeners
 	const handleWindowPositionChange = useCallback((position: { x: number; y: number }) => {
@@ -159,7 +170,7 @@ function App() {
 	}
 
 	const handleAddDevice = async (id: string) => {
-		if (registeredDevices.some(d => d.id === id)) {
+		if (registeredDeviceIds.has(id)) {
 			handleCloseModal();
 			return;
 		}
@@ -191,6 +202,13 @@ function App() {
 		}
 	};
 
+	const pushNotificationRef = useRef(config.pushNotification);
+	const pushNotificationWhenRef = useRef(config.pushNotificationWhen);
+	useEffect(() => {
+		pushNotificationRef.current = config.pushNotification;
+		pushNotificationWhenRef.current = config.pushNotificationWhen;
+	}, [config.pushNotification, config.pushNotificationWhen]);
+
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
 		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos);
@@ -205,11 +223,11 @@ function App() {
 				const infoArray = Array.isArray(info) ? info : [info];
 				setRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, batteryInfos: infoArray, isDisconnected: false } : d));
 
-				if(isDisconnectedPrev && config.pushNotification && config.pushNotificationWhen[NotificationType.Connected]){
+				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
 					await sendNotification(`${device.name} has been connected.`);
 				}
 
-				if(config.pushNotification && config.pushNotificationWhen[NotificationType.LowBattery]){
+				if(pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.LowBattery]){
 					const isLowBattery = mapIsLowBattery(infoArray);
 					for(let i = 0; i < isLowBattery.length && i < isLowBatteryPrev.length; i++){
 						if(!isLowBatteryPrev[i] && isLowBattery[i]){
@@ -229,7 +247,7 @@ function App() {
 				if (attempts >= maxAttempts) {
 					setRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, isDisconnected: true } : d));
 
-					if(!isDisconnectedPrev && config.pushNotification && config.pushNotificationWhen[NotificationType.Disconnected]){
+					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
 						await sendNotification(`${device.name} has been disconnected.`);
 						return;
 					}
@@ -237,7 +255,7 @@ function App() {
 			}
 			await sleep(500);
 		}
-	}, [config]);
+	}, []);
 
 	const handleCloseModal = () => {
 		setState(State.main);
@@ -457,6 +475,14 @@ function App() {
 		};
 	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, config.fetchInterval, updateBatteryInfo]);
 
+	const handleExitSettings = useCallback(async () => {
+		setState(State.main);
+	}, []);
+
+	const handleOpenSettings = useCallback(() => {
+		setState(State.settings);
+	}, []);
+
 	return (
 		<div id="app" className={`relative w-90 flex flex-col bg-background text-foreground rounded-lg p-2 ${
 			state === State.main && registeredDevices.length > 0 ? '' :
@@ -466,7 +492,7 @@ function App() {
 		}`}>
 			{state === State.settings ? (
 				<Settings
-					onExit={async () => { setState(State.main); }}
+					onExit={handleExitSettings}
 				/>
 			) : (
 				<>
@@ -500,7 +526,7 @@ function App() {
 							{/* Settings button */}
 							<Button
 								className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl !text-foreground !p-0 relative z-10"
-								onClick={() => setState(State.settings)}
+								onClick={handleOpenSettings}
 								aria-label="Settings"
 							>
 								<Cog8ToothIcon className="size-5" />
@@ -520,26 +546,35 @@ function App() {
 						>
 							{state === State.addDeviceModal && (
 								<ul className="max-h-60 overflow-y-auto rounded-sm">
-									{devices.filter(d => !registeredDevices.some(rd => rd.id === d.id)).length === 0 && (
+									{availableDevices.length === 0 ? (
 										<li className="text-muted-foreground">No devices found</li>
+									) : (
+										availableDevices.map((d) => (
+											<li key={d.id}>
+												<Button
+													className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-muted transition-colors duration-300 !p-2"
+													onClick={() => handleAddDevice(d.id)}
+												>
+													{d.name}
+												</Button>
+											</li>
+										))
 									)}
-									{devices.filter(d => !registeredDevices.some(rd => rd.id === d.id)).map((d) => (
-										<li key={d.id}>
-											<Button
-												className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-muted transition-colors duration-300 !p-2"
-												onClick={() => handleAddDevice(d.id)}
-											>
-												{d.name}
-											</Button>
-										</li>
-									))}
 								</ul>
 							)}
 						</Modal>
 					)}
 
-					{/* No devices registered */}
-					{registeredDevices.length === 0 && (
+					{/* Devices content */}
+					{registeredDevices.length > 0 ? (
+						<main className="container mx-auto">
+							<RegisteredDevicesPanel
+								registeredDevices={registeredDevices}
+								setRegisteredDevices={setRegisteredDevices}
+								onRemoveDevice={handleRemoveDevice}
+							/>
+						</main>
+					) : (
 						<div className="flex-1 flex flex-col items-center justify-center gap-6">
 							<h1 className="text-2xl text-foreground">No devices registered</h1>
 							<Button className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={handleOpenModal}>
@@ -548,21 +583,10 @@ function App() {
 						</div>
 					)}
 
-					{/* Devices registered */}
-					{registeredDevices.length > 0 && (
-						<main className="container mx-auto">
-							<RegisteredDevicesPanel
-								registeredDevices={registeredDevices}
-								setRegisteredDevices={setRegisteredDevices}
-								onRemoveDevice={handleRemoveDevice}
-							/>
-						</main>
-					)}
-
 					{/* Loading after device selection */}
 					<Modal
 						open={state === State.fetchingBatteryInfo}
-						onClose={() => {}}
+						onClose={NOOP}
 						isLoading={true}
 						loadingText="Fetching battery info..."
 						showCloseButton={false}
