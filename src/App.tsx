@@ -21,7 +21,7 @@ import { useConfigContext } from "@/context/ConfigContext";
 import { load, getStorePath } from '@/utils/storage';
 import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
-import { BatteryMonitorMode, NotificationType } from "./utils/config";
+import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
 import { sleep } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
@@ -72,7 +72,7 @@ function App() {
 	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
 
 	const [state, setState] = useState<State>(State.main);
-	const isPollingMode = config.batteryMonitorMode === BatteryMonitorMode.Polling;
+	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
 	const isNotificationMonitorMode = !isPollingMode;
 
 	// Initialize window and tray event listeners
@@ -439,7 +439,7 @@ function App() {
 		const interval = setInterval(() => {
 			if(isUnmounted) return;
 			Promise.all(registeredDevices.map(updateBatteryInfo));
-		}, config.fetchInterval);
+		}, config.fetchInterval as number);
 
 		return () => {
 			isUnmounted = true;

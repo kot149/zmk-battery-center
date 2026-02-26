@@ -10,15 +10,12 @@ export enum NotificationType {
 	Connected = 'connected',
 }
 
-export enum BatteryMonitorMode {
-	Polling = 'polling',
-	Notification = 'notification',
-}
+export const FETCH_INTERVAL_AUTO = 'auto' as const;
+export type FetchInterval = number | typeof FETCH_INTERVAL_AUTO;
 
 export type Config = {
 	theme: Theme;
-	fetchInterval: number;
-	batteryMonitorMode: BatteryMonitorMode;
+	fetchInterval: FetchInterval;
 	autoStart: boolean;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
@@ -31,8 +28,7 @@ export type Config = {
 
 export const defaultConfig: Config = {
 	theme: 'dark' as Theme,
-	fetchInterval: 30000,
-	batteryMonitorMode: BatteryMonitorMode.Polling,
+	fetchInterval: FETCH_INTERVAL_AUTO,
 	autoStart: false,
 	pushNotification: false,
 	pushNotificationWhen: {
