@@ -9,7 +9,7 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
 - Display battery level for:
   - Both central and peripheral sides of split keyboards
   - Multiple keyboards simultaneously
-- Supports macOS and Windows
+- Multi-platform: Windows, macOS, Linux (limited, see [here](#limitations-on-linux) for details)
 - (Options)
   - Push notifications when
     - Keyboard battery level is low
@@ -37,10 +37,24 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/
 ```
 [View install script](scripts/install_mac.sh)
 
+#### Linux
+
+Coming soon, please install manually for now.
+
 ### Install manually
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
 If you worry about security, you can build the app yourself from source code. See [Development](#development) section for more details.
+
+## Limitations on Linux
+
+While this app is also released for Linux, it is not much tested, as the author does not regularly use Linux desktop environment.
+Feel free to report any issues you find on Linux, but I cannot guarantee that I can fix them.
+
+Also there are some limitations specifically on Linux:
+- The app may not appear around the system tray icon, and manual window positioning may not work properly
+- Left-click on the system tray icon cannot be captured by the app, and treated as right-click instead
+- The app never disconnects the devices internally because call of `disconnect_device()` API on Linux causes OS-level disconnection. Unused connections might remain after the app exits.
 
 ## Troubleshooting
 
