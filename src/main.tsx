@@ -6,10 +6,10 @@ import { ConfigProvider } from "@/context/ConfigContext";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ConfigProvider>
-      <ThemeProvider defaultTheme="dark">
+    <ThemeProvider defaultTheme="dark">
+      <ConfigProvider>
         <App />
-      </ThemeProvider>
-    </ConfigProvider>
+      </ConfigProvider>
+    </ThemeProvider>
   </React.StrictMode>,
 );
