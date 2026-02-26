@@ -5,6 +5,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { logger } from './log';
 import { platform } from '@tauri-apps/plugin-os';
 
+const appWindow = getCurrentWebviewWindow();
+const currentPlatform = platform();
+
 // These will be managed by useWindowEvents hook
 let isTrayPositionSet = false;
 let isWindowMovingByPlugin = false;
@@ -34,32 +37,30 @@ export async function resizeWindow(x: number, y: number) {
     const height = y * scaleFactor;
     logger.info(`scaled size: ${width}x${height}`);
 
-	const window = getCurrentWebviewWindow();
-	if (window) {
-		window.setSize(new LogicalSize(width, height));
-	}
+	appWindow.setSize(new LogicalSize(width, height));
 }
 
 export async function resizeWindowToContent() {
-    const width = document.getElementById('app')?.clientWidth ?? 0;
-    const height = document.getElementById('app')?.clientHeight ?? 0;
+    const appEl = document.getElementById('app');
+    const width = appEl?.clientWidth ?? 0;
+    const height = appEl?.clientHeight ?? 0;
     resizeWindow(width, height);
 }
 
 export function isWindowVisible() {
-    return getCurrentWebviewWindow().isVisible();
+    return appWindow.isVisible();
 }
 
 export function showWindow() {
-    getCurrentWebviewWindow().show();
+    appWindow.show();
 }
 
 export function hideWindow() {
-    getCurrentWebviewWindow().hide();
+    appWindow.hide();
 }
 
 export function setWindowFocus() {
-    getCurrentWebviewWindow().setFocus();
+    appWindow.setFocus();
 }
 
 export async function moveWindowToTrayCenter() {
@@ -84,10 +85,9 @@ export async function moveWindowToCenter() {
 
 export async function moveWindowTo(x: number, y: number) {
     await waitForWindowMoveEnd();
-    const window = getCurrentWebviewWindow();
     logger.debug(`Moving window to ${x}, ${y}`);
     isWindowMovingByPlugin = true;
-    const position = await platform() === 'macos' ? new LogicalPosition(x, y) : new PhysicalPosition(x, y);
-    await window.setPosition(position);
+    const position = currentPlatform === 'macos' ? new LogicalPosition(x, y) : new PhysicalPosition(x, y);
+    await appWindow.setPosition(position);
     isWindowMovingByPlugin = false;
 }

@@ -7,7 +7,7 @@ import { ConfigProvider } from "@/context/ConfigContext";
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ConfigProvider>
-      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <ThemeProvider defaultTheme="dark">
         <App />
       </ThemeProvider>
     </ConfigProvider>

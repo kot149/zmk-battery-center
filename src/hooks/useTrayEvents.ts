@@ -18,11 +18,10 @@ interface UseTrayEventsOptions {
 
 export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositioningChange }: UseTrayEventsOptions) {
     const manualWindowPositioningRef = useRef(config.manualWindowPositioning);
+    const onManualWindowPositioningChangeRef = useRef(onManualWindowPositioningChange);
 
-    // Update ref when config changes
-    useEffect(() => {
-        manualWindowPositioningRef.current = config.manualWindowPositioning;
-    }, [config.manualWindowPositioning]);
+    manualWindowPositioningRef.current = config.manualWindowPositioning;
+    onManualWindowPositioningChangeRef.current = onManualWindowPositioningChange;
 
     useEffect(() => {
         if (!isConfigLoaded) return;
@@ -106,7 +105,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                         moveWindowToTrayCenter();
                                     }
 
-                                    onManualWindowPositioningChange(isChecked);
+                                    onManualWindowPositioningChangeRef.current(isChecked);
                                 },
                             },
                         ]
@@ -158,5 +157,5 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
             if (unlistenTrayEvent) unlistenTrayEvent();
             if (unlistenTrayLeftClick) unlistenTrayLeftClick();
         };
-    }, [isConfigLoaded, config.manualWindowPositioning, onManualWindowPositioningChange]);
+    }, [isConfigLoaded]);
 }

@@ -27,15 +27,15 @@ export async function requestNotificationPermission(): Promise<boolean> {
 */
 export async function sendNotification(title: string, message?: string): Promise<boolean> {
 	const isGranted = await requestNotificationPermission();
-	if (isGranted) {
-		const options: NotificationOptions = {
-			title,
-			body: message,
-			channelId: 'default',
-		};
-		sendNotification_(options);
-		return true;
-	} else {
+	if (!isGranted) {
 		return false;
 	}
+
+	const options: NotificationOptions = {
+		title,
+		body: message,
+		channelId: 'default',
+	};
+	sendNotification_(options);
+	return true;
 }

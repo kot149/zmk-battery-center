@@ -65,6 +65,8 @@ async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 
 const NOOP = () => {};
 
+let didLoadDevices = false;
+
 function App() {
 	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[]>([]);
 	const [isDeviceLoaded, setIsDeviceLoaded] = useState(false);
@@ -113,6 +115,8 @@ function App() {
 
 	// Load saved devices
 	useEffect(() => {
+		if (didLoadDevices) return;
+		didLoadDevices = true;
 		const fetchRegisteredDevices = async () => {
 			const devices = await loadDevicesFromFile();
 			setRegisteredDevices(devices.map(d => ({ ...d, isDisconnected: true })));

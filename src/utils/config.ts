@@ -63,8 +63,10 @@ export async function loadSavedConfig(): Promise<Config> {
 };
 
 export async function setConfig(config: Config) {
-	await getConfigStore().then((store: Store) => store.set('config', config));
-	const isEnabled = await isAutostartEnabled();
+	const [, isEnabled] = await Promise.all([
+		getConfigStore().then((store: Store) => store.set('config', config)),
+		isAutostartEnabled(),
+	]);
 
 	// Set/Unset autostart
 	if (config.autoStart && !isEnabled) {

@@ -18,6 +18,8 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
     const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const focusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const hasRestoredPositionRef = useRef(false);
+    const onWindowPositionChangeRef = useRef(onWindowPositionChange);
+    onWindowPositionChangeRef.current = onWindowPositionChange;
 
     // Restore window position on initial config load
     useEffect(() => {
@@ -44,7 +46,7 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
             }
 
             if (!isWindowMovingRef.current && !getIsWindowMovingByPlugin()) {
-                onWindowPositionChange(position);
+                onWindowPositionChangeRef.current(position);
                 logger.info(`Window position saved: ${position.x}, ${position.y}`);
             }
         };
@@ -101,5 +103,5 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
             if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
             if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
         };
-    }, [onWindowPositionChange]);
+    }, []);
 }

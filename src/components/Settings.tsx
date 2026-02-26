@@ -12,17 +12,27 @@ interface SettingsScreenProps {
 	onExit: () => Promise<void>;
 }
 
+const Dot = () => (
+	<span className="mr-1 font-bold">•</span>
+);
+
+const fetchIntervalOptions = [
+	{ label: 'Auto (experimental)', value: FETCH_INTERVAL_AUTO },
+	{ label: '10 sec', value: 10_000 },
+	{ label: '30 sec', value: 30_000 },
+	{ label: '1 min', value: 60_000 },
+	{ label: '3 min', value: 180_000 },
+	{ label: '5 min', value: 300_000 },
+	{ label: '10 min', value: 600_000 },
+	{ label: '20 min', value: 1_200_000 },
+	{ label: '30 min', value: 1_800_000 },
+];
+
 const Settings: React.FC<SettingsScreenProps> = ({
 	onExit
 }) => {
 	const { setTheme, theme } = useTheme();
 	const { config, setConfig } = useConfigContext();
-
-	function Dot(){
-		return (
-			<span className="mr-1 font-bold">•</span>
-		)
-	}
 
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col items-center justify-center h-full w-full p-4">
@@ -88,36 +98,21 @@ const Settings: React.FC<SettingsScreenProps> = ({
 				<div className="flex justify-between">
 					<span>Battery fetch interval</span>
 					<div>
-						{(() => {
-							const options = [
-								{ label: 'Auto (experimental)', value: FETCH_INTERVAL_AUTO },
-								{ label: '10 sec', value: 10_000 },
-								{ label: '30 sec', value: 30_000 },
-								{ label: '1 min', value: 60_000 },
-								{ label: '3 min', value: 180_000 },
-								{ label: '5 min', value: 300_000 },
-								{ label: '10 min', value: 600_000 },
-								{ label: '20 min', value: 1_200_000 },
-								{ label: '30 min', value: 1_800_000 },
-							];
-							return (
-									<Select
-										value={config.fetchInterval.toString()}
-										onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
-									>
-									<SelectTrigger size="sm">
-										<SelectValue placeholder="Select" />
-									</SelectTrigger>
-									<SelectContent>
-										{options.map(opt => (
-											<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
-												{opt.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-							);
-						})()}
+					<Select
+						value={config.fetchInterval.toString()}
+						onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
+					>
+						<SelectTrigger size="sm">
+							<SelectValue placeholder="Select" />
+						</SelectTrigger>
+						<SelectContent>
+							{fetchIntervalOptions.map(opt => (
+								<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
+									{opt.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 					</div>
 				</div>
 

@@ -1,7 +1,14 @@
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useMemo, Suspense } from 'react';
 import { useLicenses, mergeLicenses, License } from './hooks/useLicenses';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import "./App.css";
+
+{
+    const root = document.getElementById('root');
+    if (root) {
+        root.style.borderRadius = '0';
+    }
+}
 
 function LicenseItem({ license }: { license: License }) {
     const [isExpanded, setIsExpanded] = useState(false);
@@ -14,7 +21,7 @@ function LicenseItem({ license }: { license: License }) {
         <div className="bg-card rounded-lg border border-border">
             <div
                 className={`p-3 ${license.licenseText ? 'cursor-pointer hover:bg-secondary/50' : ''}`}
-                onClick={() => license.licenseText && setIsExpanded(!isExpanded)}
+                onClick={() => license.licenseText && setIsExpanded(prev => !prev)}
             >
                 <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
@@ -76,14 +83,6 @@ function LicensesList() {
     const licensesData = useLicenses();
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Remove border-radius from #root for licenses window
-    useEffect(() => {
-        const root = document.getElementById('root');
-        if (root) {
-            root.style.borderRadius = '0';
-        }
-    }, []);
-
     const allLicenses = useMemo(() => mergeLicenses(licensesData), [licensesData]);
 
     const filteredLicenses = useMemo(() => {
@@ -131,24 +130,15 @@ function LicensesList() {
     );
 }
 
-function LoadingFallback() {
-    useEffect(() => {
-        const root = document.getElementById('root');
-        if (root) {
-            root.style.borderRadius = '0';
-        }
-    }, []);
-
-    return (
-        <div className="dark h-screen bg-background text-foreground p-4 flex items-center justify-center">
-            <div className="text-muted-foreground">Loading licenses...</div>
-        </div>
-    );
-}
+const loadingFallback = (
+    <div className="dark h-screen bg-background text-foreground p-4 flex items-center justify-center">
+        <div className="text-muted-foreground">Loading licenses...</div>
+    </div>
+);
 
 function LicensesApp() {
     return (
-        <Suspense fallback={<LoadingFallback />}>
+        <Suspense fallback={loadingFallback}>
             <LicensesList />
         </Suspense>
     );

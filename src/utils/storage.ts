@@ -19,11 +19,12 @@ export async function getDevStorePath(): Promise<string | null> {
 	}
 }
 
+const platformSep = platform() === 'windows' ? '\\' : '/';
+
 export async function getStorePath(filename: string): Promise<string> {
 	const devPath = await getDevStorePath();
 	if (devPath) {
-		const sep = platform() === 'windows' ? '\\' : '/';
-		return `${devPath}${sep}${filename}`;
+		return `${devPath}${platformSep}${filename}`;
 	}
 	return filename;
 }
