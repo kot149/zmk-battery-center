@@ -86,6 +86,26 @@ fn is_target_device(device: &Device, id: &str) -> bool {
     format!("{:?}", device_id) == id || device_id.to_string() == id
 }
 
+#[inline]
+async fn disconnect_device(adapter: &Adapter, device: &Device) {
+    // Do not call disconnect_device() on Linux because it causes OS-level disconnection.
+    // See https://docs.rs/bluest/latest/bluest/struct.Adapter.html#method.disconnect_device
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = adapter
+            .disconnect_device(device)
+            .await
+            .map_err(|e| {
+                log::warn!(
+                    "BLE I/O: disconnect_device failed device_id={}: {}",
+                    format_device_id_for_store(device),
+                    e
+                );
+                e
+            });
+    }
+}
+
 async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String> {
     log::debug!("BLE I/O: searching target device id={id}");
     let devices = adapter
@@ -334,8 +354,7 @@ async fn battery_notification_worker(
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
                     log::debug!("BLE I/O: notification worker stop event device_id={device_id}");
-                    log::debug!("BLE I/O: notification worker disconnecting on stop device_id={device_id}");
-                    let _ = adapter.disconnect_device(&target_device).await;
+                    disconnect_device(&adapter, &target_device).await;
                     return;
                 }
             }
@@ -484,7 +503,7 @@ async fn battery_connection_watcher(
             Err(e) => {
                 log::warn!("BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}");
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                    let _ = adapter.disconnect_device(&target_device).await;
+                    disconnect_device(&adapter, &target_device).await;
                     return;
                 }
                 continue 'outer;
@@ -505,7 +524,7 @@ async fn battery_connection_watcher(
                 tokio::select! {
                     changed = stop_rx.changed() => {
                         if changed.is_err() || *stop_rx.borrow() {
-                            let _ = adapter.disconnect_device(&target_device).await;
+                            disconnect_device(&adapter, &target_device).await;
                             return;
                         }
                     }
@@ -518,7 +537,7 @@ async fn battery_connection_watcher(
                             Some(bluest::ConnectionEvent::Disconnected) => {
                                 log::debug!("BLE I/O: connection watcher got Disconnected while waiting device_id={device_id}");
                                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                                    let _ = adapter.disconnect_device(&target_device).await;
+                                    disconnect_device(&adapter, &target_device).await;
                                     return;
                                 }
                                 continue 'outer;
@@ -526,7 +545,7 @@ async fn battery_connection_watcher(
                             None => {
                                 log::warn!("BLE I/O: connection watcher connection events stream ended device_id={device_id}");
                                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                                    let _ = adapter.disconnect_device(&target_device).await;
+                                    disconnect_device(&adapter, &target_device).await;
                                     return;
                                 }
                                 continue 'outer;
@@ -544,7 +563,7 @@ async fn battery_connection_watcher(
             Err(e) => {
                 log::warn!("BLE I/O: connection watcher failed to get characteristics device_id={device_id}: {e}");
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                    let _ = adapter.disconnect_device(&target_device).await;
+                    disconnect_device(&adapter, &target_device).await;
                     return;
                 }
                 continue 'outer;
@@ -562,7 +581,7 @@ async fn battery_connection_watcher(
         if notify_contexts.is_empty() {
             log::warn!("BLE I/O: connection watcher no notify characteristics device_id={device_id}");
             if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
-                let _ = adapter.disconnect_device(&target_device).await;
+                disconnect_device(&adapter, &target_device).await;
                 return;
             }
             continue 'outer;
@@ -629,11 +648,11 @@ async fn battery_connection_watcher(
         log::debug!("BLE I/O: connection watcher all workers finished, restarting device_id={device_id}");
 
         if *stop_rx.borrow() {
-            let _ = adapter.disconnect_device(&target_device).await;
+            disconnect_device(&adapter, &target_device).await;
             return;
         }
         if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-            let _ = adapter.disconnect_device(&target_device).await;
+            disconnect_device(&adapter, &target_device).await;
             return;
         }
     }
@@ -723,10 +742,7 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
     let battery_infos = read_battery_infos_strict(&contexts).await?;
 
     log::debug!("BLE I/O: disconnect request (polling) device_id={id}");
-    adapter
-        .disconnect_device(&target_device)
-        .await
-        .map_err(|e| e.to_string())?;
+    disconnect_device(&adapter, &target_device).await;
     log::debug!("BLE I/O: disconnect response success (polling) device_id={id}");
 
     Ok(battery_infos)
