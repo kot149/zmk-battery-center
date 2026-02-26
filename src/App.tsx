@@ -70,6 +70,10 @@ function App() {
 	const [error, setError] = useState("");
 	const { config, isConfigLoaded } = useConfigContext();
 	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
+	const registeredDevicesRef = useRef<RegisteredDevice[]>(registeredDevices);
+	useEffect(() => {
+		registeredDevicesRef.current = registeredDevices;
+	}, [registeredDevices]);
 
 	const [state, setState] = useState<State>(State.main);
 	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
@@ -418,34 +422,40 @@ function App() {
 		};
 	}, []);
 
+	// Save registered devices whenever they change
 	useEffect(() => {
-		if (isDeviceLoaded) {
-			const saveRegisteredDevices = async () => {
-				const storePath = await getStorePath(DEVICES_FILENAME);
-				const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
-				await deviceStore.set("devices", registeredDevices);
-				logger.info('Saved registered devices');
-			};
-			saveRegisteredDevices();
-		}
+		if (!isDeviceLoaded) return;
+		const saveRegisteredDevices = async () => {
+			const storePath = await getStorePath(DEVICES_FILENAME);
+			const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
+			await deviceStore.set("devices", registeredDevices);
+			logger.info('Saved registered devices');
+		};
+		saveRegisteredDevices();
+	}, [registeredDevices, isDeviceLoaded]);
 
-		// Update battery info periodically
-		if (!isPollingMode) {
+	// Polling: use registeredDevicesRef so this effect doesn't re-run on every
+	// device update (which would cause an infinite loop).
+	useEffect(() => {
+		if (!isPollingMode || !isConfigLoaded || !isDeviceLoaded) {
 			return;
 		}
 
 		let isUnmounted = false;
 
+		// Run the first poll immediately without waiting for the interval
+		Promise.all(registeredDevicesRef.current.map(updateBatteryInfo));
+
 		const interval = setInterval(() => {
-			if(isUnmounted) return;
-			Promise.all(registeredDevices.map(updateBatteryInfo));
+			if (isUnmounted) return;
+			Promise.all(registeredDevicesRef.current.map(updateBatteryInfo));
 		}, config.fetchInterval as number);
 
 		return () => {
 			isUnmounted = true;
 			clearInterval(interval);
 		};
-	}, [registeredDevices, config.fetchInterval, isDeviceLoaded, updateBatteryInfo, isPollingMode]);
+	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, config.fetchInterval, updateBatteryInfo]);
 
 	return (
 		<div id="app" className={`relative w-90 flex flex-col bg-background text-foreground rounded-lg p-2 ${
