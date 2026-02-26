@@ -14,12 +14,12 @@ export type BleDeviceInfo = {
 /**
  * @typedef {Object} BatteryInfo
  * @property {number|null} battery_level Battery level (0-100)
- * @property {string|null} user_descriptor User description
+ * @property {string|null} user_description User description
  */
 /** @export */
 export type BatteryInfo = {
 	battery_level: number | null;
-	user_descriptor: string | null;
+	user_description: string | null;
 };
 
 export type BatteryInfoNotificationEvent = {

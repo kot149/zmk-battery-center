@@ -24,7 +24,7 @@ pub struct BleDeviceInfo {
 #[derive(Serialize, Clone)]
 pub struct BatteryInfo {
     pub battery_level: Option<u8>,
-    pub user_descriptor: Option<String>, // User description
+    pub user_description: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -42,7 +42,7 @@ pub struct BatteryMonitorStatusEvent {
 #[derive(Clone)]
 struct BatteryCharacteristicContext {
     characteristic: Characteristic,
-    user_descriptor: Option<String>,
+    user_description: Option<String>,
 }
 
 #[derive(Default)]
@@ -78,12 +78,11 @@ async fn get_adapter() -> Result<Adapter, String> {
 }
 
 fn format_device_id_for_store(device: &Device) -> String {
-    format!("{:?}", device.id())
+    device.id().to_string()
 }
 
 fn is_target_device(device: &Device, id: &str) -> bool {
-    let device_id = device.id();
-    format!("{:?}", device_id) == id || device_id.to_string() == id
+    device.id().to_string() == id
 }
 
 #[inline]
@@ -174,7 +173,7 @@ async fn get_battery_characteristic_contexts(
                     .await
                     .map_err(|e| e.to_string())?;
                 log::debug!(
-                    "BLE I/O: read user descriptor bytes={} for device id={}",
+                    "BLE I/O: read user description bytes={} for device id={}",
                     bytes_to_hex(&desc_value),
                     format_device_id_for_store(target_device)
                 );
@@ -185,7 +184,7 @@ async fn get_battery_characteristic_contexts(
 
             contexts.push(BatteryCharacteristicContext {
                 characteristic: battery_level_characteristic.clone(),
-                user_descriptor: user_description,
+                user_description,
             });
         }
     }
@@ -199,7 +198,7 @@ async fn read_battery_infos_strict(
     let mut battery_infos = Vec::new();
 
     for context in contexts {
-        let label = context.user_descriptor.as_deref().unwrap_or("Central");
+        let label = context.user_description.as_deref().unwrap_or("Central");
         log::debug!("BLE I/O: read request battery_level descriptor={label}");
         let value = context
             .characteristic
@@ -214,7 +213,7 @@ async fn read_battery_infos_strict(
         );
         battery_infos.push(BatteryInfo {
             battery_level: value.first().copied(),
-            user_descriptor: context.user_descriptor.clone(),
+            user_description: context.user_description.clone(),
         });
     }
 
@@ -225,7 +224,7 @@ async fn read_battery_infos_best_effort(contexts: &[BatteryCharacteristicContext
     let mut battery_infos = Vec::new();
 
     for context in contexts {
-        let label = context.user_descriptor.as_deref().unwrap_or("Central");
+        let label = context.user_description.as_deref().unwrap_or("Central");
         log::debug!("BLE I/O: best-effort read request battery_level descriptor={label}");
         let read_result = context
             .characteristic
@@ -252,7 +251,7 @@ async fn read_battery_infos_best_effort(contexts: &[BatteryCharacteristicContext
 
         battery_infos.push(BatteryInfo {
             battery_level,
-            user_descriptor: context.user_descriptor.clone(),
+            user_description: context.user_description.clone(),
         });
     }
 
@@ -320,9 +319,9 @@ async fn battery_notification_worker(
     };
 
     log::debug!(
-        "BLE I/O: notify subscribe request device_id={} descriptor={}",
+        "BLE I/O: notify subscribe request device_id={} description={}",
         device_id,
-        context.user_descriptor.as_deref().unwrap_or("Central")
+        context.user_description.as_deref().unwrap_or("Central")
     );
     let mut stream = match context.characteristic.notify().await {
         Ok(stream) => stream,
@@ -330,16 +329,16 @@ async fn battery_notification_worker(
             log::warn!(
                 "Failed to start notification stream for {} ({}): {}",
                 device_id,
-                context.user_descriptor.as_deref().unwrap_or("Central"),
+                context.user_description.as_deref().unwrap_or("Central"),
                 e
             );
             return;
         }
     };
     log::debug!(
-        "BLE I/O: notify subscribe response success device_id={} descriptor={}",
+        "BLE I/O: notify subscribe response success device_id={} description={}",
         device_id,
-        context.user_descriptor.as_deref().unwrap_or("Central")
+        context.user_description.as_deref().unwrap_or("Central")
     );
     update_monitor_connection_state(
         &app,
@@ -363,9 +362,9 @@ async fn battery_notification_worker(
                 match value {
                     Some(Ok(data)) => {
                         log::debug!(
-                            "BLE I/O: notify event device_id={} descriptor={} bytes={} parsed={:?}",
+                            "BLE I/O: notify event device_id={} description={} bytes={} parsed={:?}",
                             device_id,
-                            context.user_descriptor.as_deref().unwrap_or("Central"),
+                            context.user_description.as_deref().unwrap_or("Central"),
                             bytes_to_hex(&data),
                             data.first().copied()
                         );
@@ -373,7 +372,7 @@ async fn battery_notification_worker(
                             id: device_id.clone(),
                             battery_info: BatteryInfo {
                                 battery_level: data.first().copied(),
-                                user_descriptor: context.user_descriptor.clone(),
+                                user_description: context.user_description.clone(),
                             },
                         };
                         let _ = app.emit(BATTERY_INFO_NOTIFICATION_EVENT, payload);
@@ -382,7 +381,7 @@ async fn battery_notification_worker(
                         log::warn!(
                             "Battery notification stream error for {} ({}): {}",
                             device_id,
-                            context.user_descriptor.as_deref().unwrap_or("Central"),
+                            context.user_description.as_deref().unwrap_or("Central"),
                             e
                         );
                         break;
@@ -391,7 +390,7 @@ async fn battery_notification_worker(
                         log::warn!(
                             "Battery notification stream ended for {} ({})",
                             device_id,
-                            context.user_descriptor.as_deref().unwrap_or("Central")
+                            context.user_description.as_deref().unwrap_or("Central")
                         );
                         break;
                     }
@@ -406,9 +405,9 @@ async fn battery_notification_worker(
             } => {
                 if matches!(conn_event, Some(bluest::ConnectionEvent::Disconnected) | None) {
                     log::warn!(
-                        "BLE I/O: device disconnected (connection event) device_id={} descriptor={}",
+                        "BLE I/O: device disconnected (connection event) device_id={} description={}",
                         device_id,
-                        context.user_descriptor.as_deref().unwrap_or("Central")
+                        context.user_description.as_deref().unwrap_or("Central")
                     );
                     break;
                 }

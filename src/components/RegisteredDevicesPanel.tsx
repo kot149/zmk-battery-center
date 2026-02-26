@@ -107,7 +107,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 								<div className="space-y-1 ml-7">
 									{device.batteryInfos.map((b, propIdx) => (
 										<div key={propIdx} className="flex items-center gap-4">
-											<span className="min-w-27 text-card-foreground/80">{b.user_descriptor ?? "Central"}</span>
+											<span className="min-w-27 text-card-foreground/80">{b.user_description ?? "Central"}</span>
 											<BatteryIcon percentage={b.battery_level ?? 0} />
 											<span className="w-10 min-w-10 text-card-foreground/90 text-right text-sm">{b.battery_level !== null ? `${b.battery_level}%` : "N/A"}</span>
 										</div>

@@ -44,8 +44,8 @@ enum State {
 }
 
 function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): BatteryInfo[] {
-	const key = nextInfo.user_descriptor ?? null;
-	const idx = batteryInfos.findIndex(info => (info.user_descriptor ?? null) === key);
+	const key = nextInfo.user_description ?? null;
+	const idx = batteryInfos.findIndex(info => (info.user_description ?? null) === key);
 	if (idx === -1) {
 		return [...batteryInfos, nextInfo];
 	}
@@ -65,8 +65,8 @@ function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): 
 function mergeBatteryInfos(prev: BatteryInfo[], next: BatteryInfo[]): BatteryInfo[] {
 	return next.map(info => {
 		if (info.battery_level !== null) return info;
-		const key = info.user_descriptor ?? null;
-		const existing = prev.find(p => (p.user_descriptor ?? null) === key);
+		const key = info.user_description ?? null;
+		const existing = prev.find(p => (p.user_description ?? null) === key);
 		return existing ? { ...info, battery_level: existing.battery_level } : info;
 	});
 }
@@ -257,7 +257,7 @@ function App() {
 						if(!isLowBatteryPrev[i] && isLowBattery[i]){
 							sendNotification(`${device.name}${
 								infoArray.length >= 2 ?
-									' ' + (infoArray[i].user_descriptor ?? 'Central')
+									' ' + (infoArray[i].user_description ?? 'Central')
 									: ''
 							} has low battery.`);
 							logger.info(`${device.name} has low battery.`);
