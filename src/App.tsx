@@ -27,6 +27,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
 import { emit, listen } from '@tauri-apps/api/event';
+import { appendBatteryHistory } from '@/utils/batteryHistory';
 
 export type RegisteredDevice = {
 	id: string;
@@ -279,6 +280,18 @@ function App() {
 					return { ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false };
 				}));
 
+				// Record battery history
+				for (const info of infoArray) {
+					if (info.battery_level !== null) {
+						void appendBatteryHistory(
+							device.name,
+							device.id,
+							info.user_description ?? 'Central',
+							info.battery_level,
+						);
+					}
+				}
+
 				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
 					await sendNotification(`${device.name} has been connected.`);
 				}
@@ -362,6 +375,18 @@ function App() {
 	useEffect(() => {
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
 			const payload = event.payload;
+			// Record battery history for notification-mode updates
+			if (payload.battery_info.battery_level !== null) {
+				const device = registeredDevicesRef.current.find(d => d.id === payload.id);
+				if (device) {
+					void appendBatteryHistory(
+						device.name,
+						device.id,
+						payload.battery_info.user_description ?? 'Central',
+						payload.battery_info.battery_level,
+					);
+				}
+			}
 			setRegisteredDevices(prev => prev.map(device => {
 				if (device.id !== payload.id) {
 					return device;
