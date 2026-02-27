@@ -73,11 +73,43 @@ function mergeBatteryInfos(prev: BatteryInfo[], next: BatteryInfo[]): BatteryInf
 
 const DEVICES_FILENAME = 'devices.json';
 
+const DEVICE_ID_PATTERN = /^DeviceId\("(.+)"\)$/;
+
+function normalizeLoadedDevices(raw: unknown): RegisteredDevice[] {
+	const devices = Array.isArray(raw) ? raw : [];
+	return devices.map((d: Record<string, unknown>) => {
+		const batteryInfos: BatteryInfo[] = Array.isArray(d.batteryInfos)
+			? (d.batteryInfos as Array<Record<string, unknown>>).map((info) => {
+					const userDesc =
+						(info.user_description ?? (info as { user_descriptor?: unknown }).user_descriptor) as string | null;
+					const level = info.battery_level;
+					return {
+						battery_level: typeof level === 'number' ? level : null,
+						user_description: userDesc ?? null,
+					};
+				})
+			: [];
+		const rawId = typeof d.id === 'string' ? d.id : '';
+		const rawName = typeof d.name === 'string' ? d.name : '';
+		const extractFromDeviceId = (s: string) => {
+			const m = s.match(DEVICE_ID_PATTERN);
+			return m ? m[1] : s;
+		};
+		return {
+			id: extractFromDeviceId(rawId),
+			name: extractFromDeviceId(rawName),
+			batteryInfos,
+			isDisconnected: d.isDisconnected === true,
+		};
+	});
+}
+
 async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 	const storePath = await getStorePath(DEVICES_FILENAME);
 	const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
-	const devices = await deviceStore.get<RegisteredDevice[]>("devices");
-	return devices || [];
+	const raw = await deviceStore.get<unknown>("devices");
+	const devices = normalizeLoadedDevices(raw);
+	return devices;
 }
 
 const NOOP = () => {};
