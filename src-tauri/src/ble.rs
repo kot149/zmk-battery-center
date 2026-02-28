@@ -587,6 +587,14 @@ async fn battery_connection_watcher(
             continue 'outer;
         }
 
+        let _ = app.emit(
+            BATTERY_MONITOR_STATUS_EVENT,
+            BatteryMonitorStatusEvent {
+                id: device_id.clone(),
+                connected: true,
+            },
+        );
+
         // Send initial battery readings to the frontend.
         let initial_infos = read_battery_infos_best_effort(&contexts).await;
         for info in &initial_infos {
@@ -598,16 +606,6 @@ async fn battery_connection_watcher(
                 },
             );
         }
-
-        // Emit connected status immediately so the UI updates before workers
-        // finish subscribing to notifications.
-        let _ = app.emit(
-            BATTERY_MONITOR_STATUS_EVENT,
-            BatteryMonitorStatusEvent {
-                id: device_id.clone(),
-                connected: true,
-            },
-        );
 
         log::debug!(
             "BLE I/O: connection watcher starting {} workers device_id={device_id}",

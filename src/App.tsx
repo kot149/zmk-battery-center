@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
+import TopRightButtons from "./components/TopRightButtons";
 import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
 import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
 import Modal from "./components/Modal";
@@ -27,6 +28,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
 import { emit, listen } from '@tauri-apps/api/event';
+import { appendBatteryHistory } from '@/utils/batteryHistory';
 
 export type RegisteredDevice = {
 	id: string;
@@ -41,6 +43,7 @@ enum State {
 	settings = 'settings',
 	fetchingDevices = 'fetchingDevices',
 	fetchingBatteryInfo = 'fetchingBatteryInfo',
+	chart = 'chart',
 }
 
 function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): BatteryInfo[] {
@@ -279,6 +282,20 @@ function App() {
 					return { ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false };
 				}));
 
+				// Record battery history
+				for (const info of infoArray) {
+					if (info.battery_level !== null) {
+						appendBatteryHistory(
+							device.name,
+							device.id,
+							info.user_description ?? 'Central',
+							info.battery_level,
+						).then(() => {
+							void emit('battery-history-updated', { deviceId: device.id });
+						});
+					}
+				}
+
 				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
 					await sendNotification(`${device.name} has been connected.`);
 				}
@@ -347,7 +364,7 @@ function App() {
 	// Handle window size change
 	useEffect(() => {
 		resizeWindowToContent().then(() => {
-			if(isConfigLoaded && !config.manualWindowPositioning){
+			if (isConfigLoaded && !config.manualWindowPositioning) {
 				moveWindowToTrayCenter();
 				setTimeout(() => {
 					moveWindowToTrayCenter();
@@ -362,6 +379,20 @@ function App() {
 	useEffect(() => {
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
 			const payload = event.payload;
+			// Record battery history for notification-mode updates
+			if (payload.battery_info.battery_level !== null) {
+				const device = registeredDevicesRef.current.find(d => d.id === payload.id);
+				if (device) {
+					appendBatteryHistory(
+						device.name,
+						device.id,
+						payload.battery_info.user_description ?? 'Central',
+						payload.battery_info.battery_level,
+					).then(() => {
+						void emit('battery-history-updated', { deviceId: payload.id });
+					});
+				}
+			}
 			setRegisteredDevices(prev => prev.map(device => {
 				if (device.id !== payload.id) {
 					return device;
@@ -539,12 +570,17 @@ function App() {
 		setState(State.settings);
 	}, []);
 
+	const handleChartOpenChange = useCallback((isOpen: boolean) => {
+		setState(isOpen ? State.chart : State.main);
+	}, []);
+
 	return (
-		<div id="app" className={`relative w-90 flex flex-col bg-background text-foreground rounded-lg p-2 ${
-			state === State.main && registeredDevices.length > 0 ? '' :
-			state === State.fetchingBatteryInfo ? 'min-h-58' :
-			state === State.settings ? 'min-h-85' :
-			'min-h-90'
+		<div id="app" className={`relative flex flex-col bg-background text-foreground rounded-lg p-2 ${
+			state === State.main && registeredDevices.length > 0 ? 'w-90' :
+			state === State.chart ? 'w-110 h-90' :
+			state === State.fetchingBatteryInfo ? 'w-90 min-h-58' :
+			state === State.settings ? 'w-90 min-h-85' :
+			'w-90 min-h-90'
 		}`}>
 			{state === State.settings ? (
 				<Settings
@@ -559,35 +595,26 @@ function App() {
 						)}
 
 						{/* Top-right buttons */}
-						<div className="flex flex-row ml-auto justify-end">
-							{/* + button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 !px-0 !py-0 hover:bg-secondary relative z-10"
-								onClick={handleOpenModal}
-								aria-label="Add Device"
-							>
-								<PlusIcon className="size-5" />
-							</Button>
-
-							{/* Reload button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 text-foreground hover:bg-secondary disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
-								onClick={handleReload}
-								aria-label="Reload"
-								disabled={registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode}
-							>
-								<ArrowPathIcon className="size-5" />
-							</Button>
-
-							{/* Settings button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl !text-foreground !p-0 relative z-10"
-								onClick={handleOpenSettings}
-								aria-label="Settings"
-							>
-								<Cog8ToothIcon className="size-5" />
-							</Button>
-						</div>
+						<TopRightButtons
+							buttons={[
+								{
+									icon: <PlusIcon className="size-5" />,
+									onClick: handleOpenModal,
+									ariaLabel: "Add Device",
+								},
+								{
+									icon: <ArrowPathIcon className="size-5" />,
+									onClick: handleReload,
+									ariaLabel: "Reload",
+									disabled: registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode,
+								},
+								{
+									icon: <Cog8ToothIcon className="size-5" />,
+									onClick: handleOpenSettings,
+									ariaLabel: "Settings",
+								}
+							]}
+						/>
 					</div>
 
 					{/* Modal (device selection) */}
@@ -628,6 +655,7 @@ function App() {
 								registeredDevices={registeredDevices}
 								setRegisteredDevices={setRegisteredDevices}
 								onRemoveDevice={handleRemoveDevice}
+								onChartOpenChange={handleChartOpenChange}
 							/>
 						</main>
 					) : (
