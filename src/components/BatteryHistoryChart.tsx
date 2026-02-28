@@ -272,8 +272,8 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 				/>
 			</div>
 
-			{/* Header */}
-			<div className="flex items-center px-5 pt-4 pb-0">
+			{/* Header and Range selector */}
+			<div className="flex items-end justify-between px-5 pt-7 pb-0">
 				<div className="flex flex-col">
 					<span className="text-2xl font-semibold text-foreground">
 						{device.name}
@@ -282,27 +282,28 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						Battery History
 					</span>
 				</div>
+
+				{/* Range selector */}
+				<div className="flex items-center gap-2">
+					<span className="text-sm text-muted-foreground">Range:</span>
+					<Select
+						value={String(rangeIdx)}
+						onValueChange={(v) => setRangeIdx(Number(v))}
+					>
+						<SelectTrigger size="sm">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{RANGE_PRESETS.map((preset, idx) => (
+								<SelectItem key={preset.label} value={String(idx)}>
+									{preset.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
 			</div>
 
-			{/* Range selector */}
-			<div className="flex items-center justify-end gap-2 px-4 pt-2">
-				<span className="text-sm text-muted-foreground">Range:</span>
-				<Select
-					value={String(rangeIdx)}
-					onValueChange={(v) => setRangeIdx(Number(v))}
-				>
-					<SelectTrigger size="sm">
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						{RANGE_PRESETS.map((preset, idx) => (
-							<SelectItem key={preset.label} value={String(idx)}>
-								{preset.label}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
 
 			{/* Chart area */}
 			<div className="flex-1 flex flex-col p-4 min-h-0">
