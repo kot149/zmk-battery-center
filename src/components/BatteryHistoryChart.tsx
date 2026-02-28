@@ -1,15 +1,32 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import {
+	ResponsiveContainer,
+	LineChart,
+	Line,
+	XAxis,
+	YAxis,
+	CartesianGrid,
+	Tooltip,
+	Legend,
+} from "recharts";
 import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
 import type { RegisteredDevice } from "@/App";
 import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logger } from "@/utils/log";
 
+// ── Types ──────────────────────────────────────────────
 interface BatteryHistoryChartProps {
 	device: RegisteredDevice;
 	onClose: () => void;
 }
 
-// Assign colors to graphs for each user description
+type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
+
+// Unified row that Recharts consumes (timestamp + one key per part)
+type ChartRow = { timestamp: number } & Record<string, number | undefined>;
+
+// ── Constants ──────────────────────────────────────────
 const LINE_COLORS = [
 	"oklch(62.3% 0.214 259.815)",   // primary blue
 	"oklch(0.696 0.17 162.48)",     // green
@@ -18,41 +35,68 @@ const LINE_COLORS = [
 	"oklch(0.645 0.246 16.439)",    // red
 ];
 
-type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
+/** Range presets – value is duration in ms */
+const RANGE_PRESETS = [
+	{ label: "1 day", ms: 1 * 24 * 60 * 60 * 1000 },
+	{ label: "3 days", ms: 3 * 24 * 60 * 60 * 1000 },
+	{ label: "1 week", ms: 7 * 24 * 60 * 60 * 1000 },
+	{ label: "2 weeks", ms: 14 * 24 * 60 * 60 * 1000 },
+	{ label: "1 month", ms: 30 * 24 * 60 * 60 * 1000 },
+	{ label: "All", ms: 0 },
+] as const;
 
-const CHART_W = 600;
-const CHART_H = 300;
-const PAD_LEFT = 36;
-const PAD_RIGHT = 16;
-const PAD_TOP = 16;
-const PAD_BOTTOM = 32;
-const W = CHART_W - PAD_LEFT - PAD_RIGHT;
-const H = CHART_H - PAD_TOP - PAD_BOTTOM;
-
-function formatTime(iso: string): string {
-	const d = new Date(iso);
-	return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+// ── Smoothing (simple moving average) ──────────────────
+function smooth(records: BatteryHistoryRecord[], windowSize = 3): BatteryHistoryRecord[] {
+	if (records.length <= windowSize) return records;
+	const result: BatteryHistoryRecord[] = [];
+	const half = Math.floor(windowSize / 2);
+	for (let i = 0; i < records.length; i++) {
+		const start = Math.max(0, i - half);
+		const end = Math.min(records.length - 1, i + half);
+		let sum = 0;
+		let count = 0;
+		for (let j = start; j <= end; j++) {
+			sum += records[j].battery_level;
+			count++;
+		}
+		result.push({ ...records[i], battery_level: Math.round(sum / count) });
+	}
+	return result;
 }
 
-function formatDate(iso: string): string {
-	const d = new Date(iso);
+// ── Helpers ────────────────────────────────────────────
+const MS_IN_DAY = 24 * 60 * 60 * 1000;
+
+function formatXTick(ts: number, rangeMs: number): string {
+	const d = new Date(ts);
+	if (rangeMs > 0 && rangeMs <= 2 * MS_IN_DAY) {
+		// Short range → show time only
+		return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+	}
+	// Longer range → show date
 	return d.toLocaleDateString([], { month: "numeric", day: "numeric" });
 }
 
-/** 表示する最新N件 */
-const MAX_POINTS = 60;
-
-/** data点をSVGのパス文字列に変換 */
-function toPolyline(points: { x: number; y: number }[]): string {
-	if (points.length === 0) return "";
-	return points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+function formatTooltipLabel(ts: number): string {
+	const d = new Date(ts);
+	return d.toLocaleString([], {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+	});
 }
 
+// ── Component ──────────────────────────────────────────
 const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClose }) => {
 	const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [rangeIdx, setRangeIdx] = useState(RANGE_PRESETS.length - 1); // default: "All"
 
+	// ── Data loading ───────────────────────────────────
 	const load = useCallback(async () => {
 		setIsLoading(true);
 		setError(null);
@@ -60,8 +104,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			const records = await readBatteryHistory(device.name, device.id);
 			const map = new Map<string, BatteryHistoryRecord[]>();
 			for (const r of records) {
-				// Ignore 0% records
-				if (r.battery_level === 0) continue;
+				if (r.battery_level === 0) continue; // Ignore 0%
 				const key = r.user_description || "Central";
 				if (!map.has(key)) map.set(key, []);
 				map.get(key)!.push(r);
@@ -80,36 +123,59 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		load();
 	}, [load]);
 
-	const allKeys = [...grouped.keys()];
+	// ── Derived data ───────────────────────────────────
+	const allKeys = useMemo(() => [...grouped.keys()], [grouped]);
 
-	// Get all records and find the time range
-	const allRecords = allKeys.flatMap(k => grouped.get(k)!.slice(-MAX_POINTS));
-	const allTimes = allRecords.map(r => new Date(r.timestamp).getTime());
-	const minTime = allTimes.length > 0 ? Math.min(...allTimes) : 0;
-	const maxTime = allTimes.length > 0 ? Math.max(...allTimes) : 1;
-	const timeRange = maxTime - minTime || 1;
+	const rangeMs = RANGE_PRESETS[rangeIdx].ms;
 
-	// X axis labels (5 points)
-	const labelCount = 5;
-	const xLabels: { x: number; label: string; date: string }[] = [];
-	if (allTimes.length > 0) {
-		for (let i = 0; i < labelCount; i++) {
-			const t = minTime + (timeRange * i) / (labelCount - 1);
-			const x = PAD_LEFT + ((t - minTime) / timeRange) * W;
-			const iso = new Date(t).toISOString();
-			xLabels.push({ x, label: formatTime(iso), date: formatDate(iso) });
+	/** Build a single sorted array of ChartRow for Recharts */
+	const chartData = useMemo<ChartRow[]>(() => {
+		const now = Date.now();
+		const cutoff = rangeMs > 0 ? now - rangeMs : 0;
+
+		// Collect every unique timestamp across all parts
+		const tsMap = new Map<number, ChartRow>();
+
+		for (const key of allKeys) {
+			const raw = grouped.get(key) ?? [];
+			const smoothed = smooth(raw, 5);
+			for (const r of smoothed) {
+				const ts = new Date(r.timestamp).getTime();
+				if (ts < cutoff) continue;
+				if (!tsMap.has(ts)) {
+					tsMap.set(ts, { timestamp: ts });
+				}
+				tsMap.get(ts)![key] = Math.max(0, Math.min(100, r.battery_level));
+			}
 		}
-	}
 
+		return [...tsMap.values()].sort((a, b) => a.timestamp - b.timestamp);
+	}, [grouped, allKeys, rangeMs]);
+
+	const now = useMemo(() => Date.now(), [chartData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	const effectiveRange = useMemo<number>(() => {
+		if (rangeMs > 0) return rangeMs;
+		if (chartData.length < 2) return MS_IN_DAY;
+		return chartData[chartData.length - 1].timestamp - chartData[0].timestamp;
+	}, [chartData, rangeMs]);
+
+	/** X axis domain: fixed range for presets, auto for "All" */
+	const xDomain = useMemo<[number, number] | [string, string]>(() => {
+		if (rangeMs > 0) return [now - rangeMs, now];
+		return ["dataMin", "dataMax"] as [string, string];
+	}, [rangeMs, now]);
+
+	// ── Render ─────────────────────────────────────────
 	return (
-		<div className="fixed inset-0 z-50 flex flex-col bg-background">
+		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
 			{/* Header */}
-			<div className="flex items-center justify-between p-2 pb-0">
+			<div className="flex items-center justify-between px-5 pt-4 pb-0">
 				<div className="flex flex-col">
-					<span className="text-lg font-semibold text-foreground">
+					<span className="text-2xl font-semibold text-foreground">
 						{device.name}
 					</span>
-					<span className="text-sm text-muted-foreground tracking-wide uppercase">
+					<span className="text-sm text-muted-foreground tracking-wide">
 						Battery History
 					</span>
 				</div>
@@ -131,7 +197,27 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 				</div>
 			</div>
 
-			{/* Chart area - fills remaining space */}
+			{/* Range selector */}
+			<div className="flex items-center justify-end gap-2 px-4 pt-2">
+				<span className="text-sm text-muted-foreground">Range:</span>
+				<Select
+					value={String(rangeIdx)}
+					onValueChange={(v) => setRangeIdx(Number(v))}
+				>
+					<SelectTrigger size="sm">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						{RANGE_PRESETS.map((preset, idx) => (
+							<SelectItem key={preset.label} value={String(idx)}>
+								{preset.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
+
+			{/* Chart area */}
 			<div className="flex-1 flex flex-col p-4 min-h-0">
 				{isLoading ? (
 					<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
@@ -141,137 +227,117 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					<div className="flex-1 flex items-center justify-center text-xs text-destructive">
 						{error}
 					</div>
-				) : allRecords.length === 0 ? (
+				) : chartData.length === 0 ? (
 					<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
 						No history recorded yet
 					</div>
 				) : (
-					<>
-						{/* Legend */}
-						{allKeys.length > 1 && (
-							<div className="flex flex-wrap gap-x-3 gap-y-1 mb-3">
-								{allKeys.map((key, i) => (
-									<div key={key} className="flex items-center gap-1">
-										<span
-											className="inline-block w-5 h-1 rounded"
-											style={{ backgroundColor: LINE_COLORS[i % LINE_COLORS.length] }}
-										/>
-										<span className="text-sm text-muted-foreground">{key}</span>
-									</div>
-								))}
-							</div>
-						)}
-
-						{/* Chart - fills available space */}
-						<svg
-							className="flex-1 overflow-visible min-h-0"
-							viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-							preserveAspectRatio="xMidYMid meet"
+					<ResponsiveContainer width="100%" height="100%">
+						<LineChart
+							data={chartData}
+							margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
 						>
-							{/* Y grid lines: 0, 25, 50, 75, 100 */}
-							{[0, 25, 50, 75, 100].map(pct => {
-								const y = PAD_TOP + H - (pct / 100) * H;
-								return (
-									<g key={pct}>
-										<line
-											x1={PAD_LEFT} y1={y} x2={PAD_LEFT + W} y2={y}
-											stroke="currentColor"
-											strokeOpacity={pct === 0 || pct === 100 ? 0.25 : 0.1}
-											strokeWidth={1}
-										/>
-										<text
-											x={PAD_LEFT - 4}
-											y={y + 4.5}
-											textAnchor="end"
-											fontSize={10}
-											fill="currentColor"
-											opacity={0.5}
-										>
-											{pct}
-										</text>
-									</g>
-								);
-							})}
-
-							{/* X axis */}
-							<line
-								x1={PAD_LEFT} y1={PAD_TOP + H} x2={PAD_LEFT + W} y2={PAD_TOP + H}
-								stroke="currentColor" strokeOpacity={0.2} strokeWidth={1}
+							<CartesianGrid
+								strokeDasharray="3 3"
+								stroke="currentColor"
+								strokeOpacity={0.08}
 							/>
+							<XAxis
+								dataKey="timestamp"
+								type="number"
+								domain={xDomain}
+								scale="time"
+								tickFormatter={(ts: number) => formatXTick(ts, effectiveRange)}
+								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.75 }}
+								tickLine={false}
+								axisLine={false}
+								minTickGap={40}
+							/>
+							<YAxis
+								domain={[0, 100]}
+								ticks={[0, 25, 50, 75, 100]}
+								tickFormatter={(v: number) => `${v}%`}
+								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.75 }}
+								tickLine={false}
+								axisLine={false}
+								width={42}
+							/>
+							<Tooltip
+								content={({ active, payload, label }) => {
+									if (!active && (!payload || payload.length === 0)) return null;
+									// Find the row matching the current label to show all parts
+									const rowIdx = chartData.findIndex((r) => r.timestamp === label);
+									const row = rowIdx >= 0 ? chartData[rowIdx] : undefined;
 
-							{/* X axis labels */}
-							{xLabels.map((l, i) => (
-								<g key={i}>
-									<text
-										x={l.x}
-										y={CHART_H - 8}
-										textAnchor="middle"
-										fontSize={9}
-										fill="currentColor"
-										opacity={0.45}
-									>
-										{l.label}
-									</text>
-									<text
-										x={l.x}
-										y={CHART_H}
-										textAnchor="middle"
-										fontSize={8}
-										fill="currentColor"
-										opacity={0.35}
-									>
-										{l.date}
-									</text>
-								</g>
+									// For each key, find the last known value if the current row doesn't have it
+									const resolveValue = (key: string): number | undefined => {
+										if (row?.[key] != null) return row[key] as number;
+										// Walk backwards through chartData to find the most recent value
+										for (let j = (rowIdx >= 0 ? rowIdx : chartData.length) - 1; j >= 0; j--) {
+											if (chartData[j][key] != null) return chartData[j][key] as number;
+										}
+										return undefined;
+									};
+
+									return (
+										<div
+											style={{
+												backgroundColor: "var(--popover)",
+												color: "var(--popover-foreground)",
+												border: "1px solid var(--border)",
+												borderRadius: "0.5rem",
+												padding: "8px 12px",
+												fontSize: "0.8rem",
+											}}
+										>
+											<div style={{ fontWeight: 600, marginBottom: 4 }}>
+												{formatTooltipLabel(label as number)}
+											</div>
+											{allKeys.map((key, i) => {
+												const val = resolveValue(key);
+												const isInterpolated = row?.[key] == null && val != null;
+												return (
+													<div key={key} style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+														<span
+															style={{
+																display: "inline-block",
+																width: 10,
+																height: 10,
+																borderRadius: "50%",
+																backgroundColor: LINE_COLORS[i % LINE_COLORS.length],
+															}}
+														/>
+														<span style={{ opacity: isInterpolated ? 0.5 : 1 }}>
+															{key}: {val != null ? `${val}%` : "—"}
+														</span>
+													</div>
+												);
+											})}
+										</div>
+									);
+								}}
+							/>
+							<Legend
+								iconType="plainline"
+								wrapperStyle={{ fontSize: "0.8rem", paddingTop: 4 }}
+								formatter={(value) => <span style={{ color: "var(--foreground)" }}>{value}</span>}
+							/>
+							{allKeys.map((key, i) => (
+								<Line
+									key={key}
+									type="monotone"
+									dataKey={key}
+									name={key}
+									stroke={LINE_COLORS[i % LINE_COLORS.length]}
+									strokeWidth={2}
+									dot={{ r: 3, fill: LINE_COLORS[i % LINE_COLORS.length], strokeWidth: 0 }}
+									activeDot={{ r: 5, stroke: "white", strokeWidth: 2, fill: LINE_COLORS[i % LINE_COLORS.length] }}
+									connectNulls
+									isAnimationActive={false}
+								/>
 							))}
-
-							{/* Lines per description */}
-							{allKeys.map((key, colorIdx) => {
-								const records = (grouped.get(key) ?? []).slice(-MAX_POINTS);
-								const points = records.map(r => ({
-									x: PAD_LEFT + ((new Date(r.timestamp).getTime() - minTime) / timeRange) * W,
-									y: PAD_TOP + H - (Math.max(0, Math.min(100, r.battery_level)) / 100) * H,
-								}));
-								const color = LINE_COLORS[colorIdx % LINE_COLORS.length];
-								const pathD = toPolyline(points);
-
-								return (
-									<g key={key}>
-										{/* Gradient fill under line */}
-										<defs>
-											<linearGradient id={`grad-${device.id}-${colorIdx}`} x1="0" y1="0" x2="0" y2="1">
-												<stop offset="0%" stopColor={color} stopOpacity="0.25" />
-												<stop offset="100%" stopColor={color} stopOpacity="0" />
-											</linearGradient>
-										</defs>
-										{points.length > 1 && (
-											<path
-												d={`${pathD} L ${points[points.length - 1].x.toFixed(1)} ${(PAD_TOP + H).toFixed(1)} L ${points[0].x.toFixed(1)} ${(PAD_TOP + H).toFixed(1)} Z`}
-												fill={`url(#grad-${device.id}-${colorIdx})`}
-											/>
-										)}
-										<path
-											d={pathD}
-											fill="none"
-											stroke={color}
-											strokeWidth={2}
-											strokeLinejoin="round"
-											strokeLinecap="round"
-										/>
-										{/* Latest dot */}
-										{points.length > 0 && (
-											<circle
-												cx={points[points.length - 1].x}
-												cy={points[points.length - 1].y}
-												r={4}
-												fill={color}
-											/>
-										)}
-									</g>
-								);
-							})}
-						</svg>
-					</>
+						</LineChart>
+					</ResponsiveContainer>
 				)}
 			</div>
 		</div>
