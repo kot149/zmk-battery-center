@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { logger } from "@/utils/log";
 import TopRightButtons from "@/components/TopRightButtons";
 import { listen } from "@tauri-apps/api/event";
+import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
 
 // ── Types ──────────────────────────────────────────────
 interface BatteryHistoryChartProps {
@@ -30,7 +31,7 @@ type ChartRow = { timestamp: number } & Record<string, number | undefined>;
 
 // ── Constants ──────────────────────────────────────────
 
-/** Range presets – value is duration in ms */
+/** Range presets – value is duration in ms. ms=-1 means custom range. */
 const RANGE_PRESETS = [
 	{ label: "1 day", ms: 1 * 24 * 60 * 60 * 1000 },
 	{ label: "3 days", ms: 3 * 24 * 60 * 60 * 1000 },
@@ -38,7 +39,10 @@ const RANGE_PRESETS = [
 	{ label: "2 weeks", ms: 14 * 24 * 60 * 60 * 1000 },
 	{ label: "1 month", ms: 30 * 24 * 60 * 60 * 1000 },
 	{ label: "All", ms: 0 },
+	{ label: "Custom", ms: -1 },
 ] as const;
+
+const CUSTOM_RANGE_IDX = RANGE_PRESETS.length - 1;
 
 // ── Smoothing (simple moving average) ──────────────────
 function smooth(records: BatteryHistoryRecord[], windowSize = 3): BatteryHistoryRecord[] {
@@ -151,7 +155,9 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [rangeIdx, setRangeIdx] = useState(RANGE_PRESETS.length - 1); // default: "All"
+	const [rangeIdx, setRangeIdx] = useState(RANGE_PRESETS.length - 2); // default: "All"
+	const [customRange, setCustomRange] = useState<DateRange | null>(null);
+	const [showDatePicker, setShowDatePicker] = useState(false);
 
 	// ── Data loading ───────────────────────────────────
 	const load = useCallback(async () => {
@@ -200,7 +206,20 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	/** Build a single sorted array of ChartRow for Recharts */
 	const chartData = useMemo<ChartRow[]>(() => {
 		const now = Date.now();
-		const cutoff = rangeMs > 0 ? now - rangeMs : 0;
+		let cutoff: number;
+		let ceiling: number | undefined;
+
+		if (rangeMs === -1 && customRange) {
+			// Custom range
+			cutoff = customRange.start.getTime();
+			ceiling = customRange.end.getTime();
+		} else if (rangeMs > 0) {
+			cutoff = now - rangeMs;
+			ceiling = undefined;
+		} else {
+			cutoff = 0;
+			ceiling = undefined;
+		}
 
 		// Collect every unique timestamp across all parts
 		const tsMap = new Map<number, ChartRow>();
@@ -211,6 +230,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			for (const r of smoothed) {
 				const ts = new Date(r.timestamp).getTime();
 				if (ts < cutoff) continue;
+				if (ceiling != null && ts > ceiling) continue;
 				if (!tsMap.has(ts)) {
 					tsMap.set(ts, { timestamp: ts });
 				}
@@ -219,15 +239,18 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		}
 
 		return [...tsMap.values()].sort((a, b) => a.timestamp - b.timestamp);
-	}, [grouped, allKeys, rangeMs]);
+	}, [grouped, allKeys, rangeMs, customRange]);
 
 	const now = useMemo(() => Date.now(), [chartData]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const effectiveRange = useMemo<number>(() => {
+		if (rangeMs === -1 && customRange) {
+			return customRange.end.getTime() - customRange.start.getTime();
+		}
 		if (rangeMs > 0) return rangeMs;
 		if (chartData.length < 2) return MS_IN_DAY;
 		return chartData[chartData.length - 1].timestamp - chartData[0].timestamp;
-	}, [chartData, rangeMs]);
+	}, [chartData, rangeMs, customRange]);
 
 	/** X axis domain and explicit ticks */
 	const { xDomain, xTicks } = useMemo(() => {
@@ -235,7 +258,12 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		let max: number;
 		let domain: [number, number] | [string, string];
 
-		if (rangeMs > 0) {
+		if (rangeMs === -1 && customRange) {
+			// Custom range
+			min = customRange.start.getTime();
+			max = customRange.end.getTime();
+			domain = [min, max];
+		} else if (rangeMs > 0) {
 			min = now - rangeMs;
 			max = now;
 			domain = [min, max];
@@ -257,7 +285,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		
 		const ticks = getNiceTicks(min, max, 12);
 		return { xDomain: domain, xTicks: ticks };
-	}, [rangeMs, now, chartData]);
+	}, [rangeMs, now, chartData, customRange]);
 
 	// ── Render ─────────────────────────────────────────
 	return (
@@ -268,7 +296,13 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					<span className="text-sm text-muted-foreground">Range:</span>
 					<Select
 						value={String(rangeIdx)}
-						onValueChange={(v) => setRangeIdx(Number(v))}
+						onValueChange={(v) => {
+							const idx = Number(v);
+							setRangeIdx(idx);
+							if (idx === CUSTOM_RANGE_IDX) {
+								setShowDatePicker(true);
+							}
+						}}
 					>
 						<SelectTrigger size="sm">
 							<SelectValue />
@@ -281,6 +315,17 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 							))}
 						</SelectContent>
 					</Select>
+					{rangeIdx === CUSTOM_RANGE_IDX && customRange && (
+						<button
+							type="button"
+							onClick={() => setShowDatePicker(true)}
+							className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+						>
+							{customRange.start.toLocaleDateString([], { month: "short", day: "numeric" })}
+							{" - "}
+							{customRange.end.toLocaleDateString([], { month: "short", day: "numeric" })}
+						</button>
+					)}
 				</div>
 				<TopRightButtons
 					buttons={[
@@ -470,6 +515,24 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					</ResponsiveContainer>
 				)}
 			</div>
+
+			{/* Custom date range picker modal */}
+			{showDatePicker && (
+				<DateRangePicker
+					initialRange={customRange ?? undefined}
+					onApply={(range) => {
+						setCustomRange(range);
+						setShowDatePicker(false);
+					}}
+					onCancel={() => {
+						setShowDatePicker(false);
+						// Revert to previous preset if no custom range was set
+						if (!customRange) {
+							setRangeIdx(RANGE_PRESETS.length - 2); // "All"
+						}
+					}}
+				/>
+			)}
 		</div>
 	);
 };
