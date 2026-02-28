@@ -43,6 +43,7 @@ enum State {
 	settings = 'settings',
 	fetchingDevices = 'fetchingDevices',
 	fetchingBatteryInfo = 'fetchingBatteryInfo',
+	chart = 'chart',
 }
 
 function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): BatteryInfo[] {
@@ -361,7 +362,7 @@ function App() {
 	// Handle window size change
 	useEffect(() => {
 		resizeWindowToContent().then(() => {
-			if(isConfigLoaded && !config.manualWindowPositioning){
+			if (isConfigLoaded && !config.manualWindowPositioning) {
 				moveWindowToTrayCenter();
 				setTimeout(() => {
 					moveWindowToTrayCenter();
@@ -565,12 +566,17 @@ function App() {
 		setState(State.settings);
 	}, []);
 
+	const handleChartOpenChange = useCallback((isOpen: boolean) => {
+		setState(isOpen ? State.chart : State.main);
+	}, []);
+
 	return (
-		<div id="app" className={`relative w-90 flex flex-col bg-background text-foreground rounded-lg p-2 ${
-			state === State.main && registeredDevices.length > 0 ? '' :
-			state === State.fetchingBatteryInfo ? 'min-h-58' :
-			state === State.settings ? 'min-h-85' :
-			'min-h-90'
+		<div id="app" className={`relative flex flex-col bg-background text-foreground rounded-lg p-2 ${
+			state === State.main && registeredDevices.length > 0 ? 'w-90' :
+			state === State.chart ? 'w-100 h-90' :
+			state === State.fetchingBatteryInfo ? 'w-90 min-h-58' :
+			state === State.settings ? 'w-90 min-h-85' :
+			'w-90 min-h-90'
 		}`}>
 			{state === State.settings ? (
 				<Settings
@@ -645,6 +651,7 @@ function App() {
 								registeredDevices={registeredDevices}
 								setRegisteredDevices={setRegisteredDevices}
 								onRemoveDevice={handleRemoveDevice}
+								onChartOpenChange={handleChartOpenChange}
 							/>
 						</main>
 					) : (

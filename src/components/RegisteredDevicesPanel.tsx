@@ -9,12 +9,14 @@ interface DeviceListProps {
 	registeredDevices: RegisteredDevice[];
 	setRegisteredDevices: React.Dispatch<React.SetStateAction<RegisteredDevice[]>>;
 	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
+	onChartOpenChange?: (isOpen: boolean) => void;
 }
 
 const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	registeredDevices,
 	setRegisteredDevices,
 	onRemoveDevice,
+	onChartOpenChange,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
 	const [chartOpen, setChartOpen] = useState<string | null>(null);
@@ -23,7 +25,11 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	const handleMenuClose = () => setMenuOpen(null);
 
 	const handleToggleChart = (id: string) => {
-		setChartOpen(prev => (prev === id ? null : id));
+		setChartOpen(prev => {
+			const next = prev === id ? null : id;
+			onChartOpenChange?.(next !== null);
+			return next;
+		});
 		setMenuOpen(null);
 	};
 
@@ -144,7 +150,10 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 			return chartDevice ? (
 				<BatteryHistoryChart
 					device={chartDevice}
-					onClose={() => setChartOpen(null)}
+					onClose={() => {
+						setChartOpen(null);
+						onChartOpenChange?.(false);
+					}}
 				/>
 			) : null;
 		})()}
