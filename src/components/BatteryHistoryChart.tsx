@@ -309,23 +309,22 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						</SelectTrigger>
 						<SelectContent>
 							{RANGE_PRESETS.map((preset, idx) => (
-								<SelectItem key={preset.label} value={String(idx)}>
+								<SelectItem
+									key={preset.label}
+									value={String(idx)}
+									onPointerUp={() => {
+										// onValueChange won't fire when re-selecting the same value,
+										// so handle re-selecting Custom here
+										if (idx === CUSTOM_RANGE_IDX && rangeIdx === CUSTOM_RANGE_IDX) {
+											setShowDatePicker(true);
+										}
+									}}
+								>
 									{preset.label}
 								</SelectItem>
 							))}
 						</SelectContent>
 					</Select>
-					{rangeIdx === CUSTOM_RANGE_IDX && customRange && (
-						<button
-							type="button"
-							onClick={() => setShowDatePicker(true)}
-							className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
-						>
-							{customRange.start.toLocaleDateString([], { month: "short", day: "numeric" })}
-							{" - "}
-							{customRange.end.toLocaleDateString([], { month: "short", day: "numeric" })}
-						</button>
-					)}
 				</div>
 				<TopRightButtons
 					buttons={[
@@ -362,8 +361,8 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						{error}
 					</div>
 				) : chartData.length === 0 ? (
-					<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
-						No history recorded yet
+					<div className="flex-1 flex items-center justify-center text-md text-muted-foreground">
+						{grouped.size === 0 ? "No history recorded yet" : "No history in this range"}
 					</div>
 				) : (
 					<ResponsiveContainer width="100%" height="100%">
