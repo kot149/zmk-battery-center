@@ -577,7 +577,7 @@ function App() {
 	return (
 		<div id="app" className={`relative flex flex-col bg-background text-foreground rounded-lg p-2 ${
 			state === State.main && registeredDevices.length > 0 ? 'w-90' :
-			state === State.chart ? 'w-100 h-90' :
+			state === State.chart ? 'w-110 h-90' :
 			state === State.fetchingBatteryInfo ? 'w-90 min-h-58' :
 			state === State.settings ? 'w-90 min-h-85' :
 			'w-90 min-h-90'
