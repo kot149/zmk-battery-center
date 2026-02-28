@@ -14,6 +14,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
+import TopRightButtons from "./components/TopRightButtons";
 import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
 import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
 import Modal from "./components/Modal";
@@ -584,35 +585,26 @@ function App() {
 						)}
 
 						{/* Top-right buttons */}
-						<div className="flex flex-row ml-auto justify-end">
-							{/* + button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 !px-0 !py-0 hover:bg-secondary relative z-10"
-								onClick={handleOpenModal}
-								aria-label="Add Device"
-							>
-								<PlusIcon className="size-5" />
-							</Button>
-
-							{/* Reload button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent flex items-center justify-center text-2xl !p-0 text-foreground hover:bg-secondary disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
-								onClick={handleReload}
-								aria-label="Reload"
-								disabled={registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode}
-							>
-								<ArrowPathIcon className="size-5" />
-							</Button>
-
-							{/* Settings button */}
-							<Button
-								className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl !text-foreground !p-0 relative z-10"
-								onClick={handleOpenSettings}
-								aria-label="Settings"
-							>
-								<Cog8ToothIcon className="size-5" />
-							</Button>
-						</div>
+						<TopRightButtons
+							buttons={[
+								{
+									icon: <PlusIcon className="size-5" />,
+									onClick: handleOpenModal,
+									ariaLabel: "Add Device",
+								},
+								{
+									icon: <ArrowPathIcon className="size-5" />,
+									onClick: handleReload,
+									ariaLabel: "Reload",
+									disabled: registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode,
+								},
+								{
+									icon: <Cog8ToothIcon className="size-5" />,
+									onClick: handleOpenSettings,
+									ariaLabel: "Settings",
+								}
+							]}
+						/>
 					</div>
 
 					{/* Modal (device selection) */}
