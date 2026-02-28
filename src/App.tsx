@@ -285,12 +285,14 @@ function App() {
 				// Record battery history
 				for (const info of infoArray) {
 					if (info.battery_level !== null) {
-						void appendBatteryHistory(
+						appendBatteryHistory(
 							device.name,
 							device.id,
 							info.user_description ?? 'Central',
 							info.battery_level,
-						);
+						).then(() => {
+							void emit('battery-history-updated', { deviceId: device.id });
+						});
 					}
 				}
 
@@ -381,12 +383,14 @@ function App() {
 			if (payload.battery_info.battery_level !== null) {
 				const device = registeredDevicesRef.current.find(d => d.id === payload.id);
 				if (device) {
-					void appendBatteryHistory(
+					appendBatteryHistory(
 						device.name,
 						device.id,
 						payload.battery_info.user_description ?? 'Central',
 						payload.battery_info.battery_level,
-					);
+					).then(() => {
+						void emit('battery-history-updated', { deviceId: payload.id });
+					});
 				}
 			}
 			setRegisteredDevices(prev => prev.map(device => {

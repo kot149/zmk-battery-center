@@ -11,10 +11,11 @@ import {
 } from "recharts";
 import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
 import type { RegisteredDevice } from "@/App";
-import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon } from "@heroicons/react/24/outline";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logger } from "@/utils/log";
 import TopRightButtons from "@/components/TopRightButtons";
+import { listen } from "@tauri-apps/api/event";
 
 // ── Types ──────────────────────────────────────────────
 interface BatteryHistoryChartProps {
@@ -179,6 +180,18 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		load();
 	}, [load]);
 
+	// Auto-reload when new battery history is recorded for this device
+	useEffect(() => {
+		const unlistenPromise = listen<{ deviceId: string }>("battery-history-updated", (event) => {
+			if (event.payload.deviceId === device.id) {
+				load();
+			}
+		});
+		return () => {
+			unlistenPromise.then(unlisten => unlisten());
+		};
+	}, [device.id, load]);
+
 	// ── Derived data ───────────────────────────────────
 	const allKeys = useMemo(() => [...grouped.keys()], [grouped]);
 
@@ -249,38 +262,9 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	// ── Render ─────────────────────────────────────────
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
-			{/* Top-right absolute buttons */}
-			<div className="absolute top-2 right-2 z-50">
-				<TopRightButtons
-					buttons={[
-						{
-							icon: <ArrowPathIcon className="size-5" />,
-							onClick: load,
-							ariaLabel: "Reload",
-						},
-						{
-							icon: <XMarkIcon className="size-5" />,
-							onClick: onClose,
-							ariaLabel: "Close",
-						}
-					]}
-				/>
-			</div>
-
-			{/* Header and Range selector – each independently positioned via pt/pb */}
-			<div className="relative px-5">
-				{/* Title */}
-				<div className="flex flex-col pt-4 pb-0">
-					<span className="text-2xl font-semibold text-foreground">
-						{device.name}
-					</span>
-					<span className="text-sm text-muted-foreground tracking-wide">
-						Battery History
-					</span>
-				</div>
-
-				{/* Range selector */}
-				<div className="absolute top-12 right-5 flex items-center gap-2 pb-0">
+			{/* Top-right: range selector + close button */}
+			<div className="absolute top-2 right-2 z-50 flex items-center gap-1">
+				<div className="flex items-center gap-2 mr-1">
 					<span className="text-sm text-muted-foreground">Range:</span>
 					<Select
 						value={String(rangeIdx)}
@@ -297,6 +281,27 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 							))}
 						</SelectContent>
 					</Select>
+				</div>
+				<TopRightButtons
+					buttons={[
+						{
+							icon: <XMarkIcon className="size-5" />,
+							onClick: onClose,
+							ariaLabel: "Close",
+						}
+					]}
+				/>
+			</div>
+
+			{/* Header */}
+			<div className="px-5">
+				<div className="flex flex-col pt-4 pb-0">
+					<span className="text-2xl font-semibold text-foreground">
+						{device.name}
+					</span>
+					<span className="text-sm text-muted-foreground tracking-wide">
+						Battery History
+					</span>
 				</div>
 			</div>
 
