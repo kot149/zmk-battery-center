@@ -295,8 +295,8 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 
 			{/* Header */}
 			<div className="px-5">
-				<div className="flex flex-col pt-4 pb-0">
-					<span className="text-2xl font-semibold text-foreground">
+				<div className="flex flex-col pt-4 pb-0 min-w-0 mr-40">
+					<span className="text-2xl font-semibold text-foreground truncate" title={device.name}>
 						{device.name}
 					</span>
 					<span className="text-sm text-muted-foreground tracking-wide">
