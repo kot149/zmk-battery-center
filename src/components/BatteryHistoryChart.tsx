@@ -14,6 +14,7 @@ import type { RegisteredDevice } from "@/App";
 import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logger } from "@/utils/log";
+import TopRightButtons from "@/components/TopRightButtons";
 
 // ── Types ──────────────────────────────────────────────
 interface BatteryHistoryChartProps {
@@ -169,8 +170,26 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	// ── Render ─────────────────────────────────────────
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
+			{/* Top-right absolute buttons */}
+			<div className="absolute top-2 right-2 z-50">
+				<TopRightButtons
+					buttons={[
+						{
+							icon: <ArrowPathIcon className="size-5" />,
+							onClick: load,
+							ariaLabel: "Reload",
+						},
+						{
+							icon: <XMarkIcon className="size-5" />,
+							onClick: onClose,
+							ariaLabel: "Close",
+						}
+					]}
+				/>
+			</div>
+
 			{/* Header */}
-			<div className="flex items-center justify-between px-5 pt-4 pb-0">
+			<div className="flex items-center px-5 pt-4 pb-0">
 				<div className="flex flex-col">
 					<span className="text-2xl font-semibold text-foreground">
 						{device.name}
@@ -178,22 +197,6 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					<span className="text-sm text-muted-foreground tracking-wide">
 						Battery History
 					</span>
-				</div>
-				<div className="flex">
-					<button
-						onClick={load}
-						className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-						title="Reload"
-					>
-						<ArrowPathIcon className="size-5" />
-					</button>
-					<button
-						onClick={onClose}
-						className="w-10 h-10 rounded-lg flex items-center justify-center hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-						title="Close"
-					>
-						<XMarkIcon className="size-5" />
-					</button>
 				</div>
 			</div>
 
