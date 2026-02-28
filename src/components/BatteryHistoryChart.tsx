@@ -28,13 +28,6 @@ type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
 type ChartRow = { timestamp: number } & Record<string, number | undefined>;
 
 // ── Constants ──────────────────────────────────────────
-const LINE_COLORS = [
-	"oklch(62.3% 0.214 259.815)",   // primary blue
-	"oklch(0.696 0.17 162.48)",     // green
-	"oklch(0.769 0.188 70.08)",     // yellow
-	"oklch(0.627 0.265 303.9)",     // purple
-	"oklch(0.645 0.246 16.439)",    // red
-];
 
 /** Range presets – value is duration in ms */
 const RANGE_PRESETS = [
@@ -274,9 +267,10 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 				/>
 			</div>
 
-			{/* Header and Range selector */}
-			<div className="flex items-end justify-between px-5 pt-8 pb-0">
-				<div className="flex flex-col">
+			{/* Header and Range selector – each independently positioned via pt/pb */}
+			<div className="relative px-5">
+				{/* Title */}
+				<div className="flex flex-col pt-4 pb-0">
 					<span className="text-2xl font-semibold text-foreground">
 						{device.name}
 					</span>
@@ -286,7 +280,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 				</div>
 
 				{/* Range selector */}
-				<div className="flex items-center gap-2">
+				<div className="absolute top-12 right-5 flex items-center gap-2 pb-0">
 					<span className="text-sm text-muted-foreground">Range:</span>
 					<Select
 						value={String(rangeIdx)}
@@ -407,7 +401,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 																width: 10,
 																height: 10,
 																borderRadius: "50%",
-																backgroundColor: LINE_COLORS[i % LINE_COLORS.length],
+																backgroundColor: `var(--chart-${(i % 5) + 1})`,
 															}}
 														/>
 														<span style={{ opacity: isInterpolated ? 0.5 : 1 }}>
@@ -459,10 +453,10 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 									type="monotone"
 									dataKey={key}
 									name={key}
-									stroke={LINE_COLORS[i % LINE_COLORS.length]}
+									stroke={`var(--chart-${(i % 5) + 1})`}
 									strokeWidth={2}
-									dot={{ r: 3, fill: LINE_COLORS[i % LINE_COLORS.length], strokeWidth: 0 }}
-									activeDot={{ r: 5, stroke: "var(--foreground)", strokeWidth: 2, fill: LINE_COLORS[i % LINE_COLORS.length] }}
+									dot={{ r: 3, fill: `var(--chart-${(i % 5) + 1})`, strokeWidth: 0 }}
+									activeDot={{ r: 5, stroke: "var(--foreground)", strokeWidth: 2, fill: `var(--chart-${(i % 5) + 1})` }}
 									connectNulls
 									isAnimationActive={false}
 								/>
