@@ -5,9 +5,9 @@ import {
 	Line,
 	XAxis,
 	YAxis,
-	CartesianGrid,
 	Tooltip,
 	Legend,
+	ReferenceLine,
 } from "recharts";
 import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
 import type { RegisteredDevice } from "@/App";
@@ -90,6 +90,68 @@ function formatTooltipLabel(ts: number): string {
 	});
 }
 
+const NICE_STEPS = [
+	5 * 60 * 1000,
+	10 * 60 * 1000,
+	15 * 60 * 1000,
+	30 * 60 * 1000,
+	1 * 60 * 60 * 1000,
+	2 * 60 * 60 * 1000,
+	3 * 60 * 60 * 1000,
+	6 * 60 * 60 * 1000,
+	12 * 60 * 60 * 1000,
+	1 * 24 * 60 * 60 * 1000,
+	2 * 24 * 60 * 60 * 1000,
+	3 * 24 * 60 * 60 * 1000,
+	7 * 24 * 60 * 60 * 1000,
+	14 * 24 * 60 * 60 * 1000,
+	30 * 24 * 60 * 60 * 1000,
+];
+
+function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
+	if (min >= max) return [min];
+	const duration = max - min;
+	const approxStep = duration / maxTicks;
+	
+	let step = NICE_STEPS[NICE_STEPS.length - 1];
+	for (const s of NICE_STEPS) {
+		if (s >= approxStep) {
+			step = s;
+			break;
+		}
+	}
+
+	const ticks = [];
+	const d = new Date(min);
+	
+	if (step >= 24 * 60 * 60 * 1000) {
+		d.setHours(0, 0, 0, 0);
+	} else if (step >= 60 * 60 * 1000) {
+		d.setMinutes(0, 0, 0);
+		const hoursStep = step / (60 * 60 * 1000);
+		if (hoursStep > 1) {
+			d.setHours(Math.floor(d.getHours() / hoursStep) * hoursStep);
+		}
+	} else if (step >= 60 * 1000) {
+		d.setSeconds(0, 0);
+		const minutesStep = step / (60 * 1000);
+		if (minutesStep > 1) {
+			d.setMinutes(Math.floor(d.getMinutes() / minutesStep) * minutesStep);
+		}
+	} else {
+		d.setMilliseconds(0);
+	}
+
+	let current = d.getTime();
+	while (current < min) current += step;
+	while (current <= max) {
+		ticks.push(current);
+		current += step;
+	}
+	
+	return ticks;
+}
+
 // ── Component ──────────────────────────────────────────
 const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClose }) => {
 	const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
@@ -161,11 +223,33 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		return chartData[chartData.length - 1].timestamp - chartData[0].timestamp;
 	}, [chartData, rangeMs]);
 
-	/** X axis domain: fixed range for presets, auto for "All" */
-	const xDomain = useMemo<[number, number] | [string, string]>(() => {
-		if (rangeMs > 0) return [now - rangeMs, now];
-		return ["dataMin", "dataMax"] as [string, string];
-	}, [rangeMs, now]);
+	/** X axis domain and explicit ticks */
+	const { xDomain, xTicks } = useMemo(() => {
+		let min: number;
+		let max: number;
+		let domain: [number, number] | [string, string];
+
+		if (rangeMs > 0) {
+			min = now - rangeMs;
+			max = now;
+			domain = [min, max];
+		} else {
+			domain = ["dataMin", "dataMax"];
+			if (chartData.length >= 2) {
+				min = chartData[0].timestamp;
+				max = chartData[chartData.length - 1].timestamp;
+			} else if (chartData.length === 1) {
+				min = chartData[0].timestamp - MS_IN_DAY;
+				max = chartData[0].timestamp + MS_IN_DAY;
+			} else {
+				min = now - MS_IN_DAY;
+				max = now;
+			}
+		}
+		
+		const ticks = getNiceTicks(min, max, 12);
+		return { xDomain: domain, xTicks: ticks };
+	}, [rangeMs, now, chartData]);
 
 	// ── Render ─────────────────────────────────────────
 	return (
@@ -240,29 +324,42 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 							data={chartData}
 							margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
 						>
-							<CartesianGrid
-								strokeDasharray="3 3"
-								stroke="currentColor"
-								strokeOpacity={0.08}
-							/>
+							{/* Internal grid lines (excluding top/right boundaries) */}
+							{[25, 50, 75].map((y) => (
+								<ReferenceLine
+									key={y}
+									y={y}
+									stroke="currentColor"
+									strokeOpacity={0.15}
+								/>
+							))}
+							{xTicks.map((tick) => (
+								<ReferenceLine
+									key={tick}
+									x={tick}
+									stroke="currentColor"
+									strokeOpacity={0.15}
+								/>
+							))}
 							<XAxis
 								dataKey="timestamp"
 								type="number"
 								domain={xDomain}
 								scale="time"
+								ticks={xTicks}
 								tickFormatter={(ts: number) => formatXTick(ts, effectiveRange)}
-								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.75 }}
+								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.9 }}
 								tickLine={false}
-								axisLine={false}
-								minTickGap={40}
+								axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
+								minTickGap={20}
 							/>
 							<YAxis
 								domain={[0, 100]}
 								ticks={[0, 25, 50, 75, 100]}
 								tickFormatter={(v: number) => `${v}%`}
-								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.75 }}
+								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.9 }}
 								tickLine={false}
-								axisLine={false}
+								axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
 								width={42}
 							/>
 							<Tooltip
@@ -334,7 +431,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 									stroke={LINE_COLORS[i % LINE_COLORS.length]}
 									strokeWidth={2}
 									dot={{ r: 3, fill: LINE_COLORS[i % LINE_COLORS.length], strokeWidth: 0 }}
-									activeDot={{ r: 5, stroke: "white", strokeWidth: 2, fill: LINE_COLORS[i % LINE_COLORS.length] }}
+									activeDot={{ r: 5, stroke: "var(--foreground)", strokeWidth: 2, fill: LINE_COLORS[i % LINE_COLORS.length] }}
 									connectNulls
 									isAnimationActive={false}
 								/>
