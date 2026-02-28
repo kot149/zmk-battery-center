@@ -234,16 +234,18 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			max = now;
 			domain = [min, max];
 		} else {
-			domain = ["dataMin", "dataMax"];
 			if (chartData.length >= 2) {
 				min = chartData[0].timestamp;
 				max = chartData[chartData.length - 1].timestamp;
+				domain = ["dataMin", "dataMax"];
 			} else if (chartData.length === 1) {
-				min = chartData[0].timestamp - MS_IN_DAY;
-				max = chartData[0].timestamp + MS_IN_DAY;
+				min = chartData[0].timestamp - (MS_IN_DAY / 2);
+				max = chartData[0].timestamp + (MS_IN_DAY / 2);
+				domain = [min, max];
 			} else {
 				min = now - MS_IN_DAY;
 				max = now;
+				domain = [min, max];
 			}
 		}
 		
@@ -273,7 +275,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			</div>
 
 			{/* Header and Range selector */}
-			<div className="flex items-end justify-between px-5 pt-7 pb-0">
+			<div className="flex items-end justify-between px-5 pt-8 pb-0">
 				<div className="flex flex-col">
 					<span className="text-2xl font-semibold text-foreground">
 						{device.name}
@@ -419,9 +421,37 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 								}}
 							/>
 							<Legend
-								iconType="plainline"
-								wrapperStyle={{ fontSize: "0.8rem", paddingTop: 4 }}
-								formatter={(value) => <span style={{ color: "var(--foreground)" }}>{value}</span>}
+								content={(props) => {
+									const { payload } = props;
+									const count = payload?.length || 0;
+									let layoutClass = "flex justify-center";
+									let gridCols = undefined;
+									if (count === 2 || count === 4) {
+										layoutClass = "grid";
+										gridCols = "auto auto";
+									} else if (count >= 3) {
+										layoutClass = "grid";
+										gridCols = "auto auto auto";
+									}
+
+									return (
+										<div className={`${layoutClass} gap-x-6 gap-y-2 pt-1 w-fit mx-auto`} style={{ fontSize: "0.8rem", gridTemplateColumns: gridCols }}>
+											{payload?.map((entry, index) => (
+												<div key={`item-${index}`} className="flex items-center gap-1.5">
+													<div
+														style={{
+															minWidth: 20,
+															height: 4,
+															backgroundColor: entry.color,
+															borderRadius: 2,
+														}}
+													/>
+													<span className="truncate" style={{ color: "var(--foreground)" }}>{entry.value}</span>
+												</div>
+											))}
+										</div>
+									);
+								}}
 							/>
 							{allKeys.map((key, i) => (
 								<Line
