@@ -44,21 +44,28 @@ const RANGE_PRESETS = [
 
 const CUSTOM_RANGE_IDX = RANGE_PRESETS.length - 1;
 
-// ── Smoothing (simple moving average) ──────────────────
-function smooth(records: BatteryHistoryRecord[], windowSize = 3): BatteryHistoryRecord[] {
-	if (records.length <= windowSize) return records;
-	const result: BatteryHistoryRecord[] = [];
+// ── Smoothing (Gaussian-weighted moving average) ────────
+function smooth(records: BatteryHistoryRecord[], windowSize = 7): BatteryHistoryRecord[] {
+	if (records.length <= 1) return records;
 	const half = Math.floor(windowSize / 2);
+	// Pre-compute Gaussian weights
+	const sigma = half / 2.0;
+	const weights: number[] = [];
+	for (let k = -half; k <= half; k++) {
+		weights.push(Math.exp(-(k * k) / (2 * sigma * sigma)));
+	}
+	const result: BatteryHistoryRecord[] = [];
 	for (let i = 0; i < records.length; i++) {
-		const start = Math.max(0, i - half);
-		const end = Math.min(records.length - 1, i + half);
 		let sum = 0;
-		let count = 0;
-		for (let j = start; j <= end; j++) {
-			sum += records[j].battery_level;
-			count++;
+		let wsum = 0;
+		for (let k = -half; k <= half; k++) {
+			const j = i + k;
+			if (j < 0 || j >= records.length) continue;
+			const w = weights[k + half];
+			sum += records[j].battery_level * w;
+			wsum += w;
 		}
-		result.push({ ...records[i], battery_level: Math.round(sum / count) });
+		result.push({ ...records[i], battery_level: Math.round(sum / wsum) });
 	}
 	return result;
 }
@@ -226,7 +233,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 
 		for (const key of allKeys) {
 			const raw = grouped.get(key) ?? [];
-			const smoothed = smooth(raw, 5);
+			const smoothed = smooth(raw, 9);
 			for (const r of smoothed) {
 				const ts = new Date(r.timestamp).getTime();
 				if (ts < cutoff) continue;
@@ -499,12 +506,12 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 							{allKeys.map((key, i) => (
 								<Line
 									key={key}
-									type="monotone"
+									type="basis"
 									dataKey={key}
 									name={key}
 									stroke={`var(--chart-${(i % 5) + 1})`}
-									strokeWidth={2}
-									dot={{ r: 3, fill: `var(--chart-${(i % 5) + 1})`, strokeWidth: 0 }}
+									strokeWidth={2.5}
+									dot={false}
 									activeDot={{ r: 5, stroke: "var(--foreground)", strokeWidth: 2, fill: `var(--chart-${(i % 5) + 1})` }}
 									connectNulls
 									isAnimationActive={false}
