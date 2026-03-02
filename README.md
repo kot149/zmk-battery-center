@@ -117,11 +117,7 @@ You can manually move the window to the correct position to address this issue.
    In development mode, config and device list are saved to `.dev-data/` at the project root. Use the `ZMK_BATTERY_CENTER_DATA_DIR` environment variable to switch directories (e.g. for tests):
 
    ```sh
-   # Use a different directory (Unix/macOS)
-   ZMK_BATTERY_CENTER_DATA_DIR=./.dev-data-test bun tauri dev
-
-   # Windows (PowerShell)
-   $env:ZMK_BATTERY_CENTER_DATA_DIR=".\.dev-data-test"; bun tauri dev
+   bunx cross-env ZMK_BATTERY_CENTER_DATA_DIR=./.dev-data-test bun tauri dev
    ```
 
 3. Build for production
