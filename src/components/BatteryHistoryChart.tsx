@@ -197,10 +197,14 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	const settingsPanelRef = useRef<HTMLDivElement>(null);
 	const settingsButtonRef = useRef<HTMLDivElement>(null);
 
+	// Lock clicks briefly after closing a Select to prevent the collapse click from reaching the panel
+	const isClickLocked = useRef(false);
+
 	// Close settings panel when clicking outside
 	useEffect(() => {
 		if (!showSettings) return;
 		const handler = (e: MouseEvent) => {
+			if (isClickLocked.current) return;
 			const target = e.target as Element;
 			// Ignore clicks inside Radix UI portals (Select dropdown, etc.)
 			if (target.closest?.("[data-radix-popper-content-wrapper]")) return;
@@ -208,9 +212,26 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			if (settingsButtonRef.current?.contains(target)) return;
 			setShowSettings(false);
 		};
-		document.addEventListener("mousedown", handler);
-		return () => document.removeEventListener("mousedown", handler);
+		// Use setTimeout to ensure the lock prevents immediate event bubbling
+		const id = setTimeout(() => {
+			document.addEventListener("mousedown", handler);
+		}, 0);
+		return () => {
+			clearTimeout(id);
+			document.removeEventListener("mousedown", handler);
+		};
 	}, [showSettings]);
+
+	const handleSelectOpenChange = useCallback((open: boolean) => {
+		if (open) {
+			isClickLocked.current = true;
+		} else {
+			// Keep locked for a tiny bit longer to absorb the dismiss click
+			setTimeout(() => {
+				isClickLocked.current = false;
+			}, 100);
+		}
+	}, []);
 
 	const setRangeMs = useCallback((ms: number) => {
 		setRangeMsState(ms);
@@ -400,6 +421,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						<span className="text-sm text-muted-foreground w-20 text-right">Range:</span>
 						<Select
 							value={String(rangeMs)}
+							onOpenChange={handleSelectOpenChange}
 							onValueChange={(v) => {
 								const ms = Number(v);
 								setRangeMs(ms);
@@ -435,6 +457,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						<span className="text-sm text-muted-foreground w-20 text-right">Smoothing:</span>
 						<Select
 							value={String(smoothingWindow)}
+							onOpenChange={handleSelectOpenChange}
 							onValueChange={(v) => setSmoothingWindow(Number(v))}
 						>
 							<SelectTrigger size="sm" className="min-w-20">
