@@ -157,6 +157,17 @@ function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
 	return ticks;
 }
 
+// ── Smoothing options ─────────────────────────────────
+const SMOOTHING_OPTIONS = [
+	{ label: "Off", value: 0 },
+	{ label: "3", value: 3 },
+	{ label: "5", value: 5 },
+	{ label: "7", value: 7 },
+	{ label: "10", value: 10 },
+	{ label: "15", value: 15 },
+	{ label: "21", value: 21 },
+] as const;
+
 // ── Component ──────────────────────────────────────────
 const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClose }) => {
 	const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
@@ -165,6 +176,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	const [rangeIdx, setRangeIdx] = useState(RANGE_PRESETS.length - 2); // default: "All"
 	const [customRange, setCustomRange] = useState<DateRange | null>(null);
 	const [showDatePicker, setShowDatePicker] = useState(false);
+	const [smoothingWindow, setSmoothingWindow] = useState(7); // default window size
 
 	// ── Data loading ───────────────────────────────────
 	const load = useCallback(async () => {
@@ -233,7 +245,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 
 		for (const key of allKeys) {
 			const raw = grouped.get(key) ?? [];
-			const smoothed = smooth(raw, 9);
+			const smoothed = smoothingWindow > 0 ? smooth(raw, smoothingWindow) : raw;
 			for (const r of smoothed) {
 				const ts = new Date(r.timestamp).getTime();
 				if (ts < cutoff) continue;
@@ -246,7 +258,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		}
 
 		return [...tsMap.values()].sort((a, b) => a.timestamp - b.timestamp);
-	}, [grouped, allKeys, rangeMs, customRange]);
+	}, [grouped, allKeys, rangeMs, customRange, smoothingWindow]);
 
 	const now = useMemo(() => Date.now(), [chartData]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -297,41 +309,63 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	// ── Render ─────────────────────────────────────────
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
-			{/* Top-right: range selector + close button */}
-			<div className="absolute top-2 right-2 z-50 flex items-center gap-1">
-				<div className="flex items-center gap-2 mr-1">
-					<span className="text-sm text-muted-foreground">Range:</span>
-					<Select
-						value={String(rangeIdx)}
-						onValueChange={(v) => {
-							const idx = Number(v);
-							setRangeIdx(idx);
-							if (idx === CUSTOM_RANGE_IDX) {
-								setShowDatePicker(true);
-							}
-						}}
-					>
-						<SelectTrigger size="sm">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{RANGE_PRESETS.map((preset, idx) => (
-								<SelectItem
-									key={preset.label}
-									value={String(idx)}
-									onPointerUp={() => {
-										// onValueChange won't fire when re-selecting the same value,
-										// so handle re-selecting Custom here
-										if (idx === CUSTOM_RANGE_IDX && rangeIdx === CUSTOM_RANGE_IDX) {
-											setShowDatePicker(true);
-										}
-									}}
-								>
-									{preset.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+			{/* Top-right: range selector + smoothing selector + close button */}
+			<div className="absolute top-2 right-2 z-50 flex items-start gap-1">
+				<div className="flex flex-col items-start gap-1 mr-1">
+					{/* Range row */}
+					<div className="flex items-center gap-2">
+						<span className="text-sm text-muted-foreground w-20 text-right">Range:</span>
+						<Select
+							value={String(rangeIdx)}
+							onValueChange={(v) => {
+								const idx = Number(v);
+								setRangeIdx(idx);
+								if (idx === CUSTOM_RANGE_IDX) {
+									setShowDatePicker(true);
+								}
+							}}
+						>
+							<SelectTrigger size="sm" className="min-w-20">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{RANGE_PRESETS.map((preset, idx) => (
+									<SelectItem
+										key={preset.label}
+										value={String(idx)}
+										onPointerUp={() => {
+											// onValueChange won't fire when re-selecting the same value,
+											// so handle re-selecting Custom here
+											if (idx === CUSTOM_RANGE_IDX && rangeIdx === CUSTOM_RANGE_IDX) {
+												setShowDatePicker(true);
+											}
+										}}
+									>
+										{preset.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
+					{/* Smoothing row */}
+					<div className="flex items-center gap-2">
+						<span className="text-sm text-muted-foreground w-20 text-right">Smoothing:</span>
+						<Select
+							value={String(smoothingWindow)}
+							onValueChange={(v) => setSmoothingWindow(Number(v))}
+						>
+							<SelectTrigger size="sm" className="min-w-20">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{SMOOTHING_OPTIONS.map((opt) => (
+									<SelectItem key={opt.label} value={String(opt.value)}>
+										{opt.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</div>
 				</div>
 				<TopRightButtons
 					buttons={[
@@ -372,7 +406,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						{grouped.size === 0 ? "No history recorded yet" : "No history in this range"}
 					</div>
 				) : (
-					<ResponsiveContainer width="100%" height="100%">
+					<ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
 						<LineChart
 							data={chartData}
 							margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
