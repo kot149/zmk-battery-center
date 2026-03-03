@@ -332,7 +332,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
 			{/* Top-right: range selector + smoothing selector + close button */}
 			<div className="absolute top-2 right-2 z-50 flex items-start gap-1">
-				<div className="flex flex-col items-start gap-1 mr-1">
+				<div className="flex flex-col items-start gap-1 mr-1 mt-2">
 					{/* Range row */}
 					<div className="flex items-center gap-2">
 						<span className="text-sm text-muted-foreground w-20 text-right">Range:</span>
