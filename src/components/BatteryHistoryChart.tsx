@@ -45,24 +45,35 @@ const RANGE_PRESETS = [
 
 const CUSTOM_RANGE_MS = -1;
 
-// ── Smoothing (Gaussian-weighted moving average) ────────
-function smooth(records: BatteryHistoryRecord[], windowSize = 7): BatteryHistoryRecord[] {
+// ── Smoothing (time-based Gaussian-weighted moving average) ────────
+/**
+ * windowSizeMs: half-window in milliseconds. Points within this time radius
+ * are included; Gaussian sigma = windowSizeMs / 2.
+ */
+function smooth(records: BatteryHistoryRecord[], windowSizeMs: number): BatteryHistoryRecord[] {
 	if (records.length <= 1) return records;
-	const half = Math.floor(windowSize / 2);
-	// Pre-compute Gaussian weights
-	const sigma = half / 2.0;
-	const weights: number[] = [];
-	for (let k = -half; k <= half; k++) {
-		weights.push(Math.exp(-(k * k) / (2 * sigma * sigma)));
-	}
+	const sigma = windowSizeMs / 2.0;
+	const sigmaSq2 = 2 * sigma * sigma;
+	// Pre-parse timestamps once
+	const timestamps = records.map(r => new Date(r.timestamp).getTime());
 	const result: BatteryHistoryRecord[] = [];
 	for (let i = 0; i < records.length; i++) {
+		const ti = timestamps[i];
 		let sum = 0;
 		let wsum = 0;
-		for (let k = -half; k <= half; k++) {
-			const j = i + k;
-			if (j < 0 || j >= records.length) continue;
-			const w = weights[k + half];
+		// Walk backwards while within window
+		for (let j = i; j >= 0; j--) {
+			const dt = ti - timestamps[j];
+			if (dt > windowSizeMs) break;
+			const w = Math.exp(-(dt * dt) / sigmaSq2);
+			sum += records[j].battery_level * w;
+			wsum += w;
+		}
+		// Walk forwards while within window
+		for (let j = i + 1; j < records.length; j++) {
+			const dt = timestamps[j] - ti;
+			if (dt > windowSizeMs) break;
+			const w = Math.exp(-(dt * dt) / sigmaSq2);
 			sum += records[j].battery_level * w;
 			wsum += w;
 		}
@@ -158,14 +169,14 @@ function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
 	return ticks;
 }
 
-// ── Smoothing options ─────────────────────────────────
+// ── Smoothing options (window radius in ms) ───────────
 const SMOOTHING_OPTIONS = [
-	{ label: "Off", value: 0 },
-	{ label: "5 pts", value: 5 },
-	{ label: "10 pts", value: 10 },
-	{ label: "20 pts", value: 20 },
-	{ label: "50 pts", value: 50 },
-	{ label: "100 pts", value: 100 },
+	{ label: "Off",    value: 0 },
+	{ label: "5 min",  value: 5 * 60 * 1000 },
+	{ label: "15 min", value: 15 * 60 * 1000 },
+	{ label: "30 min", value: 30 * 60 * 1000 },
+	{ label: "60 min", value: 60 * 60 * 1000 },
+	{ label: "180 min", value: 180 * 60 * 1000 },
 ] as const;
 
 // ── Component ──────────────────────────────────────────
