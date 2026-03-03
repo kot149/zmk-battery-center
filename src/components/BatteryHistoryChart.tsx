@@ -17,6 +17,7 @@ import { logger } from "@/utils/log";
 import TopRightButtons from "@/components/TopRightButtons";
 import { listen } from "@tauri-apps/api/event";
 import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
+import { useConfigContext } from "@/context/ConfigContext";
 
 // ── Types ──────────────────────────────────────────────
 interface BatteryHistoryChartProps {
@@ -42,7 +43,7 @@ const RANGE_PRESETS = [
 	{ label: "Custom", ms: -1 },
 ] as const;
 
-const CUSTOM_RANGE_IDX = RANGE_PRESETS.length - 1;
+const CUSTOM_RANGE_MS = -1;
 
 // ── Smoothing (Gaussian-weighted moving average) ────────
 function smooth(records: BatteryHistoryRecord[], windowSize = 7): BatteryHistoryRecord[] {
@@ -169,13 +170,36 @@ const SMOOTHING_OPTIONS = [
 
 // ── Component ──────────────────────────────────────────
 const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClose }) => {
+	const { config, setConfig } = useConfigContext();
 	const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
 	const [isLoading, setIsLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [rangeIdx, setRangeIdx] = useState(RANGE_PRESETS.length - 2); // default: "All"
-	const [customRange, setCustomRange] = useState<DateRange | null>(null);
+	const [rangeMs, setRangeMsState] = useState(() => config.chartRangeMs);
+	const [customRange, setCustomRangeState] = useState<DateRange | null>(() => {
+		const saved = config.chartCustomRange;
+		if (!saved) return null;
+		return { start: new Date(saved.start), end: new Date(saved.end) };
+	});
 	const [showDatePicker, setShowDatePicker] = useState(false);
-	const [smoothingWindow, setSmoothingWindow] = useState(7); // default window size
+	const [smoothingWindow, setSmoothingWindowState] = useState(() => config.chartSmoothingWindowSize);
+
+	const setRangeMs = useCallback((ms: number) => {
+		setRangeMsState(ms);
+		setConfig(prev => ({ ...prev, chartRangeMs: ms }));
+	}, [setConfig]);
+
+	const setCustomRange = useCallback((range: DateRange | null) => {
+		setCustomRangeState(range);
+		setConfig(prev => ({
+			...prev,
+			chartCustomRange: range ? { start: range.start.toISOString(), end: range.end.toISOString() } : null,
+		}));
+	}, [setConfig]);
+
+	const setSmoothingWindow = useCallback((w: number) => {
+		setSmoothingWindowState(w);
+		setConfig(prev => ({ ...prev, chartSmoothingWindowSize: w }));
+	}, [setConfig]);
 
 	// ── Data loading ───────────────────────────────────
 	const load = useCallback(async () => {
@@ -218,8 +242,6 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 
 	// ── Derived data ───────────────────────────────────
 	const allKeys = useMemo(() => [...grouped.keys()], [grouped]);
-
-	const rangeMs = RANGE_PRESETS[rangeIdx].ms;
 
 	/** Build a single sorted array of ChartRow for Recharts */
 	const chartData = useMemo<ChartRow[]>(() => {
@@ -315,11 +337,11 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					<div className="flex items-center gap-2">
 						<span className="text-sm text-muted-foreground w-20 text-right">Range:</span>
 						<Select
-							value={String(rangeIdx)}
+							value={String(rangeMs)}
 							onValueChange={(v) => {
-								const idx = Number(v);
-								setRangeIdx(idx);
-								if (idx === CUSTOM_RANGE_IDX) {
+								const ms = Number(v);
+								setRangeMs(ms);
+								if (ms === CUSTOM_RANGE_MS) {
 									setShowDatePicker(true);
 								}
 							}}
@@ -328,14 +350,14 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{RANGE_PRESETS.map((preset, idx) => (
+								{RANGE_PRESETS.map((preset) => (
 									<SelectItem
 										key={preset.label}
-										value={String(idx)}
+										value={String(preset.ms)}
 										onPointerUp={() => {
 											// onValueChange won't fire when re-selecting the same value,
 											// so handle re-selecting Custom here
-											if (idx === CUSTOM_RANGE_IDX && rangeIdx === CUSTOM_RANGE_IDX) {
+											if (preset.ms === CUSTOM_RANGE_MS && rangeMs === CUSTOM_RANGE_MS) {
 												setShowDatePicker(true);
 											}
 										}}
@@ -567,7 +589,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						setShowDatePicker(false);
 						// Revert to previous preset if no custom range was set
 						if (!customRange) {
-							setRangeIdx(RANGE_PRESETS.length - 2); // "All"
+							setRangeMs(0); // "All"
 						}
 					}}
 				/>

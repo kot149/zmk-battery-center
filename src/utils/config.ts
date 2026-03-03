@@ -24,6 +24,9 @@ export type Config = {
 		x: number;
 		y: number;
 	};
+	chartRangeMs: number;
+	chartSmoothingWindowSize: number;
+	chartCustomRange: { start: string; end: string } | null;
 }
 
 export const defaultConfig: Config = {
@@ -41,6 +44,9 @@ export const defaultConfig: Config = {
 		x: 0,
 		y: 0,
 	},
+	chartRangeMs: 0, // default: "All"
+	chartSmoothingWindowSize: 50,
+	chartCustomRange: null,
 };
 
 let configStoreInstance: Store | null = null;
