@@ -359,6 +359,36 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	// ── Render ─────────────────────────────────────────
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
+			{/* Header */}
+			<div className="px-5">
+				<div className="flex flex-col pt-4 pb-0 min-w-0 mr-40">
+					<span className="text-2xl font-semibold text-foreground truncate" title={device.name}>
+						{device.name}
+					</span>
+					<span className="text-sm text-muted-foreground tracking-wide">
+						Battery History
+					</span>
+				</div>
+			</div>
+
+			{/* Top-Right Buttons */}
+			<div ref={settingsButtonRef} className="absolute top-2 right-2 z-50">
+				<TopRightButtons
+					buttons={[
+						{
+							icon: <AdjustmentsHorizontalIcon className="size-5" />,
+							onClick: () => setShowSettings((s) => !s),
+							ariaLabel: "Chart settings",
+						},
+						{
+							icon: <XMarkIcon className="size-5" />,
+							onClick: onClose,
+							ariaLabel: "Close",
+						}
+					]}
+				/>
+			</div>
+
 			{/* Settings panel – shown to the left of the buttons (88px = 2×w-10 + right-2) */}
 			{showSettings && (
 				<div
@@ -421,35 +451,6 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					</div>
 				</div>
 			)}
-			{/* Buttons */}
-			<div ref={settingsButtonRef} className="absolute top-2 right-2 z-50">
-				<TopRightButtons
-					buttons={[
-						{
-							icon: <AdjustmentsHorizontalIcon className="size-5" />,
-							onClick: () => setShowSettings((s) => !s),
-							ariaLabel: "Chart settings",
-						},
-						{
-							icon: <XMarkIcon className="size-5" />,
-							onClick: onClose,
-							ariaLabel: "Close",
-						}
-					]}
-				/>
-			</div>
-
-			{/* Header */}
-			<div className="px-5">
-				<div className="flex flex-col pt-4 pb-0 min-w-0 mr-40">
-					<span className="text-2xl font-semibold text-foreground truncate" title={device.name}>
-						{device.name}
-					</span>
-					<span className="text-sm text-muted-foreground tracking-wide">
-						Battery History
-					</span>
-				</div>
-			</div>
 
 
 			{/* Chart area */}
