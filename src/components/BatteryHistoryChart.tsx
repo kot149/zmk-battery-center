@@ -160,12 +160,11 @@ function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
 // ── Smoothing options ─────────────────────────────────
 const SMOOTHING_OPTIONS = [
 	{ label: "Off", value: 0 },
-	{ label: "3", value: 3 },
-	{ label: "5", value: 5 },
-	{ label: "7", value: 7 },
-	{ label: "10", value: 10 },
-	{ label: "15", value: 15 },
-	{ label: "21", value: 21 },
+	{ label: "5 pts", value: 5 },
+	{ label: "10 pts", value: 10 },
+	{ label: "20 pts", value: 20 },
+	{ label: "50 pts", value: 50 },
+	{ label: "100 pts", value: 100 },
 ] as const;
 
 // ── Component ──────────────────────────────────────────
@@ -540,7 +539,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 							{allKeys.map((key, i) => (
 								<Line
 									key={key}
-									type="basis"
+									type="linear"
 									dataKey={key}
 									name={key}
 									stroke={`var(--chart-${(i % 5) + 1})`}
