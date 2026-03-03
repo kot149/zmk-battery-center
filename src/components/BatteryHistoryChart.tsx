@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
 	ResponsiveContainer,
 	LineChart,
@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
 import type { RegisteredDevice } from "@/App";
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logger } from "@/utils/log";
 import TopRightButtons from "@/components/TopRightButtons";
@@ -193,6 +193,24 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	});
 	const [showDatePicker, setShowDatePicker] = useState(false);
 	const [smoothingWindow, setSmoothingWindowState] = useState(() => config.chartSmoothingWindowSize);
+	const [showSettings, setShowSettings] = useState(false);
+	const settingsPanelRef = useRef<HTMLDivElement>(null);
+	const settingsButtonRef = useRef<HTMLDivElement>(null);
+
+	// Close settings panel when clicking outside
+	useEffect(() => {
+		if (!showSettings) return;
+		const handler = (e: MouseEvent) => {
+			const target = e.target as Element;
+			// Ignore clicks inside Radix UI portals (Select dropdown, etc.)
+			if (target.closest?.("[data-radix-popper-content-wrapper]")) return;
+			if (settingsPanelRef.current?.contains(target)) return;
+			if (settingsButtonRef.current?.contains(target)) return;
+			setShowSettings(false);
+		};
+		document.addEventListener("mousedown", handler);
+		return () => document.removeEventListener("mousedown", handler);
+	}, [showSettings]);
 
 	const setRangeMs = useCallback((ms: number) => {
 		setRangeMsState(ms);
@@ -341,9 +359,12 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	// ── Render ─────────────────────────────────────────
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
-			{/* Top-right: range selector + smoothing selector + close button */}
-			<div className="absolute top-2 right-2 z-50 flex items-start gap-1">
-				<div className="flex flex-col items-start gap-1 mr-1 mt-2">
+			{/* Settings panel – shown to the left of the buttons (88px = 2×w-10 + right-2) */}
+			{showSettings && (
+				<div
+					ref={settingsPanelRef}
+					className="absolute top-2 right-[88px] z-50 flex flex-col gap-2 rounded-lg border border-border bg-popover p-3 shadow-lg"
+				>
 					{/* Range row */}
 					<div className="flex items-center gap-2">
 						<span className="text-sm text-muted-foreground w-20 text-right">Range:</span>
@@ -399,8 +420,16 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 						</Select>
 					</div>
 				</div>
+			)}
+			{/* Buttons */}
+			<div ref={settingsButtonRef} className="absolute top-2 right-2 z-50">
 				<TopRightButtons
 					buttons={[
+						{
+							icon: <AdjustmentsHorizontalIcon className="size-5" />,
+							onClick: () => setShowSettings((s) => !s),
+							ariaLabel: "Chart settings",
+						},
 						{
 							icon: <XMarkIcon className="size-5" />,
 							onClick: onClose,
