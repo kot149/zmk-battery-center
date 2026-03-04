@@ -118,7 +118,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                             let aboutWindow = await WebviewWindow.getByLabel('about');
                             if (!aboutWindow) {
                                 aboutWindow = new WebviewWindow('about', {
-                                    url: 'licenses.html',
+                                    url: 'about.html',
                                     title: 'zmk-battery-center - About',
                                     width: 600,
                                     height: 500,

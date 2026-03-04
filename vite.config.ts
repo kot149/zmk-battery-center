@@ -21,7 +21,7 @@ export default defineConfig(async () => ({
     rollupOptions: {
       input: {
         main: path.resolve(dirname, 'index.html'),
-        licenses: path.resolve(dirname, 'licenses.html'),
+        about: path.resolve(dirname, 'about.html'),
       },
     },
   },
