@@ -1,6 +1,7 @@
-import { useState, useMemo, Suspense } from 'react';
+import { useState, useMemo, Suspense, useEffect } from 'react';
 import { useLicenses, mergeLicenses, License } from './hooks/useLicenses';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { getVersion } from '@tauri-apps/api/app';
 import "./App.css";
 
 {
@@ -79,6 +80,64 @@ function LicenseItem({ license }: { license: License }) {
     );
 }
 
+const REPO_URL = 'https://github.com/kot149/zmk-battery-center';
+
+function AboutSection() {
+    const [version, setVersion] = useState<string | null>(null);
+
+    useEffect(() => {
+        getVersion().then(setVersion);
+    }, []);
+
+    return (
+        <div className="mb-2 pb-2 border-b border-border">
+            <h1 className="text-3xl font-bold mb-2 flex items-baseline justify-center gap-2">
+                zmk-battery-center
+                {version && (
+                    <span className="text-lg text-muted-foreground font-normal">v{version}</span>
+                )}
+            </h1>
+            <div className="flex flex-col items-center justify-center gap-1">
+                <p className="text-muted-foreground justify-center text-center">
+                    A system tray app to monitor the battery level of ZMK-based keyboards.
+                </p>
+                <p>
+                    <a
+                        href={REPO_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                        onClick={(e) => {
+                            e.preventDefault();
+                            openUrl(REPO_URL);
+                        }}
+                        >
+                        GitHub Repo
+                    </a>
+                    <span className="text-muted-foreground mx-2">|</span>
+                    <a
+                        href="https://github.com/kot149/zmk-battery-center/blob/main/LICENSE.md"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                        >
+                        License
+                    </a>
+                    <span className="text-muted-foreground mx-2">|</span>
+                    <a
+                        href="https://github.com/kot149/zmk-battery-center/issues"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline"
+                        >
+                        Report an Issue
+                    </a>
+                </p>
+            </div>
+        </div>
+    );
+}
+
 function LicensesList() {
     const licensesData = useLicenses();
     const [searchQuery, setSearchQuery] = useState('');
@@ -98,7 +157,13 @@ function LicensesList() {
         <div className="dark h-screen bg-background text-foreground flex flex-col overflow-hidden">
             {/* Header */}
             <div className="shrink-0 p-4 border-b border-border">
-                <h1 className="text-xl font-bold mb-4">Open Source Licenses</h1>
+                <AboutSection />
+                <hr className="my-3 border-ring w-full" />
+                <h2 className="text-2xl font-bold mb-2">Open Source Licenses</h2>
+
+                <p className="text-foreground mb-4 ml-1">
+                    This app consists of the following open source software. Huge thanks to everyone who contributed to them and made this app possible!
+                </p>
 
                 {/* Search */}
                 <input

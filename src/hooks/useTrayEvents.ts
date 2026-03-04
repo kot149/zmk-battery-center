@@ -1,3 +1,4 @@
+import { LogicalSize } from '@tauri-apps/api/dpi';
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TrayIcon, TrayIconEvent } from '@tauri-apps/api/tray';
@@ -5,10 +6,10 @@ import { Menu, Submenu, CheckMenuItem } from '@tauri-apps/api/menu';
 import { isWindowVisible, showWindow, hideWindow, moveWindowToTrayCenter, setWindowFocus, setTrayPositionSet } from '@/utils/window';
 import { exitApp } from '@/utils/common';
 import { stopAllBatteryMonitors } from '@/utils/ble';
-import { openUrl } from '@tauri-apps/plugin-opener';
 import { logger } from '@/utils/log';
 import { Config } from '@/utils/config';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { LogicalSize } from '@tauri-apps/api/dpi';
 
 interface UseTrayEventsOptions {
     config: Config;
@@ -111,14 +112,14 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                         ]
                     },
                     {
-                        id: 'licenses',
-                        text: 'Licenses',
+                        id: 'about',
+                        text: 'About',
                         action: async () => {
-                            let licensesWindow = await WebviewWindow.getByLabel('licenses');
-                            if (!licensesWindow) {
-                                licensesWindow = new WebviewWindow('licenses', {
+                            let aboutWindow = await WebviewWindow.getByLabel('about');
+                            if (!aboutWindow) {
+                                aboutWindow = new WebviewWindow('about', {
                                     url: 'licenses.html',
-                                    title: 'zmk-battery-center - Open Source Licenses',
+                                    title: 'zmk-battery-center - About',
                                     width: 600,
                                     height: 500,
                                     center: true,
@@ -126,15 +127,8 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                     decorations: true,
                                 });
                             }
-                            await licensesWindow.show();
-                            await licensesWindow.setFocus();
-                        }
-                    },
-                    {
-                        id: 'about',
-                        text: 'About',
-                        action: () => {
-                            openUrl('https://github.com/kot149/zmk-battery-center');
+                            await aboutWindow.show();
+                            await aboutWindow.setFocus();
                         }
                     },
                     {
