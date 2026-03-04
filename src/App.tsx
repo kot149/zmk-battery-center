@@ -139,6 +139,13 @@ function App() {
 		() => new Set(registeredDevices.map(d => d.id)),
 		[registeredDevices]
 	);
+	// Stable string key that changes only when the set of device IDs changes.
+	// Used as a dependency for syncNotificationMonitors so that battery-level
+	// or connection-status updates don't re-trigger the effect.
+	const registeredDeviceIdsKey = useMemo(
+		() => [...registeredDeviceIds].sort().join(','),
+		[registeredDeviceIds]
+	);
 	const availableDevices = useMemo(
 		() => devices.filter(d => !registeredDeviceIds.has(d.id)),
 		[devices, registeredDeviceIds]
@@ -455,8 +462,11 @@ function App() {
 
 		const syncNotificationMonitors = async () => {
 			const active = activeNotificationMonitorsRef.current;
+			// Derive the desired set from the stable key so that this effect
+			// does NOT re-run when battery levels or connection status change.
+			const desiredIds = registeredDeviceIdsKey ? registeredDeviceIdsKey.split(',') : [];
 			const desired = isNotificationMonitorMode
-				? new Set(registeredDevices.map(device => device.id))
+				? new Set(desiredIds)
 				: new Set<string>();
 
 			const idsToStop = [...active].filter(id => !desired.has(id));
@@ -476,6 +486,7 @@ function App() {
 
 			const monitorsToStart = [...desired].filter(id => !active.has(id));
 			for (const id of monitorsToStart) {
+				if (isCancelled) break;
 				try {
 					const info = await startBatteryNotificationMonitor(id);
 					if (isCancelled) {
@@ -510,7 +521,7 @@ function App() {
 			isCancelled = true;
 		};
 	}, [
-		registeredDevices,
+		registeredDeviceIdsKey,
 		isNotificationMonitorMode,
 		isConfigLoaded,
 		isDeviceLoaded,
