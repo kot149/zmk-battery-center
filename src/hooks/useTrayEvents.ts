@@ -1,4 +1,3 @@
-import { LogicalSize } from '@tauri-apps/api/dpi';
 import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TrayIcon, TrayIconEvent } from '@tauri-apps/api/tray';
@@ -9,7 +8,6 @@ import { stopAllBatteryMonitors } from '@/utils/ble';
 import { logger } from '@/utils/log';
 import { Config } from '@/utils/config';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { LogicalSize } from '@tauri-apps/api/dpi';
 
 interface UseTrayEventsOptions {
     config: Config;
