@@ -1,9 +1,9 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import LicensesApp from "./AboutApp";
+import AboutApp from "./AboutApp";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <LicensesApp />
+    <AboutApp />
   </React.StrictMode>,
 );

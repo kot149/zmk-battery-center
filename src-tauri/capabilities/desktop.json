@@ -7,7 +7,7 @@
   ],
   "windows": [
     "main",
-    "licenses"
+    "about"
   ],
   "permissions": [
     "positioner:default",

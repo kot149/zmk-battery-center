@@ -140,7 +140,7 @@ function LicenseItem({ license }: { license: License }) {
 }
 
 
-function LicensesList() {
+function About() {
     const licensesData = useLicenses();
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -203,12 +203,12 @@ const loadingFallback = (
     </div>
 );
 
-function LicensesApp() {
+function AboutApp() {
     return (
         <Suspense fallback={loadingFallback}>
-            <LicensesList />
+            <About />
         </Suspense>
     );
 }
 
-export default LicensesApp;
+export default AboutApp;
