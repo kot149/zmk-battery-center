@@ -147,7 +147,12 @@ You can also build using [GitHub Actions](.github/workflows).
 
 ## References
 
-- ZMK PR [#1243](https://github.com/zmkfirmware/zmk/pull/1243), [#2045](https://github.com/zmkfirmware/zmk/pull/2045) — Implementation and discussion for split battery reporting over BLE GATT
+Implementation and discussion for split battery reporting over BLE GATT:
+- ZMK PR [#1243](https://github.com/zmkfirmware/zmk/pull/1243)
+- ZMK PR [#2045](https://github.com/zmkfirmware/zmk/pull/2045)
+
+## Related Works
+
 - [zmk-ble](https://github.com/Katona/zmk-ble): Proof-of-concept system tray app for macOS (not compatible with latest macOS)
 - [Mighty-Mitts](https://github.com/codyd51/Mighty-Mitts): System tray app for macOS
 - [zmk-split-battery](https://github.com/Maksim-Isakau/zmk-split-battery): System tray app for Windows
