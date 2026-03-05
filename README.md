@@ -2,8 +2,10 @@
 
 A system tray app to monitor the battery level of ZMK-based keyboards, built with [Tauri v2](https://v2.tauri.app/).
 
-<img width="491" height="481" alt="zmk-battery-center screenshot: main screen" src="https://github.com/user-attachments/assets/1fe0b6de-c8cd-428b-975f-8c5d89850aba" />
-<img width="491" height="423" alt="zmk-battery-center screenshot: battery history graph" src="https://github.com/user-attachments/assets/3ee172be-353a-4b33-91cd-9bc4433d0037" />
+<p>
+    <img width="491" height="481" alt="zmk-battery-center screenshot: main screen" src="https://github.com/user-attachments/assets/1fe0b6de-c8cd-428b-975f-8c5d89850aba" />
+    <img width="491" height="423" alt="zmk-battery-center screenshot: battery history graph" src="https://github.com/user-attachments/assets/3ee172be-353a-4b33-91cd-9bc4433d0037" />
+</p>
 
 ## ✨ Features
 
