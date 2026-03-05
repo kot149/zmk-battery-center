@@ -1,23 +1,44 @@
 import React, { useState } from "react";
 import BatteryIcon from "@/components/BatteryIcon";
+import BatteryHistoryChart from "@/components/BatteryHistoryChart";
 import type { RegisteredDevice } from "@/App";
 import { Button } from "@/components/Button";
 import { EllipsisHorizontalIcon } from "@heroicons/react/24/outline";
+
+const ChartCurveIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+		<path d="M4 4 V20 H20" />
+		<path d="M7 16 Q11 6, 13 12 Q15 18, 19 8" />
+	</svg>
+);
 
 interface DeviceListProps {
 	registeredDevices: RegisteredDevice[];
 	setRegisteredDevices: React.Dispatch<React.SetStateAction<RegisteredDevice[]>>;
 	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
+	onChartOpenChange?: (isOpen: boolean) => void;
 }
 
 const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	registeredDevices,
 	setRegisteredDevices,
 	onRemoveDevice,
+	onChartOpenChange,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
+	const [chartOpen, setChartOpen] = useState<string | null>(null);
+
 	const handleMenuOpen = (id: string) => setMenuOpen(id);
 	const handleMenuClose = () => setMenuOpen(null);
+
+	const handleToggleChart = (id: string) => {
+		setChartOpen(prev => {
+			const next = prev === id ? null : id;
+			onChartOpenChange?.(next !== null);
+			return next;
+		});
+		setMenuOpen(null);
+	};
 
 	return (
 		<div className="max-w-3xl mx-auto rounded-xl overflow-hidden">
@@ -26,16 +47,25 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 					{registeredDevices.map((device, deviceIdx) => (
 						<div key={device.id} className="relative group bg-card rounded-lg p-4">
 							{/* Top-right menu */}
-							<div className="absolute top-2 right-2 z-10">
+							<div className="absolute top-2 right-2 w-14 z-10 flex items-center gap-0.5">
+								{/* Chart button – appears on hover */}
 								<Button
-									className="w-10 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground !p-0"
+									className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground !p-0 transition-opacity"
+									onClick={() => handleToggleChart(device.id)}
+									aria-label="Show battery history chart"
+								>
+									<ChartCurveIcon className="size-5 mx-auto" />
+								</Button>
+								{/* Menu button – appears on hover */}
+								<Button
+									className="w-10 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground !p-0 transition-opacity"
 									onClick={() => handleMenuOpen(device.id)}
 									aria-label="Open menu"
 								>
 									<EllipsisHorizontalIcon className="size-6 mx-auto" />
 								</Button>
 								{menuOpen === device.id && (
-									<div className={`${deviceIdx !== registeredDevices.length - 1 || registeredDevices.length === 1 ? 'absolute right-0' : 'fixed bottom-4 right-4'} w-30 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg z-20`}>
+									<div className={`${deviceIdx !== registeredDevices.length - 1 || registeredDevices.length === 1 ? 'absolute right-0' : 'fixed bottom-4 right-4'} w-36 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg z-20`}>
 										{ deviceIdx !== 0 && (
 											<Button
 												className="w-full text-left !text-sm !px-3 !py-2 bg-popover text-popover-foreground hover:bg-muted"
@@ -70,6 +100,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 												Move Down
 											</Button>
 										)}
+
 										<Button
 											className="w-full text-left !text-sm !px-3 !py-2 bg-popover text-destructive hover:bg-muted"
 											onClick={async () => {
@@ -114,10 +145,25 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 									))}
 								</div>
 							)}
+
+
 						</div>
 					))}
 				</div>
 			</div>
+		{/* Full-window battery history chart overlay */}
+		{chartOpen && (() => {
+			const chartDevice = registeredDevices.find(d => d.id === chartOpen);
+			return chartDevice ? (
+				<BatteryHistoryChart
+					device={chartDevice}
+					onClose={() => {
+						setChartOpen(null);
+						onChartOpenChange?.(false);
+					}}
+				/>
+			) : null;
+		})()}
 		</div>
 	);
 };

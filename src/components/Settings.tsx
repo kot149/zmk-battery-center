@@ -7,6 +7,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useConfigContext } from "@/context/ConfigContext";
+import TopRightButtons from "./TopRightButtons";
 
 interface SettingsScreenProps {
 	onExit: () => Promise<void>;
@@ -37,14 +38,17 @@ const Settings: React.FC<SettingsScreenProps> = ({
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col items-center justify-center h-full w-full p-4">
 			{/* Top-right close button */}
-			<Button
-				type="button"
-				className="absolute top-2 right-2 w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-xl font-bold text-foreground !p-0"
-				aria-label="Close"
-				onClick={onExit}
-			>
-				<XMarkIcon className="size-5 text-foreground" />
-			</Button>
+			<div className="absolute top-2 right-2">
+				<TopRightButtons
+					buttons={[
+						{
+							icon: <XMarkIcon className="size-5 text-foreground" />,
+							onClick: onExit,
+							ariaLabel: "Close",
+						}
+					]}
+				/>
+			</div>
 
 			<div className="flex flex-col gap-3 w-full p-4">
 				{/* Theme */}
