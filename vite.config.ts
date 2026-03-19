@@ -43,8 +43,12 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: [
+        "**/src-tauri/**",
+        // nix-direnv materializes nixpkgs under .direnv; watching it exhausts inotify (ENOSPC).
+        "**/.direnv/**",
+        "**/result/**",
+      ],
     },
   },
 }));
