@@ -29,6 +29,11 @@ import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
 import { emit, listen } from '@tauri-apps/api/event';
 import { appendBatteryHistory } from '@/utils/batteryHistory';
+import {
+	upsertBatteryInfo,
+	mergeBatteryInfos,
+	normalizeLoadedDevices,
+} from "@/utils/appHelpers";
 
 export type RegisteredDevice = {
 	id: string;
@@ -46,66 +51,7 @@ enum State {
 	chart = 'chart',
 }
 
-function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): BatteryInfo[] {
-	const key = nextInfo.user_description ?? null;
-	const idx = batteryInfos.findIndex(info => (info.user_description ?? null) === key);
-	if (idx === -1) {
-		return [...batteryInfos, nextInfo];
-	}
-	const next = [...batteryInfos];
-	// Retain the previous battery_level when the new value is null
-	const merged = nextInfo.battery_level !== null
-		? nextInfo
-		: { ...nextInfo, battery_level: batteryInfos[idx].battery_level };
-	next[idx] = merged;
-	return next;
-}
-
-/**
- * Merge new battery info array with existing one, retaining the previous
- * battery_level for each entry when the new value is null.
- */
-function mergeBatteryInfos(prev: BatteryInfo[], next: BatteryInfo[]): BatteryInfo[] {
-	return next.map(info => {
-		if (info.battery_level !== null) return info;
-		const key = info.user_description ?? null;
-		const existing = prev.find(p => (p.user_description ?? null) === key);
-		return existing ? { ...info, battery_level: existing.battery_level } : info;
-	});
-}
-
 const DEVICES_FILENAME = 'devices.json';
-
-const DEVICE_ID_PATTERN = /^DeviceId\("(.+)"\)$/;
-
-function normalizeLoadedDevices(raw: unknown): RegisteredDevice[] {
-	const devices = Array.isArray(raw) ? raw : [];
-	return devices.map((d: Record<string, unknown>) => {
-		const batteryInfos: BatteryInfo[] = Array.isArray(d.batteryInfos)
-			? (d.batteryInfos as Array<Record<string, unknown>>).map((info) => {
-					const userDesc =
-						(info.user_description ?? (info as { user_descriptor?: unknown }).user_descriptor) as string | null;
-					const level = info.battery_level;
-					return {
-						battery_level: typeof level === 'number' ? level : null,
-						user_description: userDesc ?? null,
-					};
-				})
-			: [];
-		const rawId = typeof d.id === 'string' ? d.id : '';
-		const rawName = typeof d.name === 'string' ? d.name : '';
-		const extractFromDeviceId = (s: string) => {
-			const m = s.match(DEVICE_ID_PATTERN);
-			return m ? m[1] : s;
-		};
-		return {
-			id: extractFromDeviceId(rawId),
-			name: extractFromDeviceId(rawName),
-			batteryInfos,
-			isDisconnected: d.isDisconnected === true,
-		};
-	});
-}
 
 async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 	const storePath = await getStorePath(DEVICES_FILENAME);
@@ -693,3 +639,5 @@ function App() {
 }
 
 export default App;
+
+export { upsertBatteryInfo, mergeBatteryInfos, normalizeLoadedDevices };

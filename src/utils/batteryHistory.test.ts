@@ -1,0 +1,66 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { appendBatteryHistory, readBatteryHistory } from "./batteryHistory";
+
+const mockedInvoke = vi.mocked(invoke);
+
+describe("batteryHistory utils", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("appendBatteryHistory invokes command with expected payload", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-02-03T04:05:06.000Z"));
+		mockedInvoke.mockResolvedValue(undefined);
+
+		await appendBatteryHistory("Keyboard", "dev-1", "Left", 77);
+
+		expect(invoke).toHaveBeenCalledWith("append_battery_history", {
+			deviceName: "Keyboard",
+			bleId: "dev-1",
+			timestamp: "2026-02-03T04:05:06.000Z",
+			userDescription: "Left",
+			batteryLevel: 77,
+		});
+	});
+
+	it("readBatteryHistory invokes command with requested ids", async () => {
+		const mockedHistory = [
+			{
+				timestamp: "2026-01-01T00:00:00.000Z",
+				user_description: "Central",
+				battery_level: 90,
+			},
+		];
+		mockedInvoke.mockResolvedValue(mockedHistory);
+
+		const result = await readBatteryHistory("Keyboard", "dev-1");
+
+		expect(invoke).toHaveBeenCalledWith("read_battery_history", {
+			deviceName: "Keyboard",
+			bleId: "dev-1",
+		});
+		expect(result).toEqual(mockedHistory);
+	});
+
+	it("appendBatteryHistory propagates invoke errors", async () => {
+		const error = new Error("append failed");
+		mockedInvoke.mockRejectedValue(error);
+
+		await expect(
+			appendBatteryHistory("Keyboard", "dev-1", "Left", 77),
+		).rejects.toThrow("append failed");
+	});
+
+	it("readBatteryHistory propagates invoke errors", async () => {
+		const error = new Error("read failed");
+		mockedInvoke.mockRejectedValue(error);
+
+		await expect(readBatteryHistory("Keyboard", "dev-1")).rejects.toThrow("read failed");
+	});
+});
