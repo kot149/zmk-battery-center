@@ -36,7 +36,7 @@ permissions:
 
 jobs:
   verify-versions:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
 
@@ -49,7 +49,7 @@ jobs:
         run: bun scripts/verify_versions.ts --tag "${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
 
   # create-release:
-  #   runs-on: ubuntu-latest
+  #   runs-on: ubuntu-22.04
   #   steps:
   #     - uses: actions/checkout@v6
   #       with:
@@ -66,7 +66,7 @@ jobs:
   #         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
   select-platforms:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       macos_aarch64: ${{ steps.flags.outputs.macos_aarch64 }}
       macos_x64: ${{ steps.flags.outputs.macos_x64 }}
@@ -151,7 +151,7 @@ jobs:
   release-linux-x64:
     needs: [verify-versions, select-platforms]
     if: needs.select-platforms.outputs.linux_x64 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
 
@@ -166,7 +166,7 @@ jobs:
   release-linux-arm64:
     needs: [verify-versions, select-platforms]
     if: needs.select-platforms.outputs.linux_arm64 == 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v6
 

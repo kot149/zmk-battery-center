@@ -32,7 +32,7 @@ on:
 # This workflow will build your tauri app without uploading it anywhere.
 jobs:
   select-platforms:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       macos_aarch64: ${{ steps.flags.outputs.macos_aarch64 }}
       macos_x64: ${{ steps.flags.outputs.macos_x64 }}
@@ -111,7 +111,7 @@ jobs:
   build-linux-x64:
     needs: select-platforms
     if: needs.select-platforms.outputs.linux_x64 == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
 
@@ -124,7 +124,7 @@ jobs:
   build-linux-arm64:
     needs: select-platforms
     if: needs.select-platforms.outputs.linux_arm64 == 'true'
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v6
 
