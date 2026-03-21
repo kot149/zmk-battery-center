@@ -67,7 +67,7 @@ jobs:
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
-  test-tauri:
+  build-tauri:
     needs: prepare-matrix
     strategy:
       fail-fast: false
