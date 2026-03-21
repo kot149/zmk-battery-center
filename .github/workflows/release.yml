@@ -65,12 +65,16 @@ jobs:
   #       env:
   #         GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
-  prepare-matrix:
+  select-platforms:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      macos_aarch64: ${{ steps.flags.outputs.macos_aarch64 }}
+      macos_x64: ${{ steps.flags.outputs.macos_x64 }}
+      windows: ${{ steps.flags.outputs.windows }}
+      linux_x64: ${{ steps.flags.outputs.linux_x64 }}
+      linux_arm64: ${{ steps.flags.outputs.linux_arm64 }}
     steps:
-      - id: set-matrix
+      - id: flags
         shell: bash
         env:
           INC_MACOS_AARCH64: ${{ github.event_name != 'workflow_dispatch' || inputs.macos_aarch64 }}
@@ -80,90 +84,96 @@ jobs:
           INC_LINUX_ARM64: ${{ github.event_name != 'workflow_dispatch' || inputs.linux_arm64 }}
         run: |
           set -euo pipefail
-          matrix=$(jq -nc \
-            --arg ma "$INC_MACOS_AARCH64" \
-            --arg mx "$INC_MACOS_X64" \
-            --arg win "$INC_WINDOWS" \
-            --arg lx "$INC_LINUX_X64" \
-            --arg la "$INC_LINUX_ARM64" \
-            'def on($x): ($x | ascii_downcase) == "true";
-            [
-              (if on($ma) then {"platform":"macos-latest","args":"--target aarch64-apple-darwin"} else empty end),
-              (if on($mx) then {"platform":"macos-latest","args":"--target x86_64-apple-darwin"} else empty end),
-              (if on($win) then {"platform":"windows-latest","args":""} else empty end),
-              (if on($lx) then {"platform":"ubuntu-latest","args":"--target x86_64-unknown-linux-gnu"} else empty end),
-              (if on($la) then {"platform":"ubuntu-24.04-arm","args":"--target aarch64-unknown-linux-gnu"} else empty end)
-            ] | if length == 0 then error("Select at least one platform") else {include: .} end')
-          {
-            echo 'matrix<<EOF'
-            echo "$matrix"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
+          on() { [[ "${1,,}" == "true" ]]; }
+          ma=0 mx=0 win=0 lx=0 la=0
+          on "$INC_MACOS_AARCH64" && ma=1
+          on "$INC_MACOS_X64" && mx=1
+          on "$INC_WINDOWS" && win=1
+          on "$INC_LINUX_X64" && lx=1
+          on "$INC_LINUX_ARM64" && la=1
+          total=$(( ma + mx + win + lx + la ))
+          if (( total < 1 )); then
+            echo "Select at least one platform"
+            exit 1
+          fi
+          echo "macos_aarch64=$([[ $ma -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "macos_x64=$([[ $mx -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "windows=$([[ $win -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "linux_x64=$([[ $lx -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "linux_arm64=$([[ $la -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
-  build-and-release-tauri:
-    needs: [verify-versions, prepare-matrix]
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
-
-    runs-on: ${{ matrix.platform }}
+  release-macos-aarch64:
+    needs: [verify-versions, select-platforms]
+    if: needs.select-platforms.outputs.macos_aarch64 == 'true'
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/tauri-platform-build
         with:
-          bun-version: latest
+          tauri-args: '--target aarch64-apple-darwin'
+          rust-extra-targets: aarch64-apple-darwin
+          ubuntu-deps: 'none'
+          artifact-name: tauri-artifacts-macos-aarch64
+          upload-artifact: 'false'
+          release: 'true'
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+  release-macos-x64:
+    needs: [verify-versions, select-platforms]
+    if: needs.select-platforms.outputs.macos_x64 == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/tauri-platform-build
         with:
-          # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          tauri-args: '--target x86_64-apple-darwin'
+          rust-extra-targets: x86_64-apple-darwin
+          ubuntu-deps: 'none'
+          artifact-name: tauri-artifacts-macos-x64
+          upload-artifact: 'false'
+          release: 'true'
 
-      - name: install dependencies (ubuntu x64 only)
-        if: matrix.platform == 'ubuntu-latest' # This must match the platform value defined above.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+  release-windows:
+    needs: [verify-versions, select-platforms]
+    if: needs.select-platforms.outputs.windows == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
 
-      - name: install dependencies (ubuntu arm64 only)
-        if: matrix.platform == 'ubuntu-24.04-arm' # This must match the platform value defined above.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Restore bun cache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/tauri-platform-build
         with:
-          path: |
-            node_modules
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-
+          ubuntu-deps: 'none'
+          artifact-name: tauri-artifacts-windows
+          upload-artifact: 'false'
+          release: 'true'
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+  release-linux-x64:
+    needs: [verify-versions, select-platforms]
+    if: needs.select-platforms.outputs.linux_x64 == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/tauri-platform-build
         with:
-          workspaces: './src-tauri -> target'
+          tauri-args: '--target x86_64-unknown-linux-gnu'
+          ubuntu-deps: 'x64'
+          artifact-name: tauri-artifacts-linux-x64
+          upload-artifact: 'false'
+          release: 'true'
 
-      - name: Install cargo-about
-        run: cargo install cargo-about
+  release-linux-arm64:
+    needs: [verify-versions, select-platforms]
+    if: needs.select-platforms.outputs.linux_arm64 == 'true'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v6
 
-      - name: Generate licenses
-        run: bun scripts/generate_licenses.ts --skip-verify
-
-      # If tagName and releaseId are omitted tauri-action will only build the app and won't try to upload any assets.
-      - uses: tauri-apps/tauri-action@v0
-        id: tauri
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/tauri-platform-build
         with:
-          tagName: v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
-          releaseName: 'v__VERSION__'
-          releaseDraft: true
-          prerelease: true
-          args: ${{ matrix.args }}
+          tauri-args: '--target aarch64-unknown-linux-gnu'
+          ubuntu-deps: 'arm64'
+          artifact-name: tauri-artifacts-linux-arm64
+          upload-artifact: 'false'
+          release: 'true'

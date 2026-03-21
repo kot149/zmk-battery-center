@@ -1,0 +1,143 @@
+name: Tauri platform build
+description: Build the Tauri app on the current runner (optional release upload and artifact upload). Run actions/checkout in the job before this local composite action.
+
+inputs:
+  tauri-args:
+    description: Extra args for tauri build (e.g. --target aarch64-apple-darwin)
+    required: false
+    default: ''
+  rust-extra-targets:
+    description: Comma-separated extra Rust targets (macOS cross-build); leave empty when not needed
+    required: false
+    default: ''
+  ubuntu-deps:
+    description: none, x64 (ubuntu-latest), or arm64 (ubuntu-24.04-arm)
+    required: false
+    default: 'none'
+  artifact-name:
+    description: Name for actions/upload-artifact
+    required: true
+  upload-artifact:
+    description: Whether to upload build artifacts
+    required: false
+    default: 'true'
+  release:
+    description: If true, tauri-action uploads to a GitHub release
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: latest
+
+    - name: install Rust stable (with extra targets)
+      if: ${{ inputs.rust-extra-targets != '' }}
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.rust-extra-targets }}
+
+    - name: install Rust stable
+      if: ${{ inputs.rust-extra-targets == '' }}
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: install dependencies (ubuntu x64 only)
+      if: ${{ inputs.ubuntu-deps == 'x64' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+    - name: install dependencies (ubuntu arm64 only)
+      if: ${{ inputs.ubuntu-deps == 'arm64' }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+    - name: Install frontend dependencies
+      shell: bash
+      run: bun install --frozen-lockfile
+
+    - name: Restore bun cache
+      uses: actions/cache@v5
+      with:
+        path: |
+          node_modules
+        key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bun-
+
+    - name: Rust cache
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+
+    - name: Install cargo-about
+      shell: bash
+      run: cargo install cargo-about
+
+    - name: Generate licenses
+      shell: bash
+      run: bun scripts/generate_licenses.ts --skip-verify
+
+    - name: Build Tauri (artifacts only)
+      if: ${{ inputs.release != 'true' }}
+      uses: tauri-apps/tauri-action@v0
+      id: tauri
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        args: ${{ inputs.tauri-args }}
+
+    - name: Build and release Tauri
+      if: ${{ inputs.release == 'true' }}
+      uses: tauri-apps/tauri-action@v0
+      id: tauri_rel
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      with:
+        tagName: v__VERSION__
+        releaseName: v__VERSION__
+        releaseDraft: true
+        prerelease: true
+        args: ${{ inputs.tauri-args }}
+
+    - name: Convert artifact paths to relative and split (Unix)
+      if: ${{ runner.os != 'Windows' && inputs.upload-artifact == 'true' }}
+      id: relpath_unix
+      shell: bash
+      env:
+        ARTIFACT_JSON: ${{ steps.tauri.outputs.artifactPaths || steps.tauri_rel.outputs.artifactPaths }}
+      run: |
+        REL_PATHS=$(echo "$ARTIFACT_JSON" | jq -r '.[]' | sed "s#${{ github.workspace }}/##")
+        echo "$REL_PATHS"
+        echo "REL_PATHS<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$REL_PATHS" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+
+    - name: Convert artifact paths to relative and split (Windows)
+      if: ${{ runner.os == 'Windows' && inputs.upload-artifact == 'true' }}
+      id: relpath_win
+      shell: pwsh
+      env:
+        ARTIFACT_JSON: ${{ steps.tauri.outputs.artifactPaths || steps.tauri_rel.outputs.artifactPaths }}
+      run: |
+        $paths = $env:ARTIFACT_JSON | ConvertFrom-Json
+        $relPaths = $paths | ForEach-Object { $_ -replace [regex]::Escape("${{ github.workspace }}\"), "" }
+        $relPathsString = $relPaths -join "`n"
+        Write-Host $relPathsString
+        "REL_PATHS<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        $relPathsString | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Upload Tauri Artifacts
+      if: ${{ inputs.upload-artifact == 'true' && env.ACT != 'true' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: |
+          ${{ runner.os == 'Windows' && steps.relpath_win.outputs.REL_PATHS || steps.relpath_unix.outputs.REL_PATHS }}
