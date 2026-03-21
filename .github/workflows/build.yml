@@ -2,6 +2,27 @@ name: "Tauri Build"
 
 on:
   workflow_dispatch:
+    inputs:
+      macos_aarch64:
+        description: "macOS Apple Silicon (aarch64)"
+        type: boolean
+        default: true
+      macos_x64:
+        description: "macOS Intel (x86_64)"
+        type: boolean
+        default: true
+      windows:
+        description: "Windows x64"
+        type: boolean
+        default: true
+      linux_x64:
+        description: "Linux x64"
+        type: boolean
+        default: true
+      linux_arm64:
+        description: "Linux arm64"
+        type: boolean
+        default: true
   # pull_request:
   # push:
   #   paths-ignore:
@@ -11,31 +32,46 @@ on:
 # This workflow will build your tauri app without uploading it anywhere.
 
 jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        shell: bash
+        env:
+          INC_MACOS_AARCH64: ${{ github.event_name != 'workflow_dispatch' || inputs.macos_aarch64 }}
+          INC_MACOS_X64: ${{ github.event_name != 'workflow_dispatch' || inputs.macos_x64 }}
+          INC_WINDOWS: ${{ github.event_name != 'workflow_dispatch' || inputs.windows }}
+          INC_LINUX_X64: ${{ github.event_name != 'workflow_dispatch' || inputs.linux_x64 }}
+          INC_LINUX_ARM64: ${{ github.event_name != 'workflow_dispatch' || inputs.linux_arm64 }}
+        run: |
+          set -euo pipefail
+          matrix=$(jq -nc \
+            --arg ma "$INC_MACOS_AARCH64" \
+            --arg mx "$INC_MACOS_X64" \
+            --arg win "$INC_WINDOWS" \
+            --arg lx "$INC_LINUX_X64" \
+            --arg la "$INC_LINUX_ARM64" \
+            'def on($x): ($x | ascii_downcase) == "true";
+            [
+              (if on($ma) then {"platform":"macos-latest","args":"--target aarch64-apple-darwin"} else empty end),
+              (if on($mx) then {"platform":"macos-latest","args":"--target x86_64-apple-darwin"} else empty end),
+              (if on($win) then {"platform":"windows-latest","args":""} else empty end),
+              (if on($lx) then {"platform":"ubuntu-latest","args":"--target x86_64-unknown-linux-gnu"} else empty end),
+              (if on($la) then {"platform":"ubuntu-24.04-arm","args":"--target aarch64-unknown-linux-gnu"} else empty end)
+            ] | if length == 0 then error("Select at least one platform") else {include: .} end')
+          {
+            echo 'matrix<<EOF'
+            echo "$matrix"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
   test-tauri:
+    needs: prepare-matrix
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          # macOS arm
-          - platform: "macos-latest"
-            args: "--target aarch64-apple-darwin"
-          # macOS x64
-          - platform: "macos-latest"
-            args: "--target x86_64-apple-darwin"
-          # macOS universal
-          # - platform: "macos-latest"
-          #   args: "--target universal-apple-darwin"
-
-          # Windows x64
-          - platform: "windows-latest"
-            args: ""
-
-          # Ubuntu x64
-          - platform: "ubuntu-latest"
-            args: "--target x86_64-unknown-linux-gnu"
-          # Ubuntu arm64
-          - platform: "ubuntu-24.04-arm"
-            args: "--target aarch64-unknown-linux-gnu"
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
 
     runs-on: ${{ matrix.platform }}
     steps:
