@@ -30,7 +30,7 @@ runs:
   using: composite
   steps:
     - name: Setup Bun
-      uses: oven-sh/setup-bun@v2
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
         bun-version: latest
 
@@ -63,7 +63,7 @@ runs:
       run: bun install --frozen-lockfile
 
     - name: Restore bun cache
-      uses: actions/cache@v5
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: |
           node_modules
@@ -72,7 +72,7 @@ runs:
           ${{ runner.os }}-bun-
 
     - name: Rust cache
-      uses: swatinem/rust-cache@v2
+      uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       with:
         workspaces: './src-tauri -> target'
 
@@ -86,7 +86,7 @@ runs:
 
     - name: Build Tauri (artifacts only)
       if: ${{ inputs.release != 'true' }}
-      uses: tauri-apps/tauri-action@v0
+      uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
       id: tauri
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -95,7 +95,7 @@ runs:
 
     - name: Build and release Tauri
       if: ${{ inputs.release == 'true' }}
-      uses: tauri-apps/tauri-action@v0
+      uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
       id: tauri_rel
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -136,7 +136,7 @@ runs:
 
     - name: Upload Tauri Artifacts
       if: ${{ inputs.upload-artifact == 'true' && env.ACT != 'true' }}
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
         name: ${{ inputs.artifact-name }}
         path: |
