@@ -31,7 +31,7 @@ export type Config = {
 
 export const defaultConfig: Config = {
 	theme: 'dark' as Theme,
-	fetchInterval: FETCH_INTERVAL_AUTO,
+	fetchInterval: 60_000,
 	autoStart: false,
 	pushNotification: false,
 	pushNotificationWhen: {
