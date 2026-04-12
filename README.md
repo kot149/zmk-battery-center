@@ -109,8 +109,9 @@ Implementation and discussion for split battery reporting over BLE GATT:
 
 ## Related Works
 
-- [zmk-ble](https://github.com/Katona/zmk-ble): Proof-of-concept system tray app for macOS (not compatible with latest macOS)
+- [ZMK Battery Bar](https://github.com/itouuuuuuuuu/zmk-battery-bar): System tray app for macOS
 - [Mighty-Mitts](https://github.com/codyd51/Mighty-Mitts): System tray app for macOS
+- [zmk-ble](https://github.com/Katona/zmk-ble): Proof-of-concept system tray app for macOS (not compatible with latest macOS)
 - [zmk-split-battery](https://github.com/Maksim-Isakau/zmk-split-battery): System tray app for Windows
 - [zmkBATx](https://github.com/mh4x0f/zmkBATx): System tray app for Linux
 - [ZmkBatteryClient](https://github.com/JanValiska/ZmkBatteryClient): [Waybar](https://github.com/Alexays/Waybar) custom module
