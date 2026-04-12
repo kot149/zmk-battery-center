@@ -9,7 +9,8 @@
   "homepage": "https://github.com/kot149/zmk-battery-center",
   "bugs": "https://github.com/kot149/zmk-battery-center/issues",
   "scripts": {
-    "dev": "vite",
+    "dev": "bun tauri dev",
+    "dev:frontend": "vite",
     "build:ui": "tsc && vite build",
     "build:app": "bun tauri build --no-bundle",
     "with:test-data": "bun scripts/with_dev_data_dir.ts",
