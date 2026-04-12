@@ -11,6 +11,13 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
 
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.ts",
+    include: ["src/**/__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.tsx"],
+  },
+
   resolve: {
     alias: {
       '@': path.resolve(dirname, 'src'),
