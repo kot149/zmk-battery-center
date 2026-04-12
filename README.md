@@ -48,7 +48,7 @@ Coming soon, please install manually for now.
 ### Install manually
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
-If you worry about security, you can build the app yourself from source code. See [Development](#development) section for more details.
+If you worry about security, you can build the app yourself from source code. See [development](docs/DEVELOPMENT.md) for more details.
 
 ## Limitations on Linux
 
@@ -99,51 +99,7 @@ You can manually move the window to the correct position to address this issue.
 
 ## Development
 
-1. Install [Bun](https://bun.sh)
-1. Install [Rustup](https://www.rust-lang.org/ja/tools/install)
-2. Clone this repo
-   ```sh
-   git clone https://github.com/kot149/zmk-battery-center.git
-   cd zmk-battery-center
-   ```
-1. Install frontend dependencies
-     ```sh
-     bun install
-     ```
-2. Install Cargo tools
-     ```sh
-     cargo install cargo-about cargo-deny
-     ```
-2. Run in development mode
-     ```sh
-     bun tauri dev
-     ```
-   In development mode, config and device list are saved to `.dev-data/` at the project root. Use the `ZMK_BATTERY_CENTER_DATA_DIR` environment variable to switch directories (e.g. for tests):
-
-   ```sh
-   bunx cross-env ZMK_BATTERY_CENTER_DATA_DIR=./.dev-data-test bun tauri dev
-   ```
-
-3. Build for production
-     ```sh
-     bun tauri build
-     ```
-   - If build fails, try cleaning the build cache
-     ```sh
-     cd src-tauri
-     cargo clean
-     cd ..
-     ```
-   - Specify the target platform with `--target` option. If omitted, the app will be built for the current platform.
-     ```sh
-     # for macOS arm64
-     bun tauri build --target aarch64-apple-darwin
-
-     # for macOS x86_64
-     bun tauri build --target x86_64-apple-darwin
-     ```
-
-You can also build using [GitHub Actions](.github/workflows).
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment setup, build commands, and running tests.
 
 ## References
 

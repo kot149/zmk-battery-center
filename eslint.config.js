@@ -73,4 +73,28 @@ export default [
 			},
 		},
 	},
+	{
+		files: ["e2e/**/*.ts"],
+		rules: {
+			"react-hooks/rules-of-hooks": "off",
+			"react-hooks/exhaustive-deps": "off",
+		},
+	},
+	{
+		files: ["e2e/support/**/*.js"],
+		languageOptions: {
+			globals: {
+				window: "readonly",
+				Map: "readonly",
+				Set: "readonly",
+				Promise: "readonly",
+				Math: "readonly",
+				Number: "readonly",
+				JSON: "readonly",
+				Object: "readonly",
+				Error: "readonly",
+				String: "readonly",
+			},
+		},
+	},
 ];
