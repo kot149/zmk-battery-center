@@ -23,6 +23,7 @@ use tauri::tray::TrayIcon;
 #[derive(Clone, Default)]
 struct DrawState {
     enabled: bool,
+    row_count: u8,
     central: Option<u8>,
     peripheral: Option<u8>,
     c_label: char,
@@ -33,6 +34,7 @@ struct DrawState {
 impl DrawState {
     fn sync_from_payload(&mut self, p: &TrayBatteryPayload) {
         self.enabled = p.enabled;
+        self.row_count = p.row_count.clamp(1, 2);
         self.central = p.central_percent;
         self.peripheral = p.peripheral_percent;
         self.c_label = one_char(&p.central_label, 'C');
@@ -117,7 +119,7 @@ fn percent_placeholder_width(digits: usize, pct_attrs: &NSDictionary<NSAttribute
 
 const PAD_X: CGFloat = 6.0;
 const INNER_GAP: CGFloat = 2.5;
-const ROW_TOTAL_H: CGFloat = 22.0;
+const ROW_TOTAL_H: CGFloat = 24.0;
 const FONT_PT: CGFloat = 11.0;
 const ICON_W: CGFloat = 18.0;
 const ICON_H: CGFloat = 8.0;
@@ -143,6 +145,19 @@ fn label_column_width(
     }
 }
 
+fn label_column_width_single(label: char, attrs: &NSDictionary<NSAttributedStringKey, AnyObject>) -> CGFloat {
+    let s = NSString::from_str(&label.to_string());
+    unsafe { s.sizeWithAttributes(Some(attrs)).width.max(12.0) }
+}
+
+fn view_height_for_row_count(row_count: u8) -> CGFloat {
+    if row_count <= 1 {
+        ROW_TOTAL_H * 0.5
+    } else {
+        ROW_TOTAL_H
+    }
+}
+
 fn content_width_for_state(state: &DrawState) -> CGFloat {
     let color = label_text_color(state.disconnected);
     let label_font = rounded_semibold_label_font(FONT_PT);
@@ -151,8 +166,16 @@ fn content_width_for_state(state: &DrawState) -> CGFloat {
     };
     let label_attrs = attributed_attributes(label_font.clone(), color.clone());
     let pct_attrs = attributed_attributes(pct_font.clone(), color.clone());
-    let label_col = label_column_width(state.c_label, state.p_label, &label_attrs);
-    let digits = digit_count(state.central).max(digit_count(state.peripheral));
+    let label_col = if state.row_count <= 1 {
+        label_column_width_single(state.c_label, &label_attrs)
+    } else {
+        label_column_width(state.c_label, state.p_label, &label_attrs)
+    };
+    let digits = if state.row_count <= 1 {
+        digit_count(state.central)
+    } else {
+        digit_count(state.central).max(digit_count(state.peripheral))
+    };
     let pct_col = percent_placeholder_width(digits, &pct_attrs);
     let bat = battery_icon_width();
     PAD_X
@@ -169,7 +192,8 @@ fn intrinsic_size_for_state(state: &DrawState) -> NSSize {
         return NSSize::new(0.0, ROW_TOTAL_H);
     }
     let w = content_width_for_state(state).max(MIN_VIEW_WIDTH);
-    NSSize::new(w, ROW_TOTAL_H)
+    let h = view_height_for_row_count(state.row_count);
+    NSSize::new(w, h)
 }
 
 fn measure_intrinsic(view: &BatteryTrayView) -> NSSize {
@@ -285,10 +309,19 @@ fn draw_battery_content(view: &BatteryTrayView) {
     };
     let label_attrs = attributed_attributes(label_font.clone(), color.clone());
     let pct_attrs = attributed_attributes(pct_font.clone(), color.clone());
-    let label_col = label_column_width(state.c_label, state.p_label, &label_attrs);
-    let digits = digit_count(state.central).max(digit_count(state.peripheral));
+    let rows = state.row_count.clamp(1, 2) as usize;
+    let label_col = if rows == 1 {
+        label_column_width_single(state.c_label, &label_attrs)
+    } else {
+        label_column_width(state.c_label, state.p_label, &label_attrs)
+    };
+    let digits = if rows == 1 {
+        digit_count(state.central)
+    } else {
+        digit_count(state.central).max(digit_count(state.peripheral))
+    };
     let pct_col = percent_placeholder_width(digits, &pct_attrs);
-    let row_h = bounds.size.height * 0.5;
+    let row_h = bounds.size.height / rows as CGFloat;
     draw_battery_row(
         0.0,
         row_h,
@@ -300,17 +333,19 @@ fn draw_battery_content(view: &BatteryTrayView) {
         &pct_attrs,
         muted,
     );
-    draw_battery_row(
-        row_h,
-        row_h,
-        label_col,
-        pct_col,
-        state.p_label,
-        state.peripheral,
-        &label_attrs,
-        &pct_attrs,
-        muted,
-    );
+    if rows >= 2 {
+        draw_battery_row(
+            row_h,
+            row_h,
+            label_col,
+            pct_col,
+            state.p_label,
+            state.peripheral,
+            &label_attrs,
+            &pct_attrs,
+            muted,
+        );
+    }
 }
 
 define_class!(
@@ -397,9 +432,14 @@ fn layout_overlay(
     tray_target: &NSView,
     view: &BatteryTrayView,
 ) {
-    let size = measure_intrinsic(view);
-    view.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), size));
-    button.setFrameSize(NSSize::new(size.width, size.height));
+    let content = measure_intrinsic(view);
+    let button_h = ROW_TOTAL_H;
+    let content_y = ((button_h - content.height) * 0.5).max(0.0);
+    view.setFrame(NSRect::new(
+        NSPoint::new(0.0, content_y),
+        NSSize::new(content.width, content.height),
+    ));
+    button.setFrameSize(NSSize::new(content.width, button_h));
     tray_target.setFrame(button.bounds());
     view.setNeedsDisplay(true);
 }

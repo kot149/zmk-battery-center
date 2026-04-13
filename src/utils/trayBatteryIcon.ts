@@ -4,19 +4,13 @@ import type { BatteryInfo } from "@/utils/ble";
 
 export type TrayBatteryIconPayload = {
 	enabled: boolean;
+	rowCount: 1 | 2;
 	centralPercent: number | null;
 	peripheralPercent: number | null;
 	centralLabel: string | null;
 	peripheralLabel: string | null;
 	disconnected: boolean;
 };
-
-function roleOfDescription(desc: string | null): "central" | "peripheral" | "unknown" {
-	const d = (desc ?? "").toLowerCase();
-	if (d.includes("peripheral")) return "peripheral";
-	if (d.includes("central")) return "central";
-	return "unknown";
-}
 
 function labelForInfo(info: BatteryInfo | undefined, fallback: "Central" | "Peripheral"): string {
 	if (!info?.user_description) {
@@ -30,45 +24,11 @@ function labelForInfo(info: BatteryInfo | undefined, fallback: "Central" | "Peri
 	return raw.charAt(0).toUpperCase();
 }
 
-function pickCentralPeripheral(device: RegisteredDevice): {
-	central: BatteryInfo | undefined;
-	peripheral: BatteryInfo | undefined;
-} {
-	let central: BatteryInfo | undefined;
-	let peripheral: BatteryInfo | undefined;
-	const { batteryInfos: infos } = device;
-	for (const b of infos) {
-		const r = roleOfDescription(b.user_description);
-		if (r === "central") central = b;
-		else if (r === "peripheral") peripheral = b;
-	}
-	if (!central && !peripheral && infos.length > 0) {
-		if (infos.length >= 2) {
-			central = infos[0];
-			peripheral = infos[1];
-		} else {
-			central = infos[0];
-		}
-		return { central, peripheral };
-	}
-	// ZMK often exposes only one User Description (e.g. Peripheral). Assign the other row by index.
-	const pIdx = peripheral ? infos.indexOf(peripheral) : -1;
-	const cIdx = central ? infos.indexOf(central) : -1;
-	if (!central) {
-		const idx = infos.findIndex((_, i) => i !== pIdx);
-		if (idx >= 0) central = infos[idx];
-	}
-	if (!peripheral) {
-		const idx = infos.findIndex((_, i) => i !== cIdx);
-		if (idx >= 0) peripheral = infos[idx];
-	}
-	return { central, peripheral };
-}
-
 export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[]): TrayBatteryIconPayload {
 	if (devices.length === 0) {
 		return {
 			enabled: false,
+			rowCount: 1,
 			centralPercent: null,
 			peripheralPercent: null,
 			centralLabel: null,
@@ -77,13 +37,39 @@ export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[])
 		};
 	}
 	const d = devices[0];
-	const { central, peripheral } = pickCentralPeripheral(d);
+	const infos = d.batteryInfos;
+	if (infos.length === 0) {
+		return {
+			enabled: true,
+			rowCount: 1,
+			centralPercent: null,
+			peripheralPercent: null,
+			centralLabel: labelForInfo(undefined, "Central"),
+			peripheralLabel: null,
+			disconnected: d.isDisconnected,
+		};
+	}
+	if (infos.length === 1) {
+		const b = infos[0];
+		return {
+			enabled: true,
+			rowCount: 1,
+			centralPercent: b.battery_level ?? null,
+			peripheralPercent: null,
+			centralLabel: labelForInfo(b, "Central"),
+			peripheralLabel: null,
+			disconnected: d.isDisconnected,
+		};
+	}
+	const first = infos[0];
+	const second = infos[1];
 	return {
 		enabled: true,
-		centralPercent: central?.battery_level ?? null,
-		peripheralPercent: peripheral?.battery_level ?? null,
-		centralLabel: labelForInfo(central, "Central"),
-		peripheralLabel: labelForInfo(peripheral, "Peripheral"),
+		rowCount: 2,
+		centralPercent: first.battery_level ?? null,
+		peripheralPercent: second.battery_level ?? null,
+		centralLabel: labelForInfo(first, "Central"),
+		peripheralLabel: labelForInfo(second, "Peripheral"),
 		disconnected: d.isDisconnected,
 	};
 }
