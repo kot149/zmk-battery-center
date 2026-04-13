@@ -120,6 +120,7 @@ test.describe("legacy saved device payload", () => {
   test.use({
     seed: {
       platform: "windows",
+      config: { fetchInterval: "auto" },
       availableDevices: [],
       batteryById: {},
       registeredDevices: [
@@ -168,6 +169,7 @@ test.describe("monitor startup with empty initial battery info", () => {
   test.use({
     seed: {
       platform: "windows",
+      config: { fetchInterval: "auto" },
       availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
       batteryById: { "kbd-1": [] },
     },
