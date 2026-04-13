@@ -119,6 +119,7 @@ fn percent_placeholder_width(digits: usize, pct_attrs: &NSDictionary<NSAttribute
 
 const PAD_X: CGFloat = 6.0;
 const INNER_GAP: CGFloat = 2.5;
+/// Tray content height (two rows); matches status item button height.
 const ROW_TOTAL_H: CGFloat = 24.0;
 const FONT_PT: CGFloat = 11.0;
 const ICON_W: CGFloat = 18.0;
@@ -321,9 +322,16 @@ fn draw_battery_content(view: &BatteryTrayView) {
         digit_count(state.central).max(digit_count(state.peripheral))
     };
     let pct_col = percent_placeholder_width(digits, &pct_attrs);
-    let row_h = bounds.size.height / rows as CGFloat;
+    let (y_first, row_h) = if rows >= 2 {
+        let block_h = ROW_TOTAL_H;
+        let rh = block_h * 0.5;
+        let y_off = ((bounds.size.height - block_h) * 0.5).max(0.0);
+        (y_off, rh)
+    } else {
+        (0.0, bounds.size.height)
+    };
     draw_battery_row(
-        0.0,
+        y_first,
         row_h,
         label_col,
         pct_col,
@@ -335,7 +343,7 @@ fn draw_battery_content(view: &BatteryTrayView) {
     );
     if rows >= 2 {
         draw_battery_row(
-            row_h,
+            y_first + row_h,
             row_h,
             label_col,
             pct_col,
