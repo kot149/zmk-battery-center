@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { defaultConfig } from "@/utils/config";
@@ -13,7 +14,28 @@ const mockUnlistenBatteryInfo = vi.fn();
 const mockUnlistenMonitorStatus = vi.fn();
 
 let monitorStatusHandler: ((event: { payload: { id: string; connected: boolean } }) => void) | undefined;
-let pendingDeviceGetResolve: ((value: unknown) => void) | null = null;
+let batteryInfoNotificationHandler:
+	| ((event: {
+			payload: {
+				id: string;
+				battery_info: { battery_level: number | null; user_description: string | null };
+			};
+	  }) => void)
+	| undefined;
+
+/** Resolves every in-flight `mockStore.get("devices")` promise (e.g. React StrictMode double effect). */
+let deviceGetResolvers: Array<(value: unknown) => void> = [];
+
+function resolveDeviceStoreGets(payload: unknown) {
+	while (deviceGetResolvers.length > 0) {
+		const resolve = deviceGetResolvers.shift()!;
+		resolve(payload);
+	}
+}
+
+function getStoreSetCalls(): [string, unknown][] {
+	return mockStore.set.mock.calls as unknown as [string, unknown][];
+}
 
 vi.mock("@/context/ConfigContext", () => ({
 	useConfigContext: () => ({
@@ -73,10 +95,12 @@ describe("App", () => {
 		mockUnlistenBatteryInfo.mockReset();
 		mockUnlistenMonitorStatus.mockReset();
 		monitorStatusHandler = undefined;
-		pendingDeviceGetResolve = null;
+		batteryInfoNotificationHandler = undefined;
+		deviceGetResolvers = [];
 
 		mockListen.mockImplementation(async (event: string, handler: unknown) => {
 			if (event === "battery-info-notification") {
+				batteryInfoNotificationHandler = handler as typeof batteryInfoNotificationHandler;
 				return mockUnlistenBatteryInfo;
 			}
 			if (event === "battery-monitor-status") {
@@ -88,7 +112,7 @@ describe("App", () => {
 
 		mockStore.get.mockImplementation(() => {
 			return new Promise((resolve) => {
-				pendingDeviceGetResolve = resolve;
+				deviceGetResolvers.push(resolve);
 			});
 		});
 	});
@@ -100,9 +124,11 @@ describe("App", () => {
 			expect(mockStore.get).toHaveBeenCalledWith("devices");
 		});
 		expect(mockStore.set).not.toHaveBeenCalled();
+		const deviceSetCallsBeforeHydrate = getStoreSetCalls().filter((c) => c[0] === "devices");
+		expect(deviceSetCallsBeforeHydrate).toHaveLength(0);
 
 		await act(async () => {
-			pendingDeviceGetResolve?.([
+			resolveDeviceStoreGets([
 				{
 					id: "kbd-1",
 					name: "MockBoard One",
@@ -115,6 +141,10 @@ describe("App", () => {
 		await waitFor(() => {
 			expect(mockStore.set).toHaveBeenCalledWith("devices", expect.any(Array));
 		});
+		const persistedWhileEmpty = getStoreSetCalls().some(
+			(c) => c[0] === "devices" && Array.isArray(c[1]) && (c[1] as unknown[]).length === 0,
+		);
+		expect(persistedWhileEmpty).toBe(false);
 	});
 
 	it("updates disconnected state from battery-monitor-status events", async () => {
@@ -125,7 +155,7 @@ describe("App", () => {
 		});
 
 		await act(async () => {
-			pendingDeviceGetResolve?.([
+			resolveDeviceStoreGets([
 				{
 					id: "kbd-1",
 					name: "MockBoard One",
@@ -153,8 +183,12 @@ describe("App", () => {
 	it("cleans up event listeners on unmount", async () => {
 		const view = render(<App />);
 
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
 		await act(async () => {
-			pendingDeviceGetResolve?.([]);
+			resolveDeviceStoreGets([]);
 		});
 
 		await waitFor(() => {
@@ -168,5 +202,123 @@ describe("App", () => {
 			expect(mockUnlistenBatteryInfo).toHaveBeenCalledTimes(1);
 			expect(mockUnlistenMonitorStatus).toHaveBeenCalledTimes(1);
 		});
+	});
+
+	it("does not register BLE listeners until the device store has been read from disk", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		const bleChannels = mockListen.mock.calls.map((c) => c[0] as string);
+		expect(bleChannels).not.toContain("battery-info-notification");
+		expect(bleChannels).not.toContain("battery-monitor-status");
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(mockListen).toHaveBeenCalledWith("battery-info-notification", expect.any(Function));
+			expect(mockListen).toHaveBeenCalledWith("battery-monitor-status", expect.any(Function));
+		});
+	});
+
+	it("battery-info-notification updates persisted devices without writing an empty device list", async () => {
+		const saved = [
+			{
+				id: "kbd-1",
+				name: "MockBoard One",
+				isDisconnected: false,
+				batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+			},
+		];
+
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+		expect(mockStore.set).not.toHaveBeenCalled();
+
+		await act(async () => {
+			resolveDeviceStoreGets(saved);
+		});
+
+		await waitFor(() => {
+			expect(batteryInfoNotificationHandler).toBeDefined();
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		mockStore.set.mockClear();
+
+		await act(async () => {
+			batteryInfoNotificationHandler?.({
+				payload: {
+					id: "kbd-1",
+					battery_info: { battery_level: 42, user_description: "Central" },
+				},
+			});
+		});
+
+		await waitFor(() => {
+			expect(mockStore.set).toHaveBeenCalled();
+		});
+		const emptyPersist = getStoreSetCalls().some(
+			(c) => c[0] === "devices" && Array.isArray(c[1]) && (c[1] as unknown[]).length === 0,
+		);
+		expect(emptyPersist).toBe(false);
+		const lastDevicesWrite = [...getStoreSetCalls()].reverse().find((c) => c[0] === "devices");
+		expect(lastDevicesWrite?.[1]).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "kbd-1",
+					batteryInfos: expect.arrayContaining([
+						expect.objectContaining({ battery_level: 42, user_description: "Central" }),
+					]),
+				}),
+			]),
+		);
+	});
+
+	it("hydrates saved devices when StrictMode runs the load effect more than once", async () => {
+		const saved = [
+			{
+				id: "kbd-1",
+				name: "MockBoard One",
+				isDisconnected: false,
+				batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+			},
+		];
+
+		render(
+			<StrictMode>
+				<App />
+			</StrictMode>,
+		);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+			expect(deviceGetResolvers.length).toBeGreaterThanOrEqual(1);
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets(saved);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		const rows = screen.getAllByText("MockBoard One");
+		expect(rows).toHaveLength(1);
 	});
 });

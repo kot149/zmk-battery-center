@@ -86,7 +86,6 @@ function App() {
 	const { config, isConfigLoaded } = useConfigContext();
 	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
 	const registeredDevicesRef = useRef<RegisteredDevice[]>(deviceList);
-	const didLoadDevicesRef = useRef(false);
 	useEffect(() => {
 		registeredDevicesRef.current = deviceList;
 	}, [deviceList]);
@@ -101,8 +100,10 @@ function App() {
 	const commitRegisteredDevices = useCallback(
 		(recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => {
 			setRegisteredDevices((prev) => {
-				const current = prev ?? [];
-				const next = recipe(current);
+				if (prev === undefined) {
+					return prev;
+				}
+				const next = recipe(prev);
 				void persistRegisteredDevices(next);
 				return next;
 			});
@@ -175,8 +176,6 @@ function App() {
 
 	// Load saved devices
 	useEffect(() => {
-		if (didLoadDevicesRef.current) return;
-		didLoadDevicesRef.current = true;
 		let cancelled = false;
 		const fetchRegisteredDevices = async () => {
 			const devices = await loadDevicesFromFile();
@@ -248,6 +247,9 @@ function App() {
 	}
 
 	const handleAddDevice = async (id: string) => {
+		if (!isDeviceLoaded) {
+			return;
+		}
 		if (registeredDeviceIds.has(id)) {
 			handleCloseModal();
 			return;
@@ -359,6 +361,9 @@ function App() {
 	};
 
 	const handleOpenModal = async () => {
+		if (!isDeviceLoaded) {
+			return;
+		}
 		setState(State.addDeviceModal);
 		await fetchDevices();
 	};
@@ -405,6 +410,9 @@ function App() {
 	}, [deviceList, state, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
+		if (!isDeviceLoaded) {
+			return;
+		}
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
 			const payload = event.payload;
 			// Record battery history for notification-mode updates
@@ -436,9 +444,12 @@ function App() {
 		return () => {
 			unlistenPromise.then(unlisten => unlisten());
 		};
-	}, [commitRegisteredDevices]);
+	}, [isDeviceLoaded, commitRegisteredDevices]);
 
 	useEffect(() => {
+		if (!isDeviceLoaded) {
+			return;
+		}
 		const unlistenPromise = listen<BatteryMonitorStatusEvent>("battery-monitor-status", event => {
 			const payload = event.payload;
 			let notificationMessage: string | null = null;
@@ -472,7 +483,7 @@ function App() {
 		return () => {
 			unlistenPromise.then(unlisten => unlisten());
 		};
-	}, [config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
+	}, [isDeviceLoaded, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
 
 	useEffect(() => {
 		if (!isConfigLoaded || !isDeviceLoaded) {
@@ -622,6 +633,7 @@ function App() {
 									icon: <PlusIcon className="size-5" />,
 									onClick: handleOpenModal,
 									ariaLabel: "Add Device",
+									disabled: !isDeviceLoaded,
 								},
 								{
 									icon: <ArrowPathIcon className="size-5" />,
@@ -682,7 +694,11 @@ function App() {
 					) : (
 						<div className="flex-1 flex flex-col items-center justify-center gap-6">
 							<h1 className="text-2xl text-foreground">No devices registered</h1>
-							<Button className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={handleOpenModal}>
+							<Button
+								className="bg-primary text-primary-foreground hover:bg-primary/90"
+								onClick={handleOpenModal}
+								disabled={!isDeviceLoaded}
+							>
 								Add Device
 							</Button>
 						</div>
