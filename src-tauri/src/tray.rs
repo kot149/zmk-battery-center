@@ -1,7 +1,27 @@
+use crate::tray_battery_payload::TrayBatteryPayload;
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
     AppHandle, Emitter,
 };
+
+#[tauri::command]
+pub fn update_tray_battery_icon(
+    app: AppHandle,
+    payload: TrayBatteryPayload,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let tray = app
+            .tray_by_id("tray_icon")
+            .ok_or_else(|| "tray icon not found".to_string())?;
+        return crate::tray_native_macos::apply_tray_battery_state(&app, &tray, &payload);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, payload);
+        Ok(())
+    }
+}
 
 pub fn init_tray(app_handle: AppHandle) {
     let tray = app_handle.tray_by_id("tray_icon").unwrap();

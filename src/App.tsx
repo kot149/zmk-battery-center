@@ -34,6 +34,7 @@ import {
 	mergeBatteryInfos,
 	normalizeLoadedDevices,
 } from "@/utils/appHelpers";
+import { syncTrayBatteryIcon } from "@/utils/trayBatteryIcon";
 
 export type RegisteredDevice = {
 	id: string;
@@ -116,6 +117,15 @@ function App() {
 		isConfigLoaded,
 		onManualWindowPositioningChange: handleManualWindowPositioningChange,
 	});
+
+	useEffect(() => {
+		if (!isDeviceLoaded) return;
+		if (platform() !== "macos") return;
+		const id = window.setTimeout(() => {
+			void syncTrayBatteryIcon(registeredDevices);
+		}, 60);
+		return () => clearTimeout(id);
+	}, [registeredDevices, isDeviceLoaded]);
 
 	// Load saved devices
 	useEffect(() => {

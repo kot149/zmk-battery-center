@@ -7,6 +7,9 @@ mod history;
 mod licenses;
 mod storage;
 mod tray;
+mod tray_battery_payload;
+#[cfg(target_os = "macos")]
+mod tray_native_macos;
 mod window;
 
 #[cfg(debug_assertions)] // for development
@@ -69,6 +72,7 @@ pub fn run() {
             storage::get_dev_store_path,
             history::append_battery_history,
             history::read_battery_history,
+            tray::update_tray_battery_icon,
         ])
         .setup(|app| {
             tray::init_tray(app.handle().clone());
