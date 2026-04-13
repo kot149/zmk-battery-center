@@ -177,12 +177,27 @@ function App() {
 	useEffect(() => {
 		if (didLoadDevicesRef.current) return;
 		didLoadDevicesRef.current = true;
+		let cancelled = false;
 		const fetchRegisteredDevices = async () => {
 			const devices = await loadDevicesFromFile();
-			setRegisteredDevices(devices.map(d => ({ ...d, isDisconnected: true })));
+			if (cancelled) {
+				return;
+			}
+			setRegisteredDevices((prev) => {
+				// Avoid overwriting user-visible state (e.g. after remove) when a
+				// slower load completes — common with StrictMode double-mount or
+				// store I/O contending with notification-mode persistence.
+				if (prev !== undefined) {
+					return prev;
+				}
+				return devices.map(d => ({ ...d, isDisconnected: true }));
+			});
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
 		};
 		void fetchRegisteredDevices();
+		return () => {
+			cancelled = true;
+		};
 	}, []);
 
 	async function fetchDevices() {
@@ -349,15 +364,17 @@ function App() {
 	};
 
 	const handleRemoveDevice = useCallback(async (device: RegisteredDevice) => {
-		if (isNotificationMonitorMode) {
-			try {
-				await stopBatteryNotificationMonitor(device.id);
-				activeNotificationMonitorsRef.current.delete(device.id);
-			} catch (e) {
-				logger.warn(`Failed to stop notification monitor for ${device.id}: ${String(e)}`);
-			}
-		}
 		commitRegisteredDevices(prev => prev.filter(d => d.id !== device.id));
+		if (!isNotificationMonitorMode) {
+			return;
+		}
+		try {
+			await stopBatteryNotificationMonitor(device.id);
+		} catch (e) {
+			logger.warn(`Failed to stop notification monitor for ${device.id}: ${String(e)}`);
+		} finally {
+			activeNotificationMonitorsRef.current.delete(device.id);
+		}
 	}, [isNotificationMonitorMode, commitRegisteredDevices]);
 
 	const handleReload = async () => {
