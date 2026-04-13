@@ -248,47 +248,51 @@ fn draw_battery_icon(bat_x: CGFloat, icon_y: CGFloat, pct: Option<u8>, muted: bo
     nub.fill();
 }
 
-fn draw_battery_row(
-    y_top: CGFloat,
+struct BatteryRowLayout<'a> {
     row_h: CGFloat,
     label_col_w: CGFloat,
     pct_col_w: CGFloat,
+    label_attrs: &'a NSDictionary<NSAttributedStringKey, AnyObject>,
+    pct_attrs: &'a NSDictionary<NSAttributedStringKey, AnyObject>,
+    muted: bool,
+}
+
+fn draw_battery_row(
+    layout: &BatteryRowLayout<'_>,
+    y_top: CGFloat,
     label: char,
     pct: Option<u8>,
-    label_attrs: &NSDictionary<NSAttributedStringKey, AnyObject>,
-    pct_attrs: &NSDictionary<NSAttributedStringKey, AnyObject>,
-    muted: bool,
 ) {
     let col_left = PAD_X;
     let lstr = NSString::from_str(&label.to_string());
-    let lsize = unsafe { lstr.sizeWithAttributes(Some(label_attrs)) };
-    let label_x = col_left + (label_col_w - lsize.width) * 0.5;
-    let y_label = y_top + (row_h - lsize.height) * 0.5;
+    let lsize = unsafe { lstr.sizeWithAttributes(Some(layout.label_attrs)) };
+    let label_x = col_left + (layout.label_col_w - lsize.width) * 0.5;
+    let y_label = y_top + (layout.row_h - lsize.height) * 0.5;
     unsafe {
         lstr.drawAtPoint_withAttributes(
             CGPoint {
                 x: label_x,
                 y: y_label,
             },
-            Some(label_attrs),
+            Some(layout.label_attrs),
         );
     }
-    let bat_x = col_left + label_col_w + INNER_GAP;
-    let icon_y = y_top + (row_h - ICON_H) * 0.5;
-    draw_battery_icon(bat_x, icon_y, pct, muted);
+    let bat_x = col_left + layout.label_col_w + INNER_GAP;
+    let icon_y = y_top + (layout.row_h - ICON_H) * 0.5;
+    draw_battery_icon(bat_x, icon_y, pct, layout.muted);
     let pct_area_left = bat_x + ICON_W + INNER_GAP;
     let pct_s = pct_string(pct);
     let pstr = NSString::from_str(&pct_s);
-    let psize = unsafe { pstr.sizeWithAttributes(Some(pct_attrs)) };
-    let pct_draw_x = pct_area_left + pct_col_w - psize.width;
-    let y_pct = y_top + (row_h - psize.height) * 0.5;
+    let psize = unsafe { pstr.sizeWithAttributes(Some(layout.pct_attrs)) };
+    let pct_draw_x = pct_area_left + layout.pct_col_w - psize.width;
+    let y_pct = y_top + (layout.row_h - psize.height) * 0.5;
     unsafe {
         pstr.drawAtPoint_withAttributes(
             CGPoint {
                 x: pct_draw_x,
                 y: y_pct,
             },
-            Some(pct_attrs),
+            Some(layout.pct_attrs),
         );
     }
 }
@@ -330,29 +334,17 @@ fn draw_battery_content(view: &BatteryTrayView) {
     } else {
         (0.0, bounds.size.height)
     };
-    draw_battery_row(
-        y_first,
+    let row_layout = BatteryRowLayout {
         row_h,
-        label_col,
-        pct_col,
-        state.c_label,
-        state.central,
-        &label_attrs,
-        &pct_attrs,
+        label_col_w: label_col,
+        pct_col_w: pct_col,
+        label_attrs: &label_attrs,
+        pct_attrs: &pct_attrs,
         muted,
-    );
+    };
+    draw_battery_row(&row_layout, y_first, state.c_label, state.central);
     if rows >= 2 {
-        draw_battery_row(
-            y_first + row_h,
-            row_h,
-            label_col,
-            pct_col,
-            state.p_label,
-            state.peripheral,
-            &label_attrs,
-            &pct_attrs,
-            muted,
-        );
+        draw_battery_row(&row_layout, y_first + row_h, state.p_label, state.peripheral);
     }
 }
 

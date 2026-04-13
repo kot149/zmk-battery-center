@@ -14,7 +14,7 @@ pub fn update_tray_battery_icon(
         let tray = app
             .tray_by_id("tray_icon")
             .ok_or_else(|| "tray icon not found".to_string())?;
-        return crate::tray_native_macos::apply_tray_battery_state(&app, &tray, &payload);
+        crate::tray_native_macos::apply_tray_battery_state(&app, &tray, &payload)
     }
     #[cfg(not(target_os = "macos"))]
     {

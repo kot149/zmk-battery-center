@@ -10,7 +10,15 @@ import {
 	BatteryInfoNotificationEvent,
 	BatteryMonitorStatusEvent,
 } from "./utils/ble";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import {
+	useState,
+	useEffect,
+	useCallback,
+	useRef,
+	useMemo,
+	type Dispatch,
+	type SetStateAction,
+} from "react";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
@@ -65,25 +73,63 @@ async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 const NOOP = () => {};
 
 function App() {
-	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[]>([]);
-	const [isDeviceLoaded, setIsDeviceLoaded] = useState(false);
+	const [registeredDevices, setRegisteredDevices] = useState<
+		RegisteredDevice[] | undefined
+	>(undefined);
+	const isDeviceLoaded = registeredDevices !== undefined;
+	const deviceList = useMemo(
+		() => registeredDevices ?? [],
+		[registeredDevices],
+	);
 	const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
 	const [error, setError] = useState("");
 	const { config, isConfigLoaded } = useConfigContext();
 	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
-	const registeredDevicesRef = useRef<RegisteredDevice[]>(registeredDevices);
+	const registeredDevicesRef = useRef<RegisteredDevice[]>(deviceList);
 	const didLoadDevicesRef = useRef(false);
 	useEffect(() => {
-		registeredDevicesRef.current = registeredDevices;
-	}, [registeredDevices]);
+		registeredDevicesRef.current = deviceList;
+	}, [deviceList]);
+
+	const persistRegisteredDevices = useCallback(async (devices: RegisteredDevice[]) => {
+		const storePath = await getStorePath(DEVICES_FILENAME);
+		const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
+		await deviceStore.set("devices", devices);
+		logger.info('Saved registered devices');
+	}, []);
+
+	const commitRegisteredDevices = useCallback(
+		(recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => {
+			setRegisteredDevices((prev) => {
+				const current = prev ?? [];
+				const next = recipe(current);
+				void persistRegisteredDevices(next);
+				return next;
+			});
+		},
+		[persistRegisteredDevices],
+	);
+
+	const setRegisteredDevicesForPanel = useCallback<
+		Dispatch<SetStateAction<RegisteredDevice[]>>
+	>(
+		(action) => {
+			commitRegisteredDevices((prev) =>
+				typeof action === "function"
+					? (action as (p: RegisteredDevice[]) => RegisteredDevice[])(prev)
+					: action,
+			);
+		},
+		[commitRegisteredDevices],
+	);
 
 	const [state, setState] = useState<State>(State.main);
 	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
 	const isNotificationMonitorMode = !isPollingMode;
 
 	const registeredDeviceIds = useMemo(
-		() => new Set(registeredDevices.map(d => d.id)),
-		[registeredDevices]
+		() => new Set(deviceList.map(d => d.id)),
+		[deviceList]
 	);
 	// Stable string key that changes only when the set of device IDs changes.
 	// Used as a dependency for syncNotificationMonitors so that battery-level
@@ -119,13 +165,13 @@ function App() {
 	});
 
 	useEffect(() => {
-		if (!isDeviceLoaded) return;
+		if (registeredDevices === undefined) return;
 		if (platform() !== "macos") return;
 		const id = window.setTimeout(() => {
 			void syncTrayBatteryIcon(registeredDevices);
 		}, 60);
 		return () => clearTimeout(id);
-	}, [registeredDevices, isDeviceLoaded]);
+	}, [registeredDevices]);
 
 	// Load saved devices
 	useEffect(() => {
@@ -135,9 +181,8 @@ function App() {
 			const devices = await loadDevicesFromFile();
 			setRegisteredDevices(devices.map(d => ({ ...d, isDisconnected: true })));
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
-			setIsDeviceLoaded(true);
 		};
-		fetchRegisteredDevices();
+		void fetchRegisteredDevices();
 	}, []);
 
 	async function fetchDevices() {
@@ -212,7 +257,7 @@ function App() {
 				batteryInfos: infoArray,
 				isDisconnected: isNotificationMonitorMode ? infoArray.length === 0 : false,
 			};
-			setRegisteredDevices(prev => [...prev, newDevice]);
+			commitRegisteredDevices(prev => [...prev, newDevice]);
 			handleCloseModal();
 		} catch (e: unknown) {
 			const msg = e instanceof Error ? e.message : String(e);
@@ -240,7 +285,7 @@ function App() {
 			try {
 				const info = await getBatteryInfo(device.id);
 				const infoArray = Array.isArray(info) ? info : [info];
-				setRegisteredDevices(prev => prev.map(d => {
+				commitRegisteredDevices(prev => prev.map(d => {
 					if (d.id !== device.id) return d;
 					return { ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false };
 				}));
@@ -281,7 +326,7 @@ function App() {
 			} catch {
 				attempts++;
 				if (attempts >= maxAttempts) {
-					setRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, isDisconnected: true } : d));
+					commitRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, isDisconnected: true } : d));
 
 					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
 						await sendNotification(`${device.name} has been disconnected.`);
@@ -291,7 +336,7 @@ function App() {
 			}
 			await sleep(500);
 		}
-	}, []);
+	}, [commitRegisteredDevices]);
 
 	const handleCloseModal = () => {
 		setState(State.main);
@@ -312,15 +357,18 @@ function App() {
 				logger.warn(`Failed to stop notification monitor for ${device.id}: ${String(e)}`);
 			}
 		}
-		setRegisteredDevices(prev => prev.filter(d => d.id !== device.id));
-	}, [isNotificationMonitorMode]);
+		commitRegisteredDevices(prev => prev.filter(d => d.id !== device.id));
+	}, [isNotificationMonitorMode, commitRegisteredDevices]);
 
 	const handleReload = async () => {
 		if (!isPollingMode) {
 			return;
 		}
+		if (!isDeviceLoaded) {
+			return;
+		}
 		setState(State.fetchingBatteryInfo);
-		await Promise.all(registeredDevices.map(updateBatteryInfo));
+		await Promise.all(deviceList.map(updateBatteryInfo));
 		setState(State.main);
 	};
 
@@ -337,7 +385,7 @@ function App() {
 				}, 100);
 			}
 		});
-	}, [registeredDevices, state, config.manualWindowPositioning, isConfigLoaded]);
+	}, [deviceList, state, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
@@ -356,7 +404,7 @@ function App() {
 					});
 				}
 			}
-			setRegisteredDevices(prev => prev.map(device => {
+			commitRegisteredDevices(prev => prev.map(device => {
 				if (device.id !== payload.id) {
 					return device;
 				}
@@ -371,14 +419,14 @@ function App() {
 		return () => {
 			unlistenPromise.then(unlisten => unlisten());
 		};
-	}, []);
+	}, [commitRegisteredDevices]);
 
 	useEffect(() => {
 		const unlistenPromise = listen<BatteryMonitorStatusEvent>("battery-monitor-status", event => {
 			const payload = event.payload;
 			let notificationMessage: string | null = null;
 
-			setRegisteredDevices(prev => prev.map(device => {
+			commitRegisteredDevices(prev => prev.map(device => {
 				if (device.id !== payload.id) {
 					return device;
 				}
@@ -407,7 +455,7 @@ function App() {
 		return () => {
 			unlistenPromise.then(unlisten => unlisten());
 		};
-	}, [config.pushNotification, config.pushNotificationWhen]);
+	}, [config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
 
 	useEffect(() => {
 		if (!isConfigLoaded || !isDeviceLoaded) {
@@ -455,13 +503,13 @@ function App() {
 					// connection watcher was launched. Keep isDisconnected:true until
 					// the watcher emits a battery-info-notification event on connection.
 					if (infoArray.length > 0) {
-						setRegisteredDevices(prev => prev.map(device => device.id === id
+						commitRegisteredDevices(prev => prev.map(device => device.id === id
 							? { ...device, batteryInfos: mergeBatteryInfos(device.batteryInfos, infoArray), isDisconnected: false }
 							: device
 						));
 					}
 				} catch {
-					setRegisteredDevices(prev => prev.map(device => {
+					commitRegisteredDevices(prev => prev.map(device => {
 						if (device.id !== id || device.isDisconnected) {
 							return device;
 						}
@@ -481,6 +529,7 @@ function App() {
 		isNotificationMonitorMode,
 		isConfigLoaded,
 		isDeviceLoaded,
+		commitRegisteredDevices,
 	]);
 
 	useEffect(() => {
@@ -493,18 +542,6 @@ function App() {
 			}
 		};
 	}, []);
-
-	// Save registered devices whenever they change
-	useEffect(() => {
-		if (!isDeviceLoaded) return;
-		const saveRegisteredDevices = async () => {
-			const storePath = await getStorePath(DEVICES_FILENAME);
-			const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
-			await deviceStore.set("devices", registeredDevices);
-			logger.info('Saved registered devices');
-		};
-		saveRegisteredDevices();
-	}, [registeredDevices, isDeviceLoaded]);
 
 	// Polling: use registeredDevicesRef so this effect doesn't re-run on every
 	// device update (which would cause an infinite loop).
@@ -543,7 +580,7 @@ function App() {
 
 	return (
 		<div id="app" className={`relative flex flex-col bg-background text-foreground rounded-lg p-2 ${
-			state === State.main && registeredDevices.length > 0 ? 'w-90' :
+			state === State.main && deviceList.length > 0 ? 'w-90' :
 			state === State.chart ? 'w-110 h-90' :
 			state === State.fetchingBatteryInfo ? 'w-90 min-h-58' :
 			state === State.settings ? 'w-90 min-h-85' :
@@ -573,7 +610,7 @@ function App() {
 									icon: <ArrowPathIcon className="size-5" />,
 									onClick: handleReload,
 									ariaLabel: "Reload",
-									disabled: registeredDevices.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode,
+									disabled: deviceList.length === 0 || state === State.fetchingBatteryInfo || !isPollingMode,
 								},
 								{
 									icon: <Cog8ToothIcon className="size-5" />,
@@ -602,7 +639,7 @@ function App() {
 										availableDevices.map((d) => (
 											<li key={d.id}>
 												<Button
-													className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-muted transition-colors duration-300 !p-2"
+													className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-muted transition-colors duration-300 p-2!"
 													onClick={() => handleAddDevice(d.id)}
 												>
 													{d.name}
@@ -616,11 +653,11 @@ function App() {
 					)}
 
 					{/* Devices content */}
-					{registeredDevices.length > 0 ? (
+					{deviceList.length > 0 ? (
 						<main className="container mx-auto">
 							<RegisteredDevicesPanel
-								registeredDevices={registeredDevices}
-								setRegisteredDevices={setRegisteredDevices}
+								registeredDevices={deviceList}
+								setRegisteredDevices={setRegisteredDevicesForPanel}
 								onRemoveDevice={handleRemoveDevice}
 								onChartOpenChange={handleChartOpenChange}
 							/>

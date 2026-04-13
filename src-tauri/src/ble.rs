@@ -51,6 +51,17 @@ struct MonitorConnectionState {
     is_connected: bool,
 }
 
+struct BatteryNotificationWorkerArgs {
+    app: AppHandle,
+    adapter: Adapter,
+    target_device: Device,
+    device_id: String,
+    worker_id: usize,
+    monitor_connection_state: Arc<Mutex<MonitorConnectionState>>,
+    context: BatteryCharacteristicContext,
+    stop_rx: watch::Receiver<bool>,
+}
+
 struct MonitorTask {
     stop_tx: watch::Sender<bool>,
     join_handles: Vec<JoinHandle<()>>,
@@ -298,16 +309,17 @@ async fn update_monitor_connection_state(
     }
 }
 
-async fn battery_notification_worker(
-    app: AppHandle,
-    adapter: Adapter,
-    target_device: Device,
-    device_id: String,
-    worker_id: usize,
-    monitor_connection_state: Arc<Mutex<MonitorConnectionState>>,
-    context: BatteryCharacteristicContext,
-    mut stop_rx: watch::Receiver<bool>,
-) {
+async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
+    let BatteryNotificationWorkerArgs {
+        app,
+        adapter,
+        target_device,
+        device_id,
+        worker_id,
+        monitor_connection_state,
+        context,
+        mut stop_rx,
+    } = args;
     // Subscribe to connection events
     let conn_events_result = adapter.device_connection_events(&target_device).await;
     let mut conn_events = match conn_events_result {
@@ -624,16 +636,16 @@ async fn battery_connection_watcher(
             let state_c = monitor_connection_state.clone();
 
             sub_handles.push(tokio::spawn(async move {
-                battery_notification_worker(
-                    app_c,
-                    adapter_c,
-                    device_c,
-                    id_c,
+                battery_notification_worker(BatteryNotificationWorkerArgs {
+                    app: app_c,
+                    adapter: adapter_c,
+                    target_device: device_c,
+                    device_id: id_c,
                     worker_id,
-                    state_c,
+                    monitor_connection_state: state_c,
                     context,
-                    stop_rx_c,
-                )
+                    stop_rx: stop_rx_c,
+                })
                 .await;
             }));
         }
