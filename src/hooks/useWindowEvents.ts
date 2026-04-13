@@ -15,8 +15,8 @@ interface UseWindowEventsOptions {
 export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange }: UseWindowEventsOptions) {
     const isWindowMovingRef = useRef(false);
     const isWindowFocusedRef = useRef(false);
-    const moveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const focusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const moveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const hasRestoredPositionRef = useRef(false);
     const onWindowPositionChangeRef = useRef(onWindowPositionChange);
     onWindowPositionChangeRef.current = onWindowPositionChange;
