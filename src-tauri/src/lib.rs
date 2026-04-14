@@ -9,7 +9,13 @@ mod storage;
 mod tray;
 mod tray_battery_payload;
 #[cfg(target_os = "macos")]
-mod tray_native_macos;
+mod tray_battery_macos;
+#[cfg(all(
+    not(target_os = "macos"),
+    not(target_os = "ios"),
+    not(target_os = "android")
+))]
+mod tray_battery_raster;
 mod window;
 
 #[cfg(debug_assertions)] // for development

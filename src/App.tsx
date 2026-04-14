@@ -167,7 +167,8 @@ function App() {
 
 	useEffect(() => {
 		if (registeredDevices === undefined) return;
-		if (platform() !== "macos") return;
+		const os = platform();
+		if (os === "ios" || os === "android") return;
 		const id = window.setTimeout(() => {
 			void syncTrayBatteryIcon(registeredDevices);
 		}, 60);

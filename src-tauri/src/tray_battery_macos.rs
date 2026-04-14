@@ -1,4 +1,4 @@
-//! AppKit-native tray content: `NSView` subclass (`drawRect:`) behind TaoTrayTarget,
+//! macOS tray battery UI: custom `NSView` (`drawRect:`) behind TaoTrayTarget,
 //! using `NSBezierPath` and `NSString` drawing (no generated tray bitmap).
 
 use crate::tray_battery_payload::TrayBatteryPayload;
