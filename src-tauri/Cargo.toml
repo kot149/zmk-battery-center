@@ -1,6 +1,6 @@
 [package]
 name = "zmk-battery-center"
-version = "0.5.0"
+version = "0.6.0"
 description = "A tray app to monitor battery status of ZMK keyboards"
 authors = ["kot149"]
 license = "MIT"
