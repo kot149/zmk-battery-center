@@ -3,16 +3,6 @@
 
 version: 2
 updates:
-  - package-ecosystem: "bun"
-    directory: "/"
-    schedule:
-      interval: "quarterly"
-
-  - package-ecosystem: "cargo"
-    directory: "/src-tauri"
-    schedule:
-      interval: "quarterly"
-
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
