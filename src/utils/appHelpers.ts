@@ -5,7 +5,21 @@ export type NormalizedRegisteredDevice = {
 	name: string;
 	batteryInfos: BatteryInfo[];
 	isDisconnected: boolean;
+	batteryPartLabels?: Record<string, string>;
 };
+
+function normalizeBatteryPartLabels(raw: unknown): Record<string, string> | undefined {
+	if (raw === undefined || raw === null) return undefined;
+	if (typeof raw !== "object" || Array.isArray(raw)) return undefined;
+	const o = raw as Record<string, unknown>;
+	const out: Record<string, string> = {};
+	for (const [k, v] of Object.entries(o)) {
+		if (typeof v === "string" && v.trim() !== "") {
+			out[k] = v.trim();
+		}
+	}
+	return Object.keys(out).length > 0 ? out : undefined;
+}
 
 const DEVICE_ID_PATTERN = /^DeviceId\("(.+)"\)$/;
 
@@ -61,6 +75,7 @@ export function normalizeLoadedDevices(raw: unknown): NormalizedRegisteredDevice
 			name: extractFromDeviceId(rawName),
 			batteryInfos,
 			isDisconnected: d.isDisconnected === true,
+			batteryPartLabels: normalizeBatteryPartLabels(d.batteryPartLabels),
 		};
 	});
 }

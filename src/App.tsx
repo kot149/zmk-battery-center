@@ -49,6 +49,8 @@ export type RegisteredDevice = {
 	name: string;
 	batteryInfos: BatteryInfo[];
 	isDisconnected: boolean;
+	/** Custom display names per part; keys match battery history user_description (null → "Central"). */
+	batteryPartLabels?: Record<string, string>;
 }
 
 enum State {

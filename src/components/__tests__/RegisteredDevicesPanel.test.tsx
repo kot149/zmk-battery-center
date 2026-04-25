@@ -151,6 +151,34 @@ describe("RegisteredDevicesPanel", () => {
 		expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
 	});
 
+	it("commits a custom battery part label and persists via setRegisteredDevices", async () => {
+		const user = userEvent.setup();
+		const onSet = vi.fn();
+		const dual: RegisteredDevice = {
+			...sampleDevice,
+			batteryInfos: [
+				{ battery_level: 40, user_description: null },
+				{ battery_level: 60, user_description: "Peripheral" },
+			],
+		};
+		render(
+			<RegisteredDevicesPanel registeredDevices={[dual]} setRegisteredDevices={onSet} />,
+		);
+
+		const editButtons = screen.getAllByRole("button", { name: "Edit battery part label" });
+		expect(screen.getByText("Peripheral")).toBeTruthy();
+		await user.click(editButtons[1]);
+
+		const field = screen.getByDisplayValue("Peripheral");
+		await user.clear(field);
+		await user.keyboard("Right hand{Enter}");
+
+		expect(onSet).toHaveBeenCalled();
+		const updater = onSet.mock.calls[0][0] as (prev: RegisteredDevice[]) => RegisteredDevice[];
+		const next = updater([dual]);
+		expect(next[0].batteryPartLabels).toEqual({ Peripheral: "Right hand" });
+	});
+
 	it("opens and closes chart while notifying parent callback", async () => {
 		const user = userEvent.setup();
 		const onChartOpenChange = vi.fn();

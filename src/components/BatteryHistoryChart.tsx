@@ -293,6 +293,11 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	// ── Derived data ───────────────────────────────────
 	const allKeys = useMemo(() => [...grouped.keys()], [grouped]);
 
+	const displayNameForKey = useCallback(
+		(key: string) => device.batteryPartLabels?.[key] ?? key,
+		[device.batteryPartLabels],
+	);
+
 	/** Build a single sorted array of ChartRow for Recharts */
 	const chartData = useMemo<ChartRow[]>(() => {
 		const now = Date.now();
@@ -565,7 +570,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 											<div style={{ fontWeight: 600, marginBottom: 4 }}>
 												{formatTooltipLabel(label as number)}
 											</div>
-											{allKeys.map((key, i) => {
+													{allKeys.map((key, i) => {
 												const val = resolveValue(key);
 												const isInterpolated = row?.[key] == null && val != null;
 												return (
@@ -580,7 +585,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 															}}
 														/>
 														<span style={{ opacity: isInterpolated ? 0.5 : 1 }}>
-															{key}: {val != null ? `${val}%` : "—"}
+															{displayNameForKey(key)}: {val != null ? `${val}%` : "—"}
 														</span>
 													</div>
 												);
@@ -627,7 +632,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 									key={key}
 									type="linear"
 									dataKey={key}
-									name={key}
+									name={displayNameForKey(key)}
 									stroke={`var(--chart-${(i % 5) + 1})`}
 									strokeWidth={2.5}
 									dot={false}

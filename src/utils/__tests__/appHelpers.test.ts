@@ -193,5 +193,26 @@ describe("App helpers", () => {
 				},
 			]);
 		});
+
+		it("loads batteryPartLabels as a string record and drops empty values", () => {
+			const raw = [
+				{
+					id: "dev-1",
+					name: "Keyboard",
+					batteryInfos: [],
+					batteryPartLabels: { Central: "  Left  ", Peripheral: " ", Extra: 99 as unknown as string },
+				},
+			];
+
+			expect(normalizeLoadedDevices(raw)).toEqual([
+				{
+					id: "dev-1",
+					name: "Keyboard",
+					isDisconnected: false,
+					batteryInfos: [],
+					batteryPartLabels: { Central: "Left" },
+				},
+			]);
+		});
 	});
 });

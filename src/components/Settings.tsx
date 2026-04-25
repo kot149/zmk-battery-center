@@ -50,7 +50,7 @@ const fetchIntervalOptions = [
 
 const trayIconComponentOptions = [
 	{ label: "App icon", value: TrayIconComponent.AppIcon },
-	{ label: "C/P label", value: TrayIconComponent.RoleLabel },
+	{ label: "Role Label", value: TrayIconComponent.RoleLabel },
 	{ label: "Battery icon", value: TrayIconComponent.BatteryIcon },
 	{ label: "Battery percentage", value: TrayIconComponent.BatteryPercent },
 ];
