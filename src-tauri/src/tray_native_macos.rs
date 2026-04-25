@@ -309,12 +309,17 @@ fn draw_app_icon(
     );
     ink.setFill();
     NSBezierPath::bezierPathWithRect(rect).fill();
-    icon.drawInRect_fromRect_operation_fraction(
-        rect,
-        NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)),
-        NSCompositingOperation::DestinationIn,
-        1.0,
-    );
+    let src = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0));
+    unsafe {
+        icon.drawInRect_fromRect_operation_fraction_respectFlipped_hints(
+            rect,
+            src,
+            NSCompositingOperation::DestinationIn,
+            1.0,
+            true,
+            None,
+        );
+    }
 }
 
 struct BatteryRowLayout<'a> {
