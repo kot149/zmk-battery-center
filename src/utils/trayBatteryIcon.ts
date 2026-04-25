@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { RegisteredDevice } from "@/App";
 import type { BatteryInfo } from "@/utils/ble";
+import { defaultConfig, type TrayIconComponent } from "@/utils/config";
 
 export type TrayBatteryIconPayload = {
 	enabled: boolean;
+	components: TrayIconComponent[];
 	rowCount: 1 | 2;
 	centralPercent: number | null;
 	peripheralPercent: number | null;
@@ -28,6 +30,7 @@ export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[])
 	if (devices.length === 0) {
 		return {
 			enabled: false,
+			components: defaultConfig.trayIconComponents,
 			rowCount: 1,
 			centralPercent: null,
 			peripheralPercent: null,
@@ -41,6 +44,7 @@ export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[])
 	if (infos.length === 0) {
 		return {
 			enabled: true,
+			components: defaultConfig.trayIconComponents,
 			rowCount: 1,
 			centralPercent: null,
 			peripheralPercent: null,
@@ -53,6 +57,7 @@ export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[])
 		const b = infos[0];
 		return {
 			enabled: true,
+			components: defaultConfig.trayIconComponents,
 			rowCount: 1,
 			centralPercent: b.battery_level ?? null,
 			peripheralPercent: null,
@@ -65,6 +70,7 @@ export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[])
 	const second = infos[1];
 	return {
 		enabled: true,
+		components: defaultConfig.trayIconComponents,
 		rowCount: 2,
 		centralPercent: first.battery_level ?? null,
 		peripheralPercent: second.battery_level ?? null,
@@ -74,7 +80,11 @@ export function trayBatteryPayloadFromPrimaryDevice(devices: RegisteredDevice[])
 	};
 }
 
-export async function syncTrayBatteryIcon(devices: RegisteredDevice[]): Promise<void> {
+export async function syncTrayBatteryIcon(
+	devices: RegisteredDevice[],
+	components: TrayIconComponent[] = defaultConfig.trayIconComponents,
+): Promise<void> {
 	const payload = trayBatteryPayloadFromPrimaryDevice(devices);
+	payload.components = components.length > 0 ? components : [defaultConfig.trayIconComponents[0]];
 	await invoke("update_tray_battery_icon", { payload });
 }

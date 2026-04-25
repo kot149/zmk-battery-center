@@ -1,28 +1,29 @@
 //! AppKit-native tray content: `NSView` subclass (`drawRect:`) behind TaoTrayTarget,
 //! using `NSBezierPath` and `NSString` drawing (no generated tray bitmap).
 
-use crate::tray_battery_payload::TrayBatteryPayload;
+use crate::tray_battery_payload::{TrayBatteryPayload, TrayIconComponent};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2::{define_class, msg_send, ClassType, DefinedClass, MainThreadOnly};
-use objc2_foundation::NSObjectProtocol;
+use objc2::{define_class, msg_send, AnyThread, ClassType, DefinedClass, MainThreadOnly};
 use objc2_app_kit::{
-    NSBezierPath, NSColor, NSFont, NSFontAttributeName, NSFontDescriptorSystemDesignRounded,
-    NSFontWeightSemibold, NSForegroundColorAttributeName, NSStatusBarButton, NSStringDrawing,
-    NSView, NSWindowOrderingMode,
+    NSBezierPath, NSColor, NSCompositingOperation, NSFont, NSFontAttributeName,
+    NSFontDescriptorSystemDesignRounded, NSFontWeightSemibold, NSForegroundColorAttributeName,
+    NSImage, NSStatusBarButton, NSStringDrawing, NSView, NSWindowOrderingMode,
 };
 use objc2_core_foundation::{CGFloat, CGPoint};
+use objc2_foundation::NSObjectProtocol;
 use objc2_foundation::{
-    MainThreadMarker, NSDictionary, NSAttributedStringKey, NSPoint, NSRect, NSSize, NSString,
+    MainThreadMarker, NSAttributedStringKey, NSDictionary, NSPoint, NSRect, NSSize, NSString,
 };
 use std::cell::RefCell;
 use std::ffi::CStr;
-use tauri::{AppHandle, Manager, Runtime};
 use tauri::tray::TrayIcon;
+use tauri::{AppHandle, Manager, Runtime};
 
 #[derive(Clone, Default)]
 struct DrawState {
     enabled: bool,
+    components: Vec<TrayIconComponent>,
     row_count: u8,
     central: Option<u8>,
     peripheral: Option<u8>,
@@ -34,12 +35,21 @@ struct DrawState {
 impl DrawState {
     fn sync_from_payload(&mut self, p: &TrayBatteryPayload) {
         self.enabled = p.enabled;
+        self.components = if p.components.is_empty() {
+            vec![TrayIconComponent::RoleLabel]
+        } else {
+            p.components.clone()
+        };
         self.row_count = p.row_count.clamp(1, 2);
         self.central = p.central_percent;
         self.peripheral = p.peripheral_percent;
         self.c_label = one_char(&p.central_label, 'C');
         self.p_label = one_char(&p.peripheral_label, 'P');
         self.disconnected = p.disconnected;
+    }
+
+    fn has_component(&self, component: TrayIconComponent) -> bool {
+        self.components.contains(&component)
     }
 }
 
@@ -54,6 +64,7 @@ fn one_char(s: &Option<String>, d: char) -> char {
 #[derive(Default)]
 struct BatteryIvars {
     state: RefCell<DrawState>,
+    app_icon: Option<Retained<NSImage>>,
 }
 
 fn label_text_color(muted: bool) -> Retained<NSColor> {
@@ -111,7 +122,10 @@ fn digit_count(level: Option<u8>) -> usize {
         .unwrap_or(2)
 }
 
-fn percent_placeholder_width(digits: usize, pct_attrs: &NSDictionary<NSAttributedStringKey, AnyObject>) -> CGFloat {
+fn percent_placeholder_width(
+    digits: usize,
+    pct_attrs: &NSDictionary<NSAttributedStringKey, AnyObject>,
+) -> CGFloat {
     let placeholder = format!("{:0width$}%", 0, width = digits.max(1));
     let ps = NSString::from_str(&placeholder);
     unsafe { ps.sizeWithAttributes(Some(pct_attrs)).width }
@@ -122,14 +136,26 @@ const INNER_GAP: CGFloat = 2.5;
 /// Tray content height (two rows); matches status item button height.
 const ROW_TOTAL_H: CGFloat = 24.0;
 const FONT_PT: CGFloat = 11.0;
+const APP_ICON_W: CGFloat = 18.0;
+const APP_ICON_H: CGFloat = 18.0;
+const APP_ICON_Y_OFFSET: CGFloat = -1.0;
+const APP_ICON_TRAILING_GAP: CGFloat = INNER_GAP + 2.0;
 const ICON_W: CGFloat = 18.0;
 const ICON_H: CGFloat = 8.0;
 const BAT_LINE_W: CGFloat = 0.75;
 const NUB_W: CGFloat = 1.5;
-const MIN_VIEW_WIDTH: CGFloat = 52.0;
+const MIN_VIEW_WIDTH: CGFloat = 18.0;
 
 fn battery_icon_width() -> CGFloat {
     ICON_W
+}
+
+fn append_component_width(total: &mut CGFloat, component_count: &mut usize, width: CGFloat) {
+    if *component_count > 0 {
+        *total += INNER_GAP;
+    }
+    *total += width;
+    *component_count += 1;
 }
 
 fn label_column_width(
@@ -146,7 +172,10 @@ fn label_column_width(
     }
 }
 
-fn label_column_width_single(label: char, attrs: &NSDictionary<NSAttributedStringKey, AnyObject>) -> CGFloat {
+fn label_column_width_single(
+    label: char,
+    attrs: &NSDictionary<NSAttributedStringKey, AnyObject>,
+) -> CGFloat {
     let s = NSString::from_str(&label.to_string());
     unsafe { s.sizeWithAttributes(Some(attrs)).width.max(12.0) }
 }
@@ -162,30 +191,49 @@ fn view_height_for_row_count(row_count: u8) -> CGFloat {
 fn content_width_for_state(state: &DrawState) -> CGFloat {
     let color = label_text_color(state.disconnected);
     let label_font = rounded_semibold_label_font(FONT_PT);
-    let pct_font = unsafe {
-        NSFont::monospacedDigitSystemFontOfSize_weight(FONT_PT, NSFontWeightSemibold)
-    };
+    let pct_font =
+        unsafe { NSFont::monospacedDigitSystemFontOfSize_weight(FONT_PT, NSFontWeightSemibold) };
     let label_attrs = attributed_attributes(label_font.clone(), color.clone());
     let pct_attrs = attributed_attributes(pct_font.clone(), color.clone());
-    let label_col = if state.row_count <= 1 {
-        label_column_width_single(state.c_label, &label_attrs)
+    let mut content_w = 0.0;
+    let mut component_count = 0;
+    if state.has_component(TrayIconComponent::AppIcon) {
+        append_component_width(&mut content_w, &mut component_count, APP_ICON_W);
+        if state.has_component(TrayIconComponent::RoleLabel)
+            || state.has_component(TrayIconComponent::BatteryIcon)
+            || state.has_component(TrayIconComponent::BatteryPercent)
+        {
+            content_w += APP_ICON_TRAILING_GAP - INNER_GAP;
+        }
+    }
+    if state.has_component(TrayIconComponent::RoleLabel) {
+        let label_col = if state.row_count <= 1 {
+            label_column_width_single(state.c_label, &label_attrs)
+        } else {
+            label_column_width(state.c_label, state.p_label, &label_attrs)
+        };
+        append_component_width(&mut content_w, &mut component_count, label_col);
+    }
+    if state.has_component(TrayIconComponent::BatteryIcon) {
+        append_component_width(&mut content_w, &mut component_count, battery_icon_width());
+    }
+    if state.has_component(TrayIconComponent::BatteryPercent) {
+        let digits = if state.row_count <= 1 {
+            digit_count(state.central)
+        } else {
+            digit_count(state.central).max(digit_count(state.peripheral))
+        };
+        append_component_width(
+            &mut content_w,
+            &mut component_count,
+            percent_placeholder_width(digits, &pct_attrs),
+        );
+    }
+    if component_count == 0 {
+        0.0
     } else {
-        label_column_width(state.c_label, state.p_label, &label_attrs)
-    };
-    let digits = if state.row_count <= 1 {
-        digit_count(state.central)
-    } else {
-        digit_count(state.central).max(digit_count(state.peripheral))
-    };
-    let pct_col = percent_placeholder_width(digits, &pct_attrs);
-    let bat = battery_icon_width();
-    PAD_X
-        + label_col
-        + INNER_GAP
-        + bat
-        + INNER_GAP
-        + pct_col
-        + PAD_X
+        PAD_X + content_w + PAD_X
+    }
 }
 
 fn intrinsic_size_for_state(state: &DrawState) -> NSSize {
@@ -237,10 +285,7 @@ fn draw_battery_icon(bat_x: CGFloat, icon_y: CGFloat, pct: Option<u8>, muted: bo
     let nub_y = icon_y + (body_height - nub_h) * 0.5;
     let nub_x = bat_x + body_width;
     let nub = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(
-        NSRect::new(
-            NSPoint::new(nub_x, nub_y),
-            NSSize::new(NUB_W, nub_h),
-        ),
+        NSRect::new(NSPoint::new(nub_x, nub_y), NSSize::new(NUB_W, nub_h)),
         0.5,
         0.5,
     );
@@ -248,52 +293,88 @@ fn draw_battery_icon(bat_x: CGFloat, icon_y: CGFloat, pct: Option<u8>, muted: bo
     nub.fill();
 }
 
+fn draw_app_icon(
+    icon: Option<&NSImage>,
+    icon_x: CGFloat,
+    icon_y: CGFloat,
+    muted: bool,
+) {
+    let Some(icon) = icon else {
+        return;
+    };
+    let ink = label_text_color(muted);
+    let rect = NSRect::new(
+        NSPoint::new(icon_x, icon_y),
+        NSSize::new(APP_ICON_W, APP_ICON_H),
+    );
+    ink.setFill();
+    NSBezierPath::bezierPathWithRect(rect).fill();
+    icon.drawInRect_fromRect_operation_fraction(
+        rect,
+        NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(0.0, 0.0)),
+        NSCompositingOperation::DestinationIn,
+        1.0,
+    );
+}
+
 struct BatteryRowLayout<'a> {
+    x_start: CGFloat,
     row_h: CGFloat,
-    label_col_w: CGFloat,
-    pct_col_w: CGFloat,
+    label_col_w: Option<CGFloat>,
+    pct_col_w: Option<CGFloat>,
+    show_battery_icon: bool,
     label_attrs: &'a NSDictionary<NSAttributedStringKey, AnyObject>,
     pct_attrs: &'a NSDictionary<NSAttributedStringKey, AnyObject>,
     muted: bool,
 }
 
-fn draw_battery_row(
-    layout: &BatteryRowLayout<'_>,
-    y_top: CGFloat,
-    label: char,
-    pct: Option<u8>,
-) {
-    let col_left = PAD_X;
-    let lstr = NSString::from_str(&label.to_string());
-    let lsize = unsafe { lstr.sizeWithAttributes(Some(layout.label_attrs)) };
-    let label_x = col_left + (layout.label_col_w - lsize.width) * 0.5;
-    let y_label = y_top + (layout.row_h - lsize.height) * 0.5;
-    unsafe {
-        lstr.drawAtPoint_withAttributes(
-            CGPoint {
-                x: label_x,
-                y: y_label,
-            },
-            Some(layout.label_attrs),
-        );
+fn draw_battery_row(layout: &BatteryRowLayout<'_>, y_top: CGFloat, label: char, pct: Option<u8>) {
+    let mut x = layout.x_start;
+    let mut drew_component = false;
+    if let Some(label_col_w) = layout.label_col_w {
+        let lstr = NSString::from_str(&label.to_string());
+        let lsize = unsafe { lstr.sizeWithAttributes(Some(layout.label_attrs)) };
+        let label_x = x + (label_col_w - lsize.width) * 0.5;
+        let y_label = y_top + (layout.row_h - lsize.height) * 0.5;
+        unsafe {
+            lstr.drawAtPoint_withAttributes(
+                CGPoint {
+                    x: label_x,
+                    y: y_label,
+                },
+                Some(layout.label_attrs),
+            );
+        }
+        x += label_col_w;
+        drew_component = true;
     }
-    let bat_x = col_left + layout.label_col_w + INNER_GAP;
-    let icon_y = y_top + (layout.row_h - ICON_H) * 0.5;
-    draw_battery_icon(bat_x, icon_y, pct, layout.muted);
-    let pct_area_left = bat_x + ICON_W + INNER_GAP;
-    let pct_s = pct_string(pct);
-    let pstr = NSString::from_str(&pct_s);
-    let psize = unsafe { pstr.sizeWithAttributes(Some(layout.pct_attrs)) };
-    let pct_draw_x = pct_area_left + layout.pct_col_w - psize.width;
-    let y_pct = y_top + (layout.row_h - psize.height) * 0.5;
-    unsafe {
-        pstr.drawAtPoint_withAttributes(
-            CGPoint {
-                x: pct_draw_x,
-                y: y_pct,
-            },
-            Some(layout.pct_attrs),
-        );
+    if layout.show_battery_icon {
+        if drew_component {
+            x += INNER_GAP;
+        }
+        let icon_y = y_top + (layout.row_h - ICON_H) * 0.5;
+        draw_battery_icon(x, icon_y, pct, layout.muted);
+        x += ICON_W;
+        drew_component = true;
+    }
+    if let Some(pct_col_w) = layout.pct_col_w {
+        if drew_component {
+            x += INNER_GAP;
+        }
+        let pct_s = pct_string(pct);
+        let pstr = NSString::from_str(&pct_s);
+        let psize = unsafe { pstr.sizeWithAttributes(Some(layout.pct_attrs)) };
+        let pct_draw_x = x + pct_col_w - psize.width;
+        let y_pct = y_top + (layout.row_h - psize.height) * 0.5;
+        unsafe {
+            pstr.drawAtPoint_withAttributes(
+                CGPoint {
+                    x: pct_draw_x,
+                    y: y_pct,
+                },
+                Some(layout.pct_attrs),
+            );
+        }
     }
 }
 
@@ -309,23 +390,30 @@ fn draw_battery_content(view: &BatteryTrayView) {
     let muted = state.disconnected;
     let color = label_text_color(muted);
     let label_font = rounded_semibold_label_font(FONT_PT);
-    let pct_font = unsafe {
-        NSFont::monospacedDigitSystemFontOfSize_weight(FONT_PT, NSFontWeightSemibold)
-    };
+    let pct_font =
+        unsafe { NSFont::monospacedDigitSystemFontOfSize_weight(FONT_PT, NSFontWeightSemibold) };
     let label_attrs = attributed_attributes(label_font.clone(), color.clone());
     let pct_attrs = attributed_attributes(pct_font.clone(), color.clone());
     let rows = state.row_count.clamp(1, 2) as usize;
-    let label_col = if rows == 1 {
-        label_column_width_single(state.c_label, &label_attrs)
+    let label_col = if state.has_component(TrayIconComponent::RoleLabel) {
+        Some(if rows == 1 {
+            label_column_width_single(state.c_label, &label_attrs)
+        } else {
+            label_column_width(state.c_label, state.p_label, &label_attrs)
+        })
     } else {
-        label_column_width(state.c_label, state.p_label, &label_attrs)
+        None
     };
-    let digits = if rows == 1 {
-        digit_count(state.central)
+    let pct_col = if state.has_component(TrayIconComponent::BatteryPercent) {
+        let digits = if rows == 1 {
+            digit_count(state.central)
+        } else {
+            digit_count(state.central).max(digit_count(state.peripheral))
+        };
+        Some(percent_placeholder_width(digits, &pct_attrs))
     } else {
-        digit_count(state.central).max(digit_count(state.peripheral))
+        None
     };
-    let pct_col = percent_placeholder_width(digits, &pct_attrs);
     let (y_first, row_h) = if rows >= 2 {
         let block_h = ROW_TOTAL_H;
         let rh = block_h * 0.5;
@@ -334,17 +422,36 @@ fn draw_battery_content(view: &BatteryTrayView) {
     } else {
         (0.0, bounds.size.height)
     };
+    let mut row_x = PAD_X;
+    if state.has_component(TrayIconComponent::AppIcon) {
+        let icon_y = (bounds.size.height - APP_ICON_H) * 0.5 + APP_ICON_Y_OFFSET;
+        draw_app_icon(view.ivars().app_icon.as_deref(), row_x, icon_y, muted);
+        row_x += APP_ICON_W;
+        if label_col.is_some()
+            || state.has_component(TrayIconComponent::BatteryIcon)
+            || pct_col.is_some()
+        {
+            row_x += APP_ICON_TRAILING_GAP;
+        }
+    }
     let row_layout = BatteryRowLayout {
+        x_start: row_x,
         row_h,
         label_col_w: label_col,
         pct_col_w: pct_col,
+        show_battery_icon: state.has_component(TrayIconComponent::BatteryIcon),
         label_attrs: &label_attrs,
         pct_attrs: &pct_attrs,
         muted,
     };
     draw_battery_row(&row_layout, y_first, state.c_label, state.central);
     if rows >= 2 {
-        draw_battery_row(&row_layout, y_first + row_h, state.p_label, state.peripheral);
+        draw_battery_row(
+            &row_layout,
+            y_first + row_h,
+            state.p_label,
+            state.peripheral,
+        );
     }
 }
 
@@ -373,13 +480,18 @@ define_class!(
 );
 
 impl BatteryTrayView {
-    fn new(mtm: MainThreadMarker, payload: &TrayBatteryPayload) -> Retained<Self> {
+    fn new(
+        mtm: MainThreadMarker,
+        payload: &TrayBatteryPayload,
+        app_icon: Option<Retained<NSImage>>,
+    ) -> Retained<Self> {
         let mut st = DrawState::default();
         st.sync_from_payload(payload);
         let size = intrinsic_size_for_state(&st);
         let frame = NSRect::new(NSPoint::new(0.0, 0.0), size);
         let ptr = Self::alloc(mtm).set_ivars(BatteryIvars {
             state: RefCell::new(st),
+            app_icon,
         });
         unsafe { msg_send![super(ptr), initWithFrame: frame] }
     }
@@ -427,11 +539,7 @@ fn remove_battery_overlay(button: &NSView) {
     }
 }
 
-fn layout_overlay(
-    button: &NSStatusBarButton,
-    tray_target: &NSView,
-    view: &BatteryTrayView,
-) {
+fn layout_overlay(button: &NSStatusBarButton, tray_target: &NSView, view: &BatteryTrayView) {
     let content = measure_intrinsic(view);
     let button_h = ROW_TOTAL_H;
     let content_y = ((button_h - content.height) * 0.5).max(0.0);
@@ -448,16 +556,22 @@ fn restore_template_icon<R: Runtime>(app: &AppHandle<R>, tray: &TrayIcon<R>) -> 
     use tauri::image::Image;
     let icon_path = app
         .path()
-        .resolve("icons/icon_template.png", tauri::path::BaseDirectory::Resource)
+        .resolve(
+            "icons/icon_template.png",
+            tauri::path::BaseDirectory::Resource,
+        )
         .map_err(|e| e.to_string())?;
     let icon = Image::from_path(&icon_path).map_err(|e| e.to_string())?;
-    tray
-        .set_icon(Some(icon))
-        .map_err(|e| e.to_string())?;
-    tray
-        .set_icon_as_template(true)
-        .map_err(|e| e.to_string())?;
+    tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+    tray.set_icon_as_template(true).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn load_app_icon(icon_path: Option<&str>) -> Option<Retained<NSImage>> {
+    let icon_path = icon_path?;
+    let icon = NSImage::initWithContentsOfFile(NSImage::alloc(), &NSString::from_str(icon_path))?;
+    icon.setTemplate(true);
+    Some(icon)
 }
 
 pub fn apply_tray_battery_state<R: Runtime>(
@@ -486,6 +600,11 @@ pub fn apply_tray_battery_state<R: Runtime>(
     }
 
     let payload = payload.clone();
+    let app_icon_path = app
+        .path()
+        .resolve("icons/icon_template.png", tauri::path::BaseDirectory::Resource)
+        .ok()
+        .and_then(|path| path.to_str().map(ToOwned::to_owned));
     match tray.with_inner_tray_icon(move |inner| -> Result<(), String> {
         let mtm = MainThreadMarker::new().ok_or_else(|| "tray: not main thread".to_string())?;
         let item = inner
@@ -503,7 +622,8 @@ pub fn apply_tray_battery_state<R: Runtime>(
             existing.set_payload(&payload);
             layout_overlay(&button, tray_target.as_ref(), &existing);
         } else {
-            let view = BatteryTrayView::new(mtm, &payload);
+            let app_icon = load_app_icon(app_icon_path.as_deref());
+            let view = BatteryTrayView::new(mtm, &payload, app_icon);
             button.addSubview_positioned_relativeTo(
                 view.as_ref(),
                 NSWindowOrderingMode::Below,

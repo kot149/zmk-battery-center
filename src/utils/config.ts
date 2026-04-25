@@ -10,6 +10,13 @@ export enum NotificationType {
 	Connected = 'connected',
 }
 
+export enum TrayIconComponent {
+	AppIcon = 'appIcon',
+	RoleLabel = 'roleLabel',
+	BatteryIcon = 'batteryIcon',
+	BatteryPercent = 'batteryPercent',
+}
+
 export const FETCH_INTERVAL_AUTO = 'auto' as const;
 export type FetchInterval = number | typeof FETCH_INTERVAL_AUTO;
 
@@ -27,6 +34,7 @@ export type Config = {
 	chartRangeMs: number;
 	chartSmoothingWindowSize: number;
 	chartCustomRange: { start: string; end: string } | null;
+	trayIconComponents: TrayIconComponent[];
 }
 
 export const defaultConfig: Config = {
@@ -47,6 +55,11 @@ export const defaultConfig: Config = {
 	chartRangeMs: 0, // default: "All"
 	chartSmoothingWindowSize: 30 * 60 * 1000, // 30 minutes in ms
 	chartCustomRange: null,
+	trayIconComponents: [
+		TrayIconComponent.RoleLabel,
+		TrayIconComponent.BatteryIcon,
+		TrayIconComponent.BatteryPercent,
+	],
 };
 
 let configStoreInstance: Store | null = null;

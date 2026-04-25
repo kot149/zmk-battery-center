@@ -167,12 +167,13 @@ function App() {
 
 	useEffect(() => {
 		if (registeredDevices === undefined) return;
+		if (!isConfigLoaded) return;
 		if (platform() !== "macos") return;
 		const id = window.setTimeout(() => {
-			void syncTrayBatteryIcon(registeredDevices);
+			void syncTrayBatteryIcon(registeredDevices, config.trayIconComponents);
 		}, 60);
 		return () => clearTimeout(id);
-	}, [registeredDevices]);
+	}, [registeredDevices, config.trayIconComponents, isConfigLoaded]);
 
 	// Load saved devices
 	useEffect(() => {

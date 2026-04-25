@@ -1,6 +1,6 @@
 import React from "react";
 import Button from "./Button";
-import { FETCH_INTERVAL_AUTO, NotificationType } from "../utils/config";
+import { FETCH_INTERVAL_AUTO, NotificationType, TrayIconComponent } from "../utils/config";
 import { useTheme, type Theme } from "@/context/theme-provider";
 import { Moon, Sun } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch"
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useConfigContext } from "@/context/ConfigContext";
 import TopRightButtons from "./TopRightButtons";
+import { platform } from "@tauri-apps/plugin-os";
 
 interface SettingsScreenProps {
 	onExit: () => Promise<void>;
@@ -29,11 +30,32 @@ const fetchIntervalOptions = [
 	{ label: '30 min', value: 1_800_000 },
 ];
 
+const trayIconComponentOptions = [
+	{ label: "App icon", value: TrayIconComponent.AppIcon },
+	{ label: "C/P label", value: TrayIconComponent.RoleLabel },
+	{ label: "Battery icon", value: TrayIconComponent.BatteryIcon },
+	{ label: "Battery percentage", value: TrayIconComponent.BatteryPercent },
+];
+
 const Settings: React.FC<SettingsScreenProps> = ({
 	onExit
 }) => {
 	const { setTheme, theme } = useTheme();
 	const { config, setConfig } = useConfigContext();
+	const isMac = platform() === "macos";
+
+	const handleTrayIconComponentChange = (component: TrayIconComponent, checked: boolean) => {
+		setConfig(c => {
+			const current = c.trayIconComponents;
+			const next = checked
+				? [...current, component]
+				: current.filter(item => item !== component);
+			return {
+				...c,
+				trayIconComponents: next.length > 0 ? next : current,
+			};
+		});
+	};
 
 	return (
 		<div className="fixed inset-0 z-50 flex flex-col items-center justify-center h-full w-full p-4">
@@ -119,6 +141,32 @@ const Settings: React.FC<SettingsScreenProps> = ({
 					</Select>
 					</div>
 				</div>
+
+				{isMac && (
+					<div className="flex flex-col w-full gap-2">
+						<div className="flex justify-between">
+							<span>Tray icon components [macOS only]</span>
+						</div>
+						<ul className="w-full pl-2 space-y-0.5">
+							{trayIconComponentOptions.map(option => {
+								const checked = config.trayIconComponents.includes(option.value);
+								const isLastChecked = checked && config.trayIconComponents.length === 1;
+								return (
+									<li key={option.value} className="flex justify-between">
+										<div>
+											<Dot /> {option.label}
+										</div>
+										<Switch
+											checked={checked}
+											onCheckedChange={nextChecked => handleTrayIconComponentChange(option.value, nextChecked)}
+											disabled={isLastChecked}
+										/>
+									</li>
+								);
+							})}
+						</ul>
+					</div>
+				)}
 
 				{/* Auto start at login */}
 				<div className="flex justify-between">
