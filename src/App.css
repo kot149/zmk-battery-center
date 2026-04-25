@@ -7,6 +7,7 @@ html {
   font-size: 14px;
   user-select: none;
   overflow: hidden;
+  color-scheme: light;
 }
 
 #root {
@@ -57,6 +58,9 @@ html {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.13 0.028 261.692);
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #64748b;
+  --scrollbar-thumb-hover: #475569;
   --card: oklch(96.7% 0.003 264.542);
   --card-foreground: oklch(0.13 0.028 261.692);
   --popover: oklch(1 0 0);
@@ -89,8 +93,12 @@ html {
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.13 0.028 261.692);
   --foreground: oklch(0.985 0.002 247.839);
+  --scrollbar-track: #111827;
+  --scrollbar-thumb: #6b7280;
+  --scrollbar-thumb-hover: #9ca3af;
   --card: oklch(27.8% 0.033 256.848);
   --card-foreground: oklch(0.985 0.002 247.839);
   --popover: oklch(0.21 0.034 264.665);

@@ -58,11 +58,12 @@ const trayIconComponentOptions = [
 const settingsScrollAreaClassName = cn(
 	"min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain",
 	"[scrollbar-gutter:stable] [scrollbar-width:thin]",
-	"[scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_80%,var(--background))_color-mix(in_oklch,var(--muted)_88%,var(--background))]",
+	"[scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)]",
 	"[&::-webkit-scrollbar]:w-[5px]",
-	"[&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[color-mix(in_oklch,var(--muted)_88%,var(--background))]",
-	"[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[color-mix(in_oklch,var(--muted-foreground)_80%,var(--background))]",
-	"[&::-webkit-scrollbar-thumb:hover]:bg-[color-mix(in_oklch,var(--muted-foreground)_95%,var(--background))]",
+	"[&::-webkit-scrollbar]:bg-[var(--scrollbar-track)]",
+	"[&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[var(--scrollbar-track)]",
+	"[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--scrollbar-thumb)]",
+	"[&::-webkit-scrollbar-thumb:hover]:bg-[var(--scrollbar-thumb-hover)]",
 );
 
 const Settings: React.FC<SettingsScreenProps> = ({
