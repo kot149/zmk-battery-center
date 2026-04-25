@@ -56,7 +56,7 @@ const Modal: React.FC<ModalProps> = ({
 				>
 					{showCloseButton && (
 						<Button
-							className="absolute top-4 right-4 w-10 h-10 rounded-lg bg-transparent hover:bg-muted flex items-center justify-center text-xl font-bold text-foreground !p-0"
+							className="absolute top-4 right-4 w-10 h-10 rounded-lg bg-transparent hover:bg-muted flex items-center justify-center text-xl font-bold text-foreground p-0!"
 							onClick={onClose}
 							aria-label="Close"
 						>

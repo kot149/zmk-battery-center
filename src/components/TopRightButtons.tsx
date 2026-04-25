@@ -22,7 +22,7 @@ const TopRightButtons: React.FC<TopRightButtonsProps> = ({ buttons }) => {
 			{buttons.map((btn) => (
 				<Button
 					key={btn.ariaLabel}
-					className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl !p-0 !px-0 !py-0 text-foreground disabled:!text-muted-foreground disabled:hover:bg-transparent relative z-10"
+					className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl p-0! px-0! py-0! text-foreground disabled:text-muted-foreground! disabled:hover:bg-transparent relative z-10"
 					onClick={btn.onClick}
 					aria-label={btn.ariaLabel}
 					disabled={btn.disabled}

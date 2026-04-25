@@ -9,7 +9,7 @@ export const Button: React.FC<ButtonProps> = ({ children, className = "", ...pro
   const isIconButton = className.includes("w-10") && className.includes("h-10");
   return (
     <button
-      className={`rounded-lg text-xl transition-colors duration-300 ${isIconButton ? '!p-0' : 'px-4 py-3'} ${className}`}
+      className={`rounded-lg text-xl transition-colors duration-300 ${isIconButton ? 'p-0!' : 'px-4 py-3'} ${className}`}
       {...props}
     >
       {children}

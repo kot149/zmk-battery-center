@@ -59,14 +59,14 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 	return (
 		<div className="absolute top-2 right-2 w-14 z-10 flex items-center gap-0.5">
 			<Button
-				className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground !p-0 transition-opacity"
+				className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
 				onClick={onChart}
 				aria-label="Show battery history chart"
 			>
 				<ChartCurveIcon className="size-5 mx-auto" />
 			</Button>
 			<Button
-				className="w-10 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground !p-0 transition-opacity"
+				className="w-10 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
 				onClick={onOpenMenu}
 				aria-label="Open menu"
 			>
@@ -78,7 +78,7 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 				>
 					{deviceIdx !== 0 && (
 						<Button
-							className="w-full text-left !text-sm !px-3 !py-2 bg-popover text-popover-foreground hover:bg-muted"
+							className="w-full text-left text-sm! px-3! py-2! bg-popover text-popover-foreground hover:bg-muted"
 							onClick={onMoveUp}
 						>
 							Move Up
@@ -86,14 +86,14 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 					)}
 					{deviceIdx !== deviceCount - 1 && (
 						<Button
-							className="w-full text-left !text-sm !px-3 !py-2 bg-popover text-popover-foreground hover:bg-muted"
+							className="w-full text-left text-sm! px-3! py-2! bg-popover text-popover-foreground hover:bg-muted"
 							onClick={onMoveDown}
 						>
 							Move Down
 						</Button>
 					)}
 					<Button
-						className="w-full text-left !text-sm !px-3 !py-2 bg-popover text-destructive hover:bg-muted"
+						className="w-full text-left text-sm! px-3! py-2! bg-popover text-destructive hover:bg-muted"
 						onClick={onRemove}
 					>
 						Remove
@@ -163,14 +163,14 @@ type PartLabelViewProps = {
 const PartLabelView: React.FC<PartLabelViewProps> = ({ displayName, defaultNameTitle, onStartEdit }) => (
 	<div className="flex w-full min-w-0 max-w-full flex-nowrap items-center justify-start gap-1.5">
 		<span
-			className="min-w-0 max-w-[calc(100%_-_1.875rem)] shrink truncate text-card-foreground/80"
+			className="min-w-0 max-w-[calc(100%-1.875rem)] shrink truncate text-card-foreground/80"
 			title={defaultNameTitle}
 		>
 			{displayName}
 		</span>
 		<Button
 			type="button"
-			className="h-6 w-6 shrink-0 !p-0 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/labelrow:opacity-100"
+			className="h-6 w-6 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/labelrow:opacity-100"
 			aria-label="Edit battery part label"
 			onClick={onStartEdit}
 		>
