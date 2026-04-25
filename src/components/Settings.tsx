@@ -151,7 +151,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 										setConfig(c => ({ ...c, theme: opt.key as Theme }));
 									}}
 									className={`relative w-12 h-12 flex items-center justify-center rounded-lg transition-colors
-									${theme === opt.key ? 'bg-secondary' : 'bg-transparent'}
+									${theme === opt.key ? 'bg-muted-foreground/30' : 'bg-transparent'}
 								`}
 									aria-label={opt.label}
 								>
