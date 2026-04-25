@@ -6,7 +6,7 @@
  * Outputs license lists for Cargo and JS dependencies to JSON files.
  *
  * Required tools:
- * - cargo-about: `cargo install cargo-about`
+ * - cargo-about: `cargo install cargo-about --features cli` (0.9+)
  * - cargo-deny: `cargo install cargo-deny` (for license verification)
  * - license-checker: runs via bun
  *
@@ -213,7 +213,7 @@ async function generateCargoLicenses(): Promise<void> {
 
 	if (!checkCargoAboutInstalled()) {
 		console.error("\x1b[31mError: cargo-about is not installed.\x1b[0m");
-		console.log("Install it with: cargo install cargo-about");
+		console.log("Install it with: cargo install cargo-about --features cli");
 		console.log("For more info: https://github.com/EmbarkStudios/cargo-about");
 		throw new Error("cargo-about not installed");
 	}

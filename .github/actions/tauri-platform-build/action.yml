@@ -78,7 +78,8 @@ runs:
 
     - name: Install cargo-about
       shell: bash
-      run: cargo install cargo-about
+      # cargo-about 0.9+ gates the binary behind the `cli` feature
+      run: cargo install cargo-about --features cli
 
     - name: Generate licenses
       shell: bash
