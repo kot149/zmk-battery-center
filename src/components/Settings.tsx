@@ -55,6 +55,16 @@ const trayIconComponentOptions = [
 	{ label: "Battery percentage", value: TrayIconComponent.BatteryPercent },
 ];
 
+const settingsScrollAreaClassName = cn(
+	"min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain",
+	"[scrollbar-gutter:stable] [scrollbar-width:thin]",
+	"[scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_80%,var(--background))_color-mix(in_oklch,var(--muted)_88%,var(--background))]",
+	"[&::-webkit-scrollbar]:w-[5px]",
+	"[&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[color-mix(in_oklch,var(--muted)_88%,var(--background))]",
+	"[&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[color-mix(in_oklch,var(--muted-foreground)_80%,var(--background))]",
+	"[&::-webkit-scrollbar-thumb:hover]:bg-[color-mix(in_oklch,var(--muted-foreground)_95%,var(--background))]",
+);
+
 const Settings: React.FC<SettingsScreenProps> = ({
 	onExit
 }) => {
@@ -76,9 +86,9 @@ const Settings: React.FC<SettingsScreenProps> = ({
 	};
 
 	return (
-		<div className="fixed inset-0 z-50 flex flex-col items-center justify-center h-full w-full p-4">
-			{/* Top-right close button */}
-			<div className="absolute top-2 right-2">
+		<div className="fixed inset-0 z-50 flex h-full w-full min-h-0 flex-col pt-4 pb-4 pl-4 pr-1.5">
+			{/* Top row: close stays inset; scroll track can extend into where right padding would be */}
+			<div className="shrink-0 flex justify-end pr-4">
 				<TopRightButtons
 					buttons={[
 						{
@@ -90,11 +100,12 @@ const Settings: React.FC<SettingsScreenProps> = ({
 				/>
 			</div>
 
-			<div className="flex flex-col gap-3 w-full p-4">
+			<div className={settingsScrollAreaClassName}>
+				<div className="mx-auto flex w-full min-w-0 max-w-md flex-col gap-3 pr-2.5 pt-1">
 				{/* Auto start at login */}
 				<SettingsGroup>
-					<div className="flex justify-between">
-						<span>Auto start at login</span>
+					<div className="flex items-center justify-between gap-3">
+						<span className="shrink-0">Auto start at login</span>
 						<Switch
 							checked={config.autoStart}
 							onCheckedChange={checked => setConfig(c => ({ ...c, autoStart: checked }))}
@@ -153,9 +164,9 @@ const Settings: React.FC<SettingsScreenProps> = ({
 
 				{/* Battery fetch interval */}
 				<SettingsGroup>
-					<div className="flex justify-between">
-						<span>Battery fetch interval</span>
-						<div>
+					<div className="flex items-center justify-between gap-3">
+						<span className="shrink-0">Battery fetch interval</span>
+						<div className="shrink-0">
 							<Select
 								value={config.fetchInterval.toString()}
 								onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
@@ -176,16 +187,16 @@ const Settings: React.FC<SettingsScreenProps> = ({
 				</SettingsGroup>
 
 				{isMac && (
-					<SettingsGroup className="flex flex-col w-full gap-2">
+					<SettingsGroup className="flex w-full flex-col gap-2">
 						<div className="flex justify-between">
 							<span>Tray icon components [macOS only]</span>
 						</div>
-						<ul className="w-full pl-2 space-y-0.5">
+						<ul className="w-full space-y-0.5 pl-2">
 							{trayIconComponentOptions.map(option => {
 								const checked = config.trayIconComponents.includes(option.value);
 								const isLastChecked = checked && config.trayIconComponents.length === 1;
 								return (
-									<li key={option.value} className="flex justify-between">
+									<li key={option.value} className="flex items-center justify-between gap-3">
 										<div>
 											<Dot /> {option.label}
 										</div>
@@ -202,16 +213,16 @@ const Settings: React.FC<SettingsScreenProps> = ({
 				)}
 
 				{/* Push notifications */}
-				<SettingsGroup className="flex flex-col w-full gap-2">
-					<div className="flex justify-between">
-						<span className="">Push notifications</span>
+				<SettingsGroup className="flex w-full flex-col gap-2">
+					<div className="flex items-center justify-between gap-3">
+						<span className="shrink-0">Push notifications</span>
 						<Switch
 							checked={config.pushNotification}
 							onCheckedChange={checked => setConfig(c => ({ ...c, pushNotification: checked }))}
 						/>
 					</div>
-					<ul className={`w-full pl-2 space-y-0.5 ${!config.pushNotification ? ' text-muted-foreground' : 'text-card-foreground'}`}>
-						<li className="flex justify-between">
+					<ul className={`w-full space-y-0.5 pl-2 ${!config.pushNotification ? ' text-muted-foreground' : 'text-card-foreground'}`}>
+						<li className="flex items-center justify-between gap-3">
 							<div>
 								<Dot /> when battery level ≤ 20%
 							</div>
@@ -224,7 +235,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 								disabled={!config.pushNotification}
 							/>
 						</li>
-						<li className="flex justify-between">
+						<li className="flex items-center justify-between gap-3">
 							<div>
 								<Dot /> when device connected
 							</div>
@@ -237,7 +248,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 								disabled={!config.pushNotification}
 							/>
 						</li>
-						<li className="flex justify-between">
+						<li className="flex items-center justify-between gap-3">
 							<div>
 								<Dot /> when device disconnected
 							</div>
@@ -252,6 +263,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 						</li>
 					</ul>
 				</SettingsGroup>
+				</div>
 			</div>
 		</div>
 	);
