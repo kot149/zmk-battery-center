@@ -164,14 +164,20 @@ const Settings: React.FC<SettingsScreenProps> = ({
 
 				{/* Battery fetch interval */}
 				<SettingsGroup>
-					<div className="flex items-center justify-between gap-3">
+					<div className="flex min-w-0 items-center justify-between gap-3">
 						<span className="shrink-0">Battery fetch interval</span>
-						<div className="shrink-0">
+						<div className="flex min-w-0 max-w-full flex-1 basis-0 justify-end">
 							<Select
 								value={config.fetchInterval.toString()}
 								onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
 							>
-								<SelectTrigger size="sm">
+								<SelectTrigger
+									size="sm"
+									className={cn(
+										"data-[size=sm]:h-auto h-auto min-h-8 w-fit min-w-0 max-w-full whitespace-normal",
+										"*:data-[slot=select-value]:block! *:data-[slot=select-value]:line-clamp-2! *:data-[slot=select-value]:whitespace-normal! *:data-[slot=select-value]:text-left",
+									)}
+								>
 									<SelectValue placeholder="Select" />
 								</SelectTrigger>
 								<SelectContent>
