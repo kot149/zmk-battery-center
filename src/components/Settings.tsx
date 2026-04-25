@@ -10,6 +10,24 @@ import { useConfigContext } from "@/context/ConfigContext";
 import TopRightButtons from "./TopRightButtons";
 import { platform } from "@tauri-apps/plugin-os";
 
+import { cn } from "@/lib/utils";
+
+type SettingsGroupProps = {
+	children: React.ReactNode;
+	className?: string;
+};
+
+export const SettingsGroup: React.FC<SettingsGroupProps> = ({ children, className }) => (
+	<div
+		className={cn(
+			"rounded-lg border border-card bg-card/90 p-3",
+			className,
+		)}
+	>
+		{children}
+	</div>
+);
+
 interface SettingsScreenProps {
 	onExit: () => Promise<void>;
 }
@@ -73,77 +91,92 @@ const Settings: React.FC<SettingsScreenProps> = ({
 			</div>
 
 			<div className="flex flex-col gap-3 w-full p-4">
+				{/* Auto start at login */}
+				<SettingsGroup>
+					<div className="flex justify-between">
+						<span>Auto start at login</span>
+						<Switch
+							checked={config.autoStart}
+							onCheckedChange={checked => setConfig(c => ({ ...c, autoStart: checked }))}
+						/>
+					</div>
+				</SettingsGroup>
+
 				{/* Theme */}
-				<div className="flex justify-between items-center">
-					<span>Theme</span>
-					<div className="flex-1 flex justify-end gap-2">
-						{[
-							{ key: "light", icon: (
-								<div className="flex flex-col items-center justify-center">
-									<Sun className="w-6 h-6" />
-									<span className="text-xs">Light</span>
-								</div>
-							), label: "Light" },
-							{ key: "dark", icon: (
-								<div className="flex flex-col items-center justify-center">
-									<Moon className="w-6 h-6" />
-									<span className="text-xs">Dark</span>
-								</div>
-							), label: "Dark" },
-							{ key: "system", icon: (
-								<div className="flex flex-col items-center justify-center">
-									<span className="relative w-6 h-6 flex items-center justify-center">
-										<Sun className="absolute w-4 h-4 left-[-7%] top-[-7%]" />
-										<Moon className="absolute w-4 h-4 right-[-7%] bottom-[-7%]" />
-										<svg className="absolute left-0 top-0 w-6 h-6 pointer-events-none" width="24" height="24">
-											<line x1="0" y1="20" x2="20" y2="0" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" />
-										</svg>
-									</span>
-									<span className="text-xs">System</span>
-								</div>
-							), label: "System" },
-						].map(opt => (
-							<Button
-								key={opt.key}
-								onClick={() => {
-									setTheme(opt.key as Theme);
-									setConfig(c => ({ ...c, theme: opt.key as Theme }));
-								}}
-								className={`relative w-12 h-12 flex items-center justify-center rounded-lg transition-colors
+				<SettingsGroup>
+					<div className="flex justify-between items-center">
+						<span>Theme</span>
+						<div className="flex-1 flex justify-end gap-2">
+							{[
+								{ key: "light", icon: (
+									<div className="flex flex-col items-center justify-center">
+										<Sun className="w-6 h-6" />
+										<span className="text-xs">Light</span>
+									</div>
+								), label: "Light" },
+								{ key: "dark", icon: (
+									<div className="flex flex-col items-center justify-center">
+										<Moon className="w-6 h-6" />
+										<span className="text-xs">Dark</span>
+									</div>
+								), label: "Dark" },
+								{ key: "system", icon: (
+									<div className="flex flex-col items-center justify-center">
+										<span className="relative w-6 h-6 flex items-center justify-center">
+											<Sun className="absolute w-4 h-4 left-[-7%] top-[-7%]" />
+											<Moon className="absolute w-4 h-4 right-[-7%] bottom-[-7%]" />
+											<svg className="absolute left-0 top-0 w-6 h-6 pointer-events-none" width="24" height="24">
+												<line x1="0" y1="20" x2="20" y2="0" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" />
+											</svg>
+										</span>
+										<span className="text-xs">System</span>
+									</div>
+								), label: "System" },
+							].map(opt => (
+								<Button
+									key={opt.key}
+									onClick={() => {
+										setTheme(opt.key as Theme);
+										setConfig(c => ({ ...c, theme: opt.key as Theme }));
+									}}
+									className={`relative w-12 h-12 flex items-center justify-center rounded-lg transition-colors
 									${theme === opt.key ? 'bg-secondary' : 'bg-transparent'}
 								`}
-								aria-label={opt.label}
-							>
-								{opt.icon}
-							</Button>
-						))}
+									aria-label={opt.label}
+								>
+									{opt.icon}
+								</Button>
+							))}
+						</div>
 					</div>
-				</div>
+				</SettingsGroup>
 
 				{/* Battery fetch interval */}
-				<div className="flex justify-between">
-					<span>Battery fetch interval</span>
-					<div>
-					<Select
-						value={config.fetchInterval.toString()}
-						onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
-					>
-						<SelectTrigger size="sm">
-							<SelectValue placeholder="Select" />
-						</SelectTrigger>
-						<SelectContent>
-							{fetchIntervalOptions.map(opt => (
-								<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
-									{opt.label}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
+				<SettingsGroup>
+					<div className="flex justify-between">
+						<span>Battery fetch interval</span>
+						<div>
+							<Select
+								value={config.fetchInterval.toString()}
+								onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
+							>
+								<SelectTrigger size="sm">
+									<SelectValue placeholder="Select" />
+								</SelectTrigger>
+								<SelectContent>
+									{fetchIntervalOptions.map(opt => (
+										<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
+											{opt.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
 					</div>
-				</div>
+				</SettingsGroup>
 
 				{isMac && (
-					<div className="flex flex-col w-full gap-2">
+					<SettingsGroup className="flex flex-col w-full gap-2">
 						<div className="flex justify-between">
 							<span>Tray icon components [macOS only]</span>
 						</div>
@@ -165,20 +198,11 @@ const Settings: React.FC<SettingsScreenProps> = ({
 								);
 							})}
 						</ul>
-					</div>
+					</SettingsGroup>
 				)}
 
-				{/* Auto start at login */}
-				<div className="flex justify-between">
-					<span>Auto start at login</span>
-					<Switch
-						checked={config.autoStart}
-						onCheckedChange={checked => setConfig(c => ({ ...c, autoStart: checked }))}
-					/>
-				</div>
-
 				{/* Push notifications */}
-				<div className="flex flex-col w-full gap-2">
+				<SettingsGroup className="flex flex-col w-full gap-2">
 					<div className="flex justify-between">
 						<span className="">Push notifications</span>
 						<Switch
@@ -227,7 +251,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 							/>
 						</li>
 					</ul>
-				</div>
+				</SettingsGroup>
 			</div>
 		</div>
 	);
