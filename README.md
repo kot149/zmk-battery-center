@@ -44,7 +44,12 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/
 
 #### Linux
 
-Coming soon, please install manually for now.
+```sh
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_linux.sh)"
+```
+[View install script](scripts/install_linux.sh)
+
+This script installs the app in AppImage format.
 
 ### Install manually
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
