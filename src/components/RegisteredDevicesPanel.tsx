@@ -449,7 +449,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 					<div className="mb-2 flex flex-wrap items-baseline gap-x-0 gap-y-1">
 						<div
 							className={cn(
-								"flex min-w-0 items-center gap-1.5",
+								"group/devicename flex min-w-0 items-center gap-1.5",
 								device.isDisconnected ? "max-w-45" : "max-w-60",
 							)}
 							data-testid={`device-display-name-${device.id}`}
@@ -488,7 +488,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 									</span>
 									<Button
 										type="button"
-										className="h-7 w-7 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+										className="h-7 w-7 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/devicename:opacity-100"
 										aria-label="Edit device display name"
 										onClick={() => startDeviceNameEdit(device)}
 									>
