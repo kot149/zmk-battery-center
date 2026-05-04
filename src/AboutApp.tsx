@@ -130,7 +130,7 @@ function LicenseItem({ license }: { license: License }) {
             </div>
             {isExpanded && license.licenseText && (
                 <div className="border-t border-border p-3">
-                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-background p-3 rounded max-h-64 overflow-y-auto">
+                    <pre className="app-scrollbar text-xs text-muted-foreground whitespace-pre-wrap font-mono bg-background p-3 rounded max-h-64 overflow-y-auto">
                         {license.licenseText}
                     </pre>
                 </div>
@@ -178,7 +178,7 @@ function About() {
             </div>
 
             {/* License list */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="app-scrollbar flex-1 overflow-y-auto p-4">
                 <div className="space-y-2">
                     {filteredLicenses.map((license) => (
                         <LicenseItem
