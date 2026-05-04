@@ -94,7 +94,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 			</div>
 
 			<div className={settingsScrollAreaClassName}>
-				<div className="mx-auto flex w-full min-w-0 max-w-md flex-col gap-3 pr-2.5 pt-1">
+				<div className="mx-3  mb-3 flex min-w-0 max-w-md flex-col gap-3 pt-1">
 					{/* Auto start at login */}
 					<SettingsGroup>
 						<div className="flex items-center justify-between gap-3">
