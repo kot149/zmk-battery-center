@@ -80,9 +80,8 @@ const Settings: React.FC<SettingsScreenProps> = ({
 	};
 
 	return (
-		<div className="fixed inset-0 z-50 flex h-full w-full min-h-0 flex-col pt-4 pb-4 pl-4 pr-1.5">
-			{/* Top row: close stays inset; scroll track can extend into where right padding would be */}
-			<div className="shrink-0 flex justify-end pr-4">
+		<div className="fixed inset-0 z-50 flex h-full w-full min-h-0 flex-col p-2">
+			<div className="shrink-0 flex justify-end">
 				<TopRightButtons
 					buttons={[
 						{
