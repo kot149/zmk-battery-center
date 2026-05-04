@@ -664,7 +664,7 @@ function App() {
 							loadingText="Fetching devices..."
 						>
 							{state === State.addDeviceModal && (
-								<ul className="max-h-60 overflow-y-auto rounded-sm">
+								<ul className="app-scrollbar max-h-60 overflow-y-auto rounded-sm">
 									{availableDevices.length === 0 ? (
 										<li className="text-muted-foreground">No devices found</li>
 									) : (

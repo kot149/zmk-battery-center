@@ -71,7 +71,7 @@ jobs:
   build-macos-aarch64:
     needs: select-platforms
     if: needs.select-platforms.outputs.macos_aarch64 == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -85,7 +85,7 @@ jobs:
   build-macos-x64:
     needs: select-platforms
     if: needs.select-platforms.outputs.macos_x64 == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
