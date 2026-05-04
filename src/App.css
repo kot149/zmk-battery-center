@@ -122,6 +122,35 @@ html {
   --sidebar-ring: oklch(0.551 0.027 264.364);
 }
 
+.app-scrollbar {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 80%, var(--background))
+    transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.app-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in oklch, var(--muted-foreground) 80%, var(--background));
+}
+
+.app-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--muted-foreground) 95%, var(--background));
+}
+
+.app-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 
 @layer base {
   * {
