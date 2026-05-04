@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 import type { RegisteredDevice } from "@/App";
 import BatteryHistoryChart from "../BatteryHistoryChart";
 import { ConfigProvider } from "@/context/ConfigContext";
@@ -9,6 +10,39 @@ import { ThemeProvider } from "@/context/theme-provider";
 const mockReadBatteryHistory = vi.fn();
 const mockListen = vi.fn();
 const mockUnlisten = vi.fn();
+const mockRecharts = vi.hoisted(() => ({
+	lineChartData: [] as unknown[],
+	xAxisTicks: [] as number[],
+	tooltipContent: undefined as
+		| ((props: { active?: boolean; payload?: unknown[]; label?: unknown }) => ReactNode)
+		| undefined,
+}));
+
+type ChartContainerProps = {
+	children?: ReactNode;
+	data?: unknown[];
+	ticks?: number[];
+};
+
+vi.mock("recharts", () => ({
+	ResponsiveContainer: ({ children }: ChartContainerProps) => <div data-testid="responsive-container">{children}</div>,
+	LineChart: ({ children, data }: ChartContainerProps) => {
+		mockRecharts.lineChartData = data ?? [];
+		return <div data-testid="line-chart">{children}</div>;
+	},
+	Line: () => null,
+	XAxis: ({ ticks }: ChartContainerProps) => {
+		mockRecharts.xAxisTicks = ticks ?? [];
+		return <div data-testid="x-axis" />;
+	},
+	YAxis: () => null,
+	Tooltip: ({ content }: { content?: (props: { active?: boolean; payload?: unknown[]; label?: unknown }) => ReactNode }) => {
+		mockRecharts.tooltipContent = content;
+		return null;
+	},
+	Legend: () => null,
+	ReferenceLine: () => null,
+}));
 
 vi.mock("@/utils/batteryHistory", () => ({
 	readBatteryHistory: (...args: unknown[]) => mockReadBatteryHistory(...args),
@@ -59,6 +93,9 @@ describe("BatteryHistoryChart", () => {
 		mockReadBatteryHistory.mockReset();
 		mockListen.mockReset();
 		mockUnlisten.mockReset();
+		mockRecharts.lineChartData = [];
+		mockRecharts.xAxisTicks = [];
+		mockRecharts.tooltipContent = undefined;
 		mockListen.mockImplementation(async () => mockUnlisten);
 	});
 
@@ -143,5 +180,72 @@ describe("BatteryHistoryChart", () => {
 		await user.click(screen.getByRole("button", { name: "Chart settings" }));
 		expect(screen.getByText("Range:")).toBeTruthy();
 		expect(screen.getByText("Smoothing:")).toBeTruthy();
+	});
+
+	it("keeps explicit x-axis ticks even when history has gaps", async () => {
+		mockReadBatteryHistory.mockResolvedValue([
+			{
+				timestamp: "2026-10-21T00:00:00.000Z",
+				user_description: "Central",
+				battery_level: 90,
+			},
+			{
+				timestamp: "2026-11-04T00:00:00.000Z",
+				user_description: "Central",
+				battery_level: 75,
+			},
+		]);
+
+		renderChart();
+
+		await waitFor(() => {
+			expect(mockRecharts.lineChartData.length).toBe(2);
+			expect(mockRecharts.xAxisTicks.length).toBeGreaterThan(0);
+		});
+
+		const tickWithoutHistory = mockRecharts.xAxisTicks.find((tick) => {
+			return !mockRecharts.lineChartData.some(
+				(item) => (item as { timestamp: number }).timestamp === tick,
+			);
+		});
+		expect(tickWithoutHistory).toBeDefined();
+	});
+
+	it("does not show tooltip content for tick-only rows without recorded data", async () => {
+		mockReadBatteryHistory.mockResolvedValue([
+			{
+				timestamp: "2026-10-21T00:00:00.000Z",
+				user_description: "Central",
+				battery_level: 90,
+			},
+			{
+				timestamp: "2026-11-04T00:00:00.000Z",
+				user_description: "Central",
+				battery_level: 75,
+			},
+		]);
+
+		renderChart();
+
+		await waitFor(() => {
+			expect(mockRecharts.tooltipContent).toBeTypeOf("function");
+			expect(mockRecharts.lineChartData.length).toBe(2);
+			expect(mockRecharts.xAxisTicks.length).toBeGreaterThan(0);
+		});
+
+		const tickWithoutHistory = mockRecharts.xAxisTicks.find((tick) => {
+			return !mockRecharts.lineChartData.some(
+				(item) => (item as { timestamp: number }).timestamp === tick,
+			);
+		});
+		expect(tickWithoutHistory).toBeDefined();
+
+		expect(
+			mockRecharts.tooltipContent?.({
+				active: true,
+				payload: [{}],
+				label: tickWithoutHistory,
+			}),
+		).toBeNull();
 	});
 });

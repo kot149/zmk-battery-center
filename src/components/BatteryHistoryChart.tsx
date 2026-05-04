@@ -28,7 +28,7 @@ interface BatteryHistoryChartProps {
 type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
 
 // Unified row that Recharts consumes (timestamp + one key per part)
-type ChartRow = { timestamp: number } & Record<string, number | undefined>;
+export type ChartRow = { timestamp: number } & Record<string, number | undefined>;
 
 // ── Constants ──────────────────────────────────────────
 
@@ -85,7 +85,7 @@ function smooth(records: BatteryHistoryRecord[], windowSizeMs: number): BatteryH
 // ── Helpers ────────────────────────────────────────────
 const MS_IN_DAY = 24 * 60 * 60 * 1000;
 
-function formatXTick(ts: number, rangeMs: number): string {
+export function formatXTick(ts: number, rangeMs: number): string {
 	const d = new Date(ts);
 	if (rangeMs > 0 && rangeMs <= 2 * MS_IN_DAY) {
 		// Short range → show time only
@@ -125,11 +125,11 @@ const NICE_STEPS = [
 	30 * 24 * 60 * 60 * 1000,
 ];
 
-function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
+export function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
 	if (min >= max) return [min];
 	const duration = max - min;
 	const approxStep = duration / maxTicks;
-	
+
 	let step = NICE_STEPS[NICE_STEPS.length - 1];
 	for (const s of NICE_STEPS) {
 		if (s >= approxStep) {
@@ -140,7 +140,7 @@ function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
 
 	const ticks = [];
 	const d = new Date(min);
-	
+
 	if (step >= 24 * 60 * 60 * 1000) {
 		d.setHours(0, 0, 0, 0);
 	} else if (step >= 60 * 60 * 1000) {
@@ -165,7 +165,7 @@ function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
 		ticks.push(current);
 		current += step;
 	}
-	
+
 	return ticks;
 }
 
@@ -298,8 +298,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		[device.batteryPartLabels],
 	);
 
-	/** Build a single sorted array of ChartRow for Recharts */
-	const chartData = useMemo<ChartRow[]>(() => {
+	const recordedData = useMemo<ChartRow[]>(() => {
 		const now = Date.now();
 		let cutoff: number;
 		let ceiling: number | undefined;
@@ -336,16 +335,16 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		return [...tsMap.values()].sort((a, b) => a.timestamp - b.timestamp);
 	}, [grouped, allKeys, rangeMs, customRange, smoothingWindow]);
 
-	const now = useMemo(() => Date.now(), [chartData]); // eslint-disable-line react-hooks/exhaustive-deps
+	const now = useMemo(() => Date.now(), [recordedData]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	const effectiveRange = useMemo<number>(() => {
 		if (rangeMs === -1 && customRange) {
 			return customRange.end.getTime() - customRange.start.getTime();
 		}
 		if (rangeMs > 0) return rangeMs;
-		if (chartData.length < 2) return MS_IN_DAY;
-		return chartData[chartData.length - 1].timestamp - chartData[0].timestamp;
-	}, [chartData, rangeMs, customRange]);
+		if (recordedData.length < 2) return MS_IN_DAY;
+		return recordedData[recordedData.length - 1].timestamp - recordedData[0].timestamp;
+	}, [recordedData, rangeMs, customRange]);
 
 	/** X axis domain and explicit ticks */
 	const { xDomain, xTicks } = useMemo(() => {
@@ -363,13 +362,13 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			max = now;
 			domain = [min, max];
 		} else {
-			if (chartData.length >= 2) {
-				min = chartData[0].timestamp;
-				max = chartData[chartData.length - 1].timestamp;
+			if (recordedData.length >= 2) {
+				min = recordedData[0].timestamp;
+				max = recordedData[recordedData.length - 1].timestamp;
 				domain = ["dataMin", "dataMax"];
-			} else if (chartData.length === 1) {
-				min = chartData[0].timestamp - (MS_IN_DAY / 2);
-				max = chartData[0].timestamp + (MS_IN_DAY / 2);
+			} else if (recordedData.length === 1) {
+				min = recordedData[0].timestamp - (MS_IN_DAY / 2);
+				max = recordedData[0].timestamp + (MS_IN_DAY / 2);
 				domain = [min, max];
 			} else {
 				min = now - MS_IN_DAY;
@@ -377,10 +376,10 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 				domain = [min, max];
 			}
 		}
-		
+
 		const ticks = getNiceTicks(min, max, 12);
 		return { xDomain: domain, xTicks: ticks };
-	}, [rangeMs, now, chartData, customRange]);
+	}, [rangeMs, now, recordedData, customRange]);
 
 	// ── Render ─────────────────────────────────────────
 	return (
@@ -491,14 +490,14 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					<div className="flex-1 flex items-center justify-center text-xs text-destructive">
 						{error}
 					</div>
-				) : chartData.length === 0 ? (
+				) : recordedData.length === 0 ? (
 					<div className="flex-1 flex items-center justify-center text-md text-muted-foreground">
 						{grouped.size === 0 ? "No history recorded yet" : "No history in this range"}
 					</div>
 				) : (
 					<ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
 						<LineChart
-							data={chartData}
+							data={recordedData}
 							margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
 						>
 							{/* Internal grid lines (excluding top/right boundaries) */}
@@ -529,6 +528,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 								tickLine={false}
 								axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
 								minTickGap={20}
+								interval={0}
 							/>
 							<YAxis
 								domain={[0, 100]}
@@ -543,15 +543,27 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 								content={({ active, payload, label }) => {
 									if (!active && (!payload || payload.length === 0)) return null;
 									// Find the row matching the current label to show all parts
-									const rowIdx = chartData.findIndex((r) => r.timestamp === label);
-									const row = rowIdx >= 0 ? chartData[rowIdx] : undefined;
+									const labelTimestamp = typeof label === "number" ? label : Number(label);
+									const rowIdx = recordedData.findIndex((r) => r.timestamp === labelTimestamp);
+									const row = rowIdx >= 0 ? recordedData[rowIdx] : undefined;
+									const hasRecordedValueAtLabel = row != null && allKeys.some((key) => row[key] != null);
+									if (!hasRecordedValueAtLabel) return null;
+									let fallbackStartIndex = rowIdx;
+									if (fallbackStartIndex < 0) {
+										for (let i = recordedData.length - 1; i >= 0; i--) {
+											if (recordedData[i].timestamp <= labelTimestamp) {
+												fallbackStartIndex = i;
+												break;
+											}
+										}
+									}
 
 									// For each key, find the last known value if the current row doesn't have it
 									const resolveValue = (key: string): number | undefined => {
 										if (row?.[key] != null) return row[key] as number;
 										// Walk backwards through chartData to find the most recent value
-										for (let j = (rowIdx >= 0 ? rowIdx : chartData.length) - 1; j >= 0; j--) {
-											if (chartData[j][key] != null) return chartData[j][key] as number;
+										for (let j = fallbackStartIndex; j >= 0; j--) {
+											if (recordedData[j][key] != null) return recordedData[j][key] as number;
 										}
 										return undefined;
 									};
@@ -568,7 +580,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 											}}
 										>
 											<div style={{ fontWeight: 600, marginBottom: 4 }}>
-												{formatTooltipLabel(label as number)}
+												{formatTooltipLabel(labelTimestamp)}
 											</div>
 													{allKeys.map((key, i) => {
 												const val = resolveValue(key);
