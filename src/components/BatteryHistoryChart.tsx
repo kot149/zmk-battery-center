@@ -118,6 +118,7 @@ const NICE_STEPS = [
 	6 * 60 * 60 * 1000,
 	12 * 60 * 60 * 1000,
 	1 * 24 * 60 * 60 * 1000,
+	36 * 60 * 60 * 1000,
 	2 * 24 * 60 * 60 * 1000,
 	3 * 24 * 60 * 60 * 1000,
 	7 * 24 * 60 * 60 * 1000,
@@ -125,19 +126,10 @@ const NICE_STEPS = [
 	30 * 24 * 60 * 60 * 1000,
 ];
 
-export function getNiceTicks(min: number, max: number, maxTicks = 12): number[] {
-	if (min >= max) return [min];
-	const duration = max - min;
-	const approxStep = duration / maxTicks;
+export const MIN_X_AXIS_TICKS = 5;
+export const MAX_X_AXIS_TICKS = 7;
 
-	let step = NICE_STEPS[NICE_STEPS.length - 1];
-	for (const s of NICE_STEPS) {
-		if (s >= approxStep) {
-			step = s;
-			break;
-		}
-	}
-
+function getTicksForStep(min: number, max: number, step: number): number[] {
 	const ticks = [];
 	const d = new Date(min);
 
@@ -167,6 +159,94 @@ export function getNiceTicks(min: number, max: number, maxTicks = 12): number[] 
 	}
 
 	return ticks;
+}
+
+export function getNiceTicks(
+	min: number,
+	max: number,
+	maxTicks = MAX_X_AXIS_TICKS,
+	minTicks = MIN_X_AXIS_TICKS,
+): number[] {
+	if (min >= max) return [min];
+	const duration = max - min;
+	const targetTickCount = Math.round((minTicks + maxTicks) / 2);
+	const approxStep = duration / Math.max(targetTickCount - 1, 1);
+	const candidates = NICE_STEPS.map((step) => ({
+		step,
+		ticks: getTicksForStep(min, max, step),
+	}));
+
+	const validCandidates = candidates.filter(
+		(candidate) => candidate.ticks.length >= minTicks && candidate.ticks.length <= maxTicks,
+	);
+
+	if (validCandidates.length > 0) {
+		return validCandidates.reduce((best, candidate) => {
+			return Math.abs(candidate.step - approxStep) < Math.abs(best.step - approxStep)
+				? candidate
+				: best;
+		}).ticks;
+	}
+
+	const fallback = candidates.reduce((best, candidate) => {
+		const bestDistance = Math.abs(best.ticks.length - targetTickCount);
+		const candidateDistance = Math.abs(candidate.ticks.length - targetTickCount);
+		if (candidateDistance !== bestDistance) {
+			return candidateDistance < bestDistance ? candidate : best;
+		}
+		return Math.abs(candidate.step - approxStep) < Math.abs(best.step - approxStep)
+			? candidate
+			: best;
+	});
+
+	return fallback.ticks;
+}
+
+type XAxisDomain = [number, number] | [string, string];
+
+export function getXAxisConfig({
+	rangeMs,
+	now,
+	recordedData,
+	customRange,
+	maxTicks = MAX_X_AXIS_TICKS,
+}: {
+	rangeMs: number;
+	now: number;
+	recordedData: ChartRow[];
+	customRange: DateRange | null;
+	maxTicks?: number;
+}): { xDomain: XAxisDomain; xTicks: number[] } {
+	let min: number;
+	let max: number;
+	let xDomain: XAxisDomain;
+
+	if (rangeMs === -1 && customRange) {
+		min = customRange.start.getTime();
+		max = customRange.end.getTime();
+		xDomain = [min, max];
+	} else if (rangeMs > 0) {
+		min = now - rangeMs;
+		max = now;
+		xDomain = [min, max];
+	} else if (recordedData.length >= 2) {
+		min = recordedData[0].timestamp;
+		max = recordedData[recordedData.length - 1].timestamp;
+		xDomain = ["dataMin", "dataMax"];
+	} else if (recordedData.length === 1) {
+		min = recordedData[0].timestamp - (MS_IN_DAY / 2);
+		max = recordedData[0].timestamp + (MS_IN_DAY / 2);
+		xDomain = [min, max];
+	} else {
+		min = now - MS_IN_DAY;
+		max = now;
+		xDomain = [min, max];
+	}
+
+	return {
+		xDomain,
+		xTicks: getNiceTicks(min, max, maxTicks),
+	};
 }
 
 // ── Smoothing options (window radius in ms) ───────────
@@ -348,37 +428,12 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 
 	/** X axis domain and explicit ticks */
 	const { xDomain, xTicks } = useMemo(() => {
-		let min: number;
-		let max: number;
-		let domain: [number, number] | [string, string];
-
-		if (rangeMs === -1 && customRange) {
-			// Custom range
-			min = customRange.start.getTime();
-			max = customRange.end.getTime();
-			domain = [min, max];
-		} else if (rangeMs > 0) {
-			min = now - rangeMs;
-			max = now;
-			domain = [min, max];
-		} else {
-			if (recordedData.length >= 2) {
-				min = recordedData[0].timestamp;
-				max = recordedData[recordedData.length - 1].timestamp;
-				domain = ["dataMin", "dataMax"];
-			} else if (recordedData.length === 1) {
-				min = recordedData[0].timestamp - (MS_IN_DAY / 2);
-				max = recordedData[0].timestamp + (MS_IN_DAY / 2);
-				domain = [min, max];
-			} else {
-				min = now - MS_IN_DAY;
-				max = now;
-				domain = [min, max];
-			}
-		}
-
-		const ticks = getNiceTicks(min, max, 12);
-		return { xDomain: domain, xTicks: ticks };
+		return getXAxisConfig({
+			rangeMs,
+			now,
+			recordedData,
+			customRange,
+		});
 	}, [rangeMs, now, recordedData, customRange]);
 
 	// ── Render ─────────────────────────────────────────
