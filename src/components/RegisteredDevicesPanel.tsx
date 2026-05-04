@@ -446,10 +446,10 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 						<div className="fixed inset-0 z-0" onClick={handleMenuClose}></div>
 					)}
 
-					<div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+					<div className="mb-2 flex flex-wrap items-baseline gap-x-0 gap-y-1">
 						<div
 							className={cn(
-								"flex min-w-0 items-baseline gap-1.5",
+								"flex min-w-0 items-center gap-1.5",
 								device.isDisconnected ? "max-w-45" : "max-w-60",
 							)}
 							data-testid={`device-display-name-${device.id}`}
@@ -498,7 +498,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 							)}
 						</div>
 						{device.isDisconnected && (
-							<span className="text-xs text-destructive">disconnected</span>
+							<span className="-ml-1 text-xs text-destructive">disconnected</span>
 						)}
 					</div>
 
