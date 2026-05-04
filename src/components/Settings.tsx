@@ -95,173 +95,173 @@ const Settings: React.FC<SettingsScreenProps> = ({
 
 			<div className={settingsScrollAreaClassName}>
 				<div className="mx-auto flex w-full min-w-0 max-w-md flex-col gap-3 pr-2.5 pt-1">
-				{/* Auto start at login */}
-				<SettingsGroup>
-					<div className="flex items-center justify-between gap-3">
-						<span className="shrink-0">Auto start at login</span>
-						<Switch
-							checked={config.autoStart}
-							onCheckedChange={checked => setConfig(c => ({ ...c, autoStart: checked }))}
-						/>
-					</div>
-				</SettingsGroup>
-
-				{/* Theme */}
-				<SettingsGroup>
-					<div className="flex justify-between items-center">
-						<span>Theme</span>
-						<div className="flex-1 flex justify-end gap-2">
-							{[
-								{ key: "light", icon: (
-									<div className="flex flex-col items-center justify-center">
-										<Sun className="w-6 h-6" />
-										<span className="text-xs">Light</span>
-									</div>
-								), label: "Light" },
-								{ key: "dark", icon: (
-									<div className="flex flex-col items-center justify-center">
-										<Moon className="w-6 h-6" />
-										<span className="text-xs">Dark</span>
-									</div>
-								), label: "Dark" },
-								{ key: "system", icon: (
-									<div className="flex flex-col items-center justify-center">
-										<span className="relative w-6 h-6 flex items-center justify-center">
-											<Sun className="absolute w-4 h-4 left-[-7%] top-[-7%]" />
-											<Moon className="absolute w-4 h-4 right-[-7%] bottom-[-7%]" />
-											<svg className="absolute left-0 top-0 w-6 h-6 pointer-events-none" width="24" height="24">
-												<line x1="0" y1="20" x2="20" y2="0" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" />
-											</svg>
-										</span>
-										<span className="text-xs">System</span>
-									</div>
-								), label: "System" },
-							].map(opt => (
-								<Button
-									key={opt.key}
-									onClick={() => {
-										setTheme(opt.key as Theme);
-										setConfig(c => ({ ...c, theme: opt.key as Theme }));
-									}}
-									className={`relative w-12 h-12 flex items-center justify-center rounded-lg transition-colors
-									${theme === opt.key ? 'bg-muted-foreground/30' : 'bg-transparent'}
-								`}
-									aria-label={opt.label}
-								>
-									{opt.icon}
-								</Button>
-							))}
+					{/* Auto start at login */}
+					<SettingsGroup>
+						<div className="flex items-center justify-between gap-3">
+							<span className="shrink-0">Auto start at login</span>
+							<Switch
+								checked={config.autoStart}
+								onCheckedChange={checked => setConfig(c => ({ ...c, autoStart: checked }))}
+							/>
 						</div>
-					</div>
-				</SettingsGroup>
+					</SettingsGroup>
 
-				{/* Battery fetch interval */}
-				<SettingsGroup>
-					<div className="flex min-w-0 items-center justify-between gap-3">
-						<span className="shrink-0">Battery fetch interval</span>
-						<div className="flex min-w-0 max-w-full flex-1 basis-0 justify-end">
-							<Select
-								value={config.fetchInterval.toString()}
-								onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
-							>
-								<SelectTrigger
-									size="sm"
-									className={cn(
-										"data-[size=sm]:h-auto h-auto min-h-8 w-fit min-w-0 max-w-full whitespace-normal",
-										"*:data-[slot=select-value]:block! *:data-[slot=select-value]:line-clamp-2! *:data-[slot=select-value]:whitespace-normal! *:data-[slot=select-value]:text-left",
-									)}
-								>
-									<SelectValue placeholder="Select" />
-								</SelectTrigger>
-								<SelectContent>
-									{fetchIntervalOptions.map(opt => (
-										<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
-											{opt.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-					</div>
-				</SettingsGroup>
-
-				{isMac && (
-					<SettingsGroup className="flex w-full flex-col gap-2">
-						<div className="flex justify-between">
-							<span>Tray icon components [macOS only]</span>
-						</div>
-						<ul className="w-full space-y-0.5 pl-2">
-							{trayIconComponentOptions.map(option => {
-								const checked = config.trayIconComponents.includes(option.value);
-								const isLastChecked = checked && config.trayIconComponents.length === 1;
-								return (
-									<li key={option.value} className="flex items-center justify-between gap-3">
-										<div>
-											<Dot /> {option.label}
+					{/* Theme */}
+					<SettingsGroup>
+						<div className="flex justify-between items-center">
+							<span>Theme</span>
+							<div className="flex-1 flex justify-end gap-2">
+								{[
+									{ key: "light", icon: (
+										<div className="flex flex-col items-center justify-center">
+											<Sun className="w-6 h-6" />
+											<span className="text-xs">Light</span>
 										</div>
-										<Switch
-											checked={checked}
-											onCheckedChange={nextChecked => handleTrayIconComponentChange(option.value, nextChecked)}
-											disabled={isLastChecked}
-										/>
-									</li>
-								);
-							})}
+									), label: "Light" },
+									{ key: "dark", icon: (
+										<div className="flex flex-col items-center justify-center">
+											<Moon className="w-6 h-6" />
+											<span className="text-xs">Dark</span>
+										</div>
+									), label: "Dark" },
+									{ key: "system", icon: (
+										<div className="flex flex-col items-center justify-center">
+											<span className="relative w-6 h-6 flex items-center justify-center">
+												<Sun className="absolute w-4 h-4 left-[-7%] top-[-7%]" />
+												<Moon className="absolute w-4 h-4 right-[-7%] bottom-[-7%]" />
+												<svg className="absolute left-0 top-0 w-6 h-6 pointer-events-none" width="24" height="24">
+													<line x1="0" y1="20" x2="20" y2="0" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" />
+												</svg>
+											</span>
+											<span className="text-xs">System</span>
+										</div>
+									), label: "System" },
+								].map(opt => (
+									<Button
+										key={opt.key}
+										onClick={() => {
+											setTheme(opt.key as Theme);
+											setConfig(c => ({ ...c, theme: opt.key as Theme }));
+										}}
+										className={`relative w-12 h-12 flex items-center justify-center rounded-lg transition-colors
+										${theme === opt.key ? 'bg-muted-foreground/30' : 'bg-transparent'}
+									`}
+										aria-label={opt.label}
+									>
+										{opt.icon}
+									</Button>
+								))}
+							</div>
+						</div>
+					</SettingsGroup>
+
+					{/* Battery fetch interval */}
+					<SettingsGroup>
+						<div className="flex min-w-0 items-center justify-between gap-3">
+							<span className="shrink-0">Battery fetch interval</span>
+							<div className="flex min-w-0 max-w-full flex-1 basis-0 justify-end">
+								<Select
+									value={config.fetchInterval.toString()}
+									onValueChange={value => setConfig(c => ({ ...c, fetchInterval: value === FETCH_INTERVAL_AUTO ? FETCH_INTERVAL_AUTO : Number(value) }))}
+								>
+									<SelectTrigger
+										size="sm"
+										className={cn(
+											"data-[size=sm]:h-auto h-auto min-h-8 w-fit min-w-0 max-w-full whitespace-normal",
+											"*:data-[slot=select-value]:block! *:data-[slot=select-value]:line-clamp-2! *:data-[slot=select-value]:whitespace-normal! *:data-[slot=select-value]:text-left",
+										)}
+									>
+										<SelectValue placeholder="Select" />
+									</SelectTrigger>
+									<SelectContent>
+										{fetchIntervalOptions.map(opt => (
+											<SelectItem key={opt.value.toString()} value={opt.value.toString()}>
+												{opt.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						</div>
+					</SettingsGroup>
+
+					{isMac && (
+						<SettingsGroup className="flex w-full flex-col gap-2">
+							<div className="flex justify-between">
+								<span>Tray icon components [macOS only]</span>
+							</div>
+							<ul className="w-full space-y-0.5 pl-2">
+								{trayIconComponentOptions.map(option => {
+									const checked = config.trayIconComponents.includes(option.value);
+									const isLastChecked = checked && config.trayIconComponents.length === 1;
+									return (
+										<li key={option.value} className="flex items-center justify-between gap-3">
+											<div>
+												<Dot /> {option.label}
+											</div>
+											<Switch
+												checked={checked}
+												onCheckedChange={nextChecked => handleTrayIconComponentChange(option.value, nextChecked)}
+												disabled={isLastChecked}
+											/>
+										</li>
+									);
+								})}
+							</ul>
+						</SettingsGroup>
+					)}
+
+					{/* Push notifications */}
+					<SettingsGroup className="flex w-full flex-col gap-2">
+						<div className="flex items-center justify-between gap-3">
+							<span className="shrink-0">Push notifications</span>
+							<Switch
+								checked={config.pushNotification}
+								onCheckedChange={checked => setConfig(c => ({ ...c, pushNotification: checked }))}
+							/>
+						</div>
+						<ul className={`w-full space-y-0.5 pl-2 ${!config.pushNotification ? ' text-muted-foreground' : 'text-card-foreground'}`}>
+							<li className="flex items-center justify-between gap-3">
+								<div>
+									<Dot /> when battery level ≤ 20%
+								</div>
+								<Switch
+									checked={config.pushNotificationWhen[NotificationType.LowBattery]}
+									onCheckedChange={checked => setConfig(c => ({
+										...c,
+										pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.LowBattery]: checked }
+									}))}
+									disabled={!config.pushNotification}
+								/>
+							</li>
+							<li className="flex items-center justify-between gap-3">
+								<div>
+									<Dot /> when device connected
+								</div>
+								<Switch
+									checked={config.pushNotificationWhen[NotificationType.Connected]}
+									onCheckedChange={checked => setConfig(c => ({
+										...c,
+										pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.Connected]: checked }
+									}))}
+									disabled={!config.pushNotification}
+								/>
+							</li>
+							<li className="flex items-center justify-between gap-3">
+								<div>
+									<Dot /> when device disconnected
+								</div>
+								<Switch
+									checked={config.pushNotificationWhen[NotificationType.Disconnected]}
+									onCheckedChange={checked => setConfig(c => ({
+										...c,
+										pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.Disconnected]: checked }
+									}))}
+									disabled={!config.pushNotification}
+								/>
+							</li>
 						</ul>
 					</SettingsGroup>
-				)}
-
-				{/* Push notifications */}
-				<SettingsGroup className="flex w-full flex-col gap-2">
-					<div className="flex items-center justify-between gap-3">
-						<span className="shrink-0">Push notifications</span>
-						<Switch
-							checked={config.pushNotification}
-							onCheckedChange={checked => setConfig(c => ({ ...c, pushNotification: checked }))}
-						/>
-					</div>
-					<ul className={`w-full space-y-0.5 pl-2 ${!config.pushNotification ? ' text-muted-foreground' : 'text-card-foreground'}`}>
-						<li className="flex items-center justify-between gap-3">
-							<div>
-								<Dot /> when battery level ≤ 20%
-							</div>
-							<Switch
-								checked={config.pushNotificationWhen[NotificationType.LowBattery]}
-								onCheckedChange={checked => setConfig(c => ({
-									...c,
-									pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.LowBattery]: checked }
-								}))}
-								disabled={!config.pushNotification}
-							/>
-						</li>
-						<li className="flex items-center justify-between gap-3">
-							<div>
-								<Dot /> when device connected
-							</div>
-							<Switch
-								checked={config.pushNotificationWhen[NotificationType.Connected]}
-								onCheckedChange={checked => setConfig(c => ({
-									...c,
-									pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.Connected]: checked }
-								}))}
-								disabled={!config.pushNotification}
-							/>
-						</li>
-						<li className="flex items-center justify-between gap-3">
-							<div>
-								<Dot /> when device disconnected
-							</div>
-							<Switch
-								checked={config.pushNotificationWhen[NotificationType.Disconnected]}
-								onCheckedChange={checked => setConfig(c => ({
-									...c,
-									pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.Disconnected]: checked }
-								}))}
-								disabled={!config.pushNotification}
-							/>
-						</li>
-					</ul>
-				</SettingsGroup>
 				</div>
 			</div>
 		</div>
