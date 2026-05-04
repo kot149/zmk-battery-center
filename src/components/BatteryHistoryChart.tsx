@@ -10,7 +10,7 @@ import {
 	ReferenceLine,
 } from "recharts";
 import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
-import type { RegisteredDevice } from "@/App";
+import type { RegisteredDevice } from "@/utils/appHelpers";
 import { XMarkIcon, AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { logger } from "@/utils/log";
@@ -18,6 +18,7 @@ import TopRightButtons from "@/components/TopRightButtons";
 import { listen } from "@tauri-apps/api/event";
 import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
 import { useConfigContext } from "@/context/ConfigContext";
+import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 
 // ── Types ──────────────────────────────────────────────
 interface BatteryHistoryChartProps {
@@ -442,8 +443,11 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			{/* Header */}
 			<div className="px-5">
 				<div className="flex flex-col pt-4 pb-0 min-w-0 mr-40">
-					<span className="text-2xl font-semibold text-foreground truncate" title={device.name}>
-						{device.name}
+					<span
+						className="text-2xl font-semibold text-foreground truncate"
+						title={device.name}
+					>
+						{getRegisteredDeviceDisplayName(device)}
 					</span>
 					<span className="text-sm text-muted-foreground tracking-wide">
 						Battery History

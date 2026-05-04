@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, type RefObject, type MutableRefObject } from "react";
 import BatteryIcon from "@/components/BatteryIcon";
 import BatteryHistoryChart from "@/components/BatteryHistoryChart";
-import type { RegisteredDevice } from "@/App";
+import type { RegisteredDevice } from "@/utils/appHelpers";
 import { Button } from "@/components/Button";
 import {
 	ArrowUturnLeftIcon,
@@ -14,6 +14,7 @@ import {
 	defaultBatteryPartDisplayName,
 	getBatteryPartDisplayName,
 } from "@/utils/batteryLabels";
+import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 import { cn } from "@/lib/utils";
 
 const ChartCurveIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
@@ -113,6 +114,9 @@ type PartLabelEditProps = {
 	onReset: () => void;
 	inputRef: RefObject<HTMLInputElement | null>;
 	skipLabelCommitOnBlur: MutableRefObject<boolean>;
+	resetAriaLabel?: string;
+	resetTitle?: string;
+	inputClassName?: string;
 };
 
 const PartLabelEdit: React.FC<PartLabelEditProps> = ({
@@ -124,12 +128,18 @@ const PartLabelEdit: React.FC<PartLabelEditProps> = ({
 	onReset,
 	inputRef,
 	skipLabelCommitOnBlur,
+	resetAriaLabel = "Reset label and close",
+	resetTitle = "Reset label and close",
+	inputClassName,
 }) => (
 	<div className="relative w-full min-w-0">
 		<input
 			ref={inputRef}
 			type="text"
-			className="box-border w-full min-w-0 rounded border border-border bg-background py-0.5 pl-0.5 pr-7 text-sm text-card-foreground"
+			className={cn(
+				"box-border w-full min-w-0 rounded border border-border bg-background py-0.5 pl-0.5 pr-7 text-sm text-card-foreground",
+				inputClassName,
+			)}
 			value={value}
 			onChange={(e) => onChange(e.target.value)}
 			onBlur={onCommitBlur}
@@ -141,8 +151,8 @@ const PartLabelEdit: React.FC<PartLabelEditProps> = ({
 		<button
 			type="button"
 			className="absolute right-0.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-			aria-label="Reset label and close"
-			title="Reset label and close"
+			aria-label={resetAriaLabel}
+			title={resetTitle}
 			onPointerDown={(e) => {
 				e.preventDefault();
 				skipLabelCommitOnBlur.current = true;
@@ -158,9 +168,15 @@ type PartLabelViewProps = {
 	displayName: string;
 	defaultNameTitle: string;
 	onStartEdit: () => void;
+	editAriaLabel?: string;
 };
 
-const PartLabelView: React.FC<PartLabelViewProps> = ({ displayName, defaultNameTitle, onStartEdit }) => (
+const PartLabelView: React.FC<PartLabelViewProps> = ({
+	displayName,
+	defaultNameTitle,
+	onStartEdit,
+	editAriaLabel = "Edit battery part label",
+}) => (
 	<div className="flex w-full min-w-0 max-w-full flex-nowrap items-center justify-start gap-1.5">
 		<span
 			className="min-w-0 max-w-[calc(100%-1.875rem)] shrink truncate text-card-foreground/80"
@@ -171,7 +187,7 @@ const PartLabelView: React.FC<PartLabelViewProps> = ({ displayName, defaultNameT
 		<Button
 			type="button"
 			className="h-6 w-6 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/labelrow:opacity-100"
-			aria-label="Edit battery part label"
+			aria-label={editAriaLabel}
 			onClick={onStartEdit}
 		>
 			<PencilSquareIcon className="size-3.5" />
@@ -287,6 +303,10 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	const [labelDraft, setLabelDraft] = useState("");
 	const labelInputRef = useRef<HTMLInputElement>(null);
 	const skipLabelCommitOnBlur = useRef(false);
+	const [deviceNameEditId, setDeviceNameEditId] = useState<string | null>(null);
+	const [deviceNameDraft, setDeviceNameDraft] = useState("");
+	const deviceNameInputRef = useRef<HTMLInputElement>(null);
+	const skipDeviceNameCommitOnBlur = useRef(false);
 
 	useEffect(() => {
 		if (labelEdit && labelInputRef.current) {
@@ -294,6 +314,13 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 			labelInputRef.current.select();
 		}
 	}, [labelEdit]);
+
+	useEffect(() => {
+		if (deviceNameEditId && deviceNameInputRef.current) {
+			deviceNameInputRef.current.focus();
+			deviceNameInputRef.current.select();
+		}
+	}, [deviceNameEditId]);
 
 	const handleMenuClose = () => setMenuOpen(null);
 
@@ -330,7 +357,35 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 		);
 	};
 
+	const commitDeviceDisplayName = (deviceId: string, value: string) => {
+		const trimmed = value.trim();
+		setRegisteredDevices((prev) =>
+			prev.map((d) => {
+				if (d.id !== deviceId) {
+					return d;
+				}
+				if (trimmed === "" || trimmed === d.name) {
+					const { displayName: _removed, ...rest } = d;
+					return rest;
+				}
+				return { ...d, displayName: trimmed };
+			}),
+		);
+	};
+
+	const startDeviceNameEdit = (device: RegisteredDevice) => {
+		setLabelEdit(null);
+		setDeviceNameDraft(getRegisteredDeviceDisplayName(device));
+		setDeviceNameEditId(device.id);
+	};
+
+	const resetDeviceNameAndCloseEdit = (device: RegisteredDevice) => {
+		commitDeviceDisplayName(device.id, device.name);
+		setDeviceNameEditId(null);
+	};
+
 	const startLabelEdit = (device: RegisteredDevice, userDescription: string | null) => {
+		setDeviceNameEditId(null);
 		const partKey = batteryPartLabelStorageKey(userDescription);
 		setLabelDraft(getBatteryPartDisplayName(device.batteryPartLabels, userDescription));
 		setLabelEdit({ deviceId: device.id, partKey });
@@ -391,14 +446,57 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 						<div className="fixed inset-0 z-0" onClick={handleMenuClose}></div>
 					)}
 
-					<div className="flex items-baseline gap-2 mb-2">
-						<span
-							className={`text-lg font-semibold truncate ${
-								device.isDisconnected ? "max-w-45" : "max-w-60"
-							}`}
+					<div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+						<div
+							className={cn(
+								"flex min-w-0 items-baseline gap-1.5",
+								device.isDisconnected ? "max-w-45" : "max-w-60",
+							)}
+							data-testid={`device-display-name-${device.id}`}
 						>
-							{device.name}
-						</span>
+							{deviceNameEditId === device.id ? (
+								<PartLabelEdit
+									value={deviceNameDraft}
+									onChange={setDeviceNameDraft}
+									onCommitBlur={() => {
+										if (skipDeviceNameCommitOnBlur.current) {
+											skipDeviceNameCommitOnBlur.current = false;
+											return;
+										}
+										commitDeviceDisplayName(device.id, deviceNameDraft);
+										setDeviceNameEditId(null);
+									}}
+									onEnter={() => deviceNameInputRef.current?.blur()}
+									onEscape={() => {
+										skipDeviceNameCommitOnBlur.current = true;
+										setDeviceNameEditId(null);
+									}}
+									onReset={() => resetDeviceNameAndCloseEdit(device)}
+									inputRef={deviceNameInputRef}
+									skipLabelCommitOnBlur={skipDeviceNameCommitOnBlur}
+									resetAriaLabel="Reset device name and close"
+									resetTitle="Reset to advertised name and close"
+									inputClassName="text-lg font-semibold"
+								/>
+							) : (
+								<>
+									<span
+										className="min-w-0 flex-1 truncate text-lg font-semibold text-card-foreground"
+										title={device.name}
+									>
+										{getRegisteredDeviceDisplayName(device)}
+									</span>
+									<Button
+										type="button"
+										className="h-7 w-7 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100"
+										aria-label="Edit device display name"
+										onClick={() => startDeviceNameEdit(device)}
+									>
+										<PencilSquareIcon className="size-4" />
+									</Button>
+								</>
+							)}
+						</div>
 						{device.isDisconnected && (
 							<span className="text-xs text-destructive">disconnected</span>
 						)}

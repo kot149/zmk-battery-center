@@ -1,10 +1,14 @@
 import type { BatteryInfo } from "./ble";
 
-export type NormalizedRegisteredDevice = {
+export type RegisteredDevice = {
 	id: string;
+	/** Advertised BLE name; kept for history storage keys and device identity. */
 	name: string;
+	/** Optional user-defined label; falls back to {@link name} for display and notifications. */
+	displayName?: string;
 	batteryInfos: BatteryInfo[];
 	isDisconnected: boolean;
+	/** Custom display names per part; keys match battery history user_description (null → "Central"). */
 	batteryPartLabels?: Record<string, string>;
 };
 
@@ -19,6 +23,20 @@ function normalizeBatteryPartLabels(raw: unknown): Record<string, string> | unde
 		}
 	}
 	return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function normalizeDeviceDisplayName(raw: unknown): string | undefined {
+	if (typeof raw !== "string") return undefined;
+	const t = raw.trim();
+	return t !== "" ? t : undefined;
+}
+
+export function getRegisteredDeviceDisplayName(device: {
+	name: string;
+	displayName?: string | null;
+}): string {
+	const custom = device.displayName?.trim();
+	return custom && custom !== "" ? custom : device.name;
 }
 
 const DEVICE_ID_PATTERN = /^DeviceId\("(.+)"\)$/;
@@ -49,9 +67,9 @@ export function mergeBatteryInfos(prev: BatteryInfo[], next: BatteryInfo[]): Bat
 	});
 }
 
-export function normalizeLoadedDevices(raw: unknown): NormalizedRegisteredDevice[] {
+export function normalizeLoadedDevices(raw: unknown): RegisteredDevice[] {
 	const devices = Array.isArray(raw) ? raw : [];
-	return devices.map((device): NormalizedRegisteredDevice => {
+	return devices.map((device): RegisteredDevice => {
 		const d = typeof device === "object" && device !== null ? (device as Record<string, unknown>) : {};
 		const batteryInfos: BatteryInfo[] = Array.isArray(d.batteryInfos)
 			? (d.batteryInfos as Array<Record<string, unknown>>).map((info) => {
@@ -70,12 +88,14 @@ export function normalizeLoadedDevices(raw: unknown): NormalizedRegisteredDevice
 			const match = value.match(DEVICE_ID_PATTERN);
 			return match ? match[1] : value;
 		};
-		return {
+		const displayName = normalizeDeviceDisplayName(d.displayName);
+		const base: RegisteredDevice = {
 			id: extractFromDeviceId(rawId),
 			name: extractFromDeviceId(rawName),
 			batteryInfos,
 			isDisconnected: d.isDisconnected === true,
 			batteryPartLabels: normalizeBatteryPartLabels(d.batteryPartLabels),
 		};
+		return displayName !== undefined ? { ...base, displayName } : base;
 	});
 }

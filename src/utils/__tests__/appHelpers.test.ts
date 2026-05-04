@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { mergeBatteryInfos, normalizeLoadedDevices, upsertBatteryInfo } from "../appHelpers";
+import { mergeBatteryInfos, normalizeLoadedDevices, upsertBatteryInfo, getRegisteredDeviceDisplayName } from "../appHelpers";
 
 describe("App helpers", () => {
+	describe("getRegisteredDeviceDisplayName", () => {
+		it("prefers non-empty displayName", () => {
+			expect(getRegisteredDeviceDisplayName({ name: "BLE", displayName: "Desk" })).toBe("Desk");
+		});
+
+		it("falls back to name when displayName absent or blank", () => {
+			expect(getRegisteredDeviceDisplayName({ name: "BLE" })).toBe("BLE");
+			expect(getRegisteredDeviceDisplayName({ name: "BLE", displayName: "  " })).toBe("BLE");
+		});
+	});
 	describe("upsertBatteryInfo", () => {
 		it("appends when user description is not present", () => {
 			const prev = [{ battery_level: 80, user_description: "Left" }];
@@ -190,6 +200,47 @@ describe("App helpers", () => {
 						{ battery_level: 20, user_description: null },
 						{ battery_level: 25, user_description: null },
 					],
+				},
+			]);
+		});
+
+		it("loads optional displayName when non-empty after trim", () => {
+			const raw = [
+				{
+					id: "dev-1",
+					name: "Keyboard",
+					batteryInfos: [],
+					displayName: "  Living room  ",
+				},
+			];
+
+			expect(normalizeLoadedDevices(raw)).toEqual([
+				{
+					id: "dev-1",
+					name: "Keyboard",
+					isDisconnected: false,
+					batteryInfos: [],
+					displayName: "Living room",
+				},
+			]);
+		});
+
+		it("drops empty displayName values", () => {
+			const raw = [
+				{
+					id: "dev-1",
+					name: "Keyboard",
+					batteryInfos: [],
+					displayName: "   ",
+				},
+			];
+
+			expect(normalizeLoadedDevices(raw)).toEqual([
+				{
+					id: "dev-1",
+					name: "Keyboard",
+					isDisconnected: false,
+					batteryInfos: [],
 				},
 			]);
 		});

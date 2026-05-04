@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { RegisteredDevice } from "@/App";
+import type { RegisteredDevice } from "@/utils/appHelpers";
 import type { BatteryInfo } from "@/utils/ble";
 import { batteryPartLabelStorageKey } from "@/utils/batteryLabels";
 import { defaultConfig, type TrayIconComponent } from "@/utils/config";

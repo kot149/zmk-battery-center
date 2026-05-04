@@ -41,17 +41,12 @@ import {
 	upsertBatteryInfo,
 	mergeBatteryInfos,
 	normalizeLoadedDevices,
+	getRegisteredDeviceDisplayName,
+	type RegisteredDevice,
 } from "@/utils/appHelpers";
 import { syncTrayBatteryIcon } from "@/utils/trayBatteryIcon";
 
-export type RegisteredDevice = {
-	id: string;
-	name: string;
-	batteryInfos: BatteryInfo[];
-	isDisconnected: boolean;
-	/** Custom display names per part; keys match battery history user_description (null → "Central"). */
-	batteryPartLabels?: Record<string, string>;
-}
+export type { RegisteredDevice };
 
 enum State {
 	main = 'main',
@@ -325,19 +320,20 @@ function App() {
 				}
 
 				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
-					await sendNotification(`${device.name} has been connected.`);
+					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);
 				}
 
 				if(pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.LowBattery]){
 					const isLowBattery = mapIsLowBattery(infoArray);
+					const displayName = getRegisteredDeviceDisplayName(device);
 					for(let i = 0; i < isLowBattery.length && i < isLowBatteryPrev.length; i++){
 						if(!isLowBatteryPrev[i] && isLowBattery[i]){
-							sendNotification(`${device.name}${
+							sendNotification(`${displayName}${
 								infoArray.length >= 2 ?
 									' ' + (infoArray[i].user_description ?? 'Central')
 									: ''
 							} has low battery.`);
-							logger.info(`${device.name} has low battery.`);
+							logger.info(`${displayName} has low battery.`);
 						}
 					}
 				}
@@ -349,7 +345,7 @@ function App() {
 					commitRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, isDisconnected: true } : d));
 
 					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
-						await sendNotification(`${device.name} has been disconnected.`);
+						await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been disconnected.`);
 						return;
 					}
 				}
@@ -469,10 +465,10 @@ function App() {
 
 				if (payload.connected) {
 					if (config.pushNotification && config.pushNotificationWhen[NotificationType.Connected]) {
-						notificationMessage = `${device.name} has been connected.`;
+						notificationMessage = `${getRegisteredDeviceDisplayName(device)} has been connected.`;
 					}
 				} else if (config.pushNotification && config.pushNotificationWhen[NotificationType.Disconnected]) {
-					notificationMessage = `${device.name} has been disconnected.`;
+					notificationMessage = `${getRegisteredDeviceDisplayName(device)} has been disconnected.`;
 				}
 
 				return { ...device, isDisconnected: nextDisconnected };
@@ -723,4 +719,4 @@ function App() {
 
 export default App;
 
-export { upsertBatteryInfo, mergeBatteryInfos, normalizeLoadedDevices };
+export { upsertBatteryInfo, mergeBatteryInfos, normalizeLoadedDevices, getRegisteredDeviceDisplayName };

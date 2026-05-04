@@ -2,7 +2,7 @@ import { useState } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { RegisteredDevice } from "@/App";
+import type { RegisteredDevice } from "@/utils/appHelpers";
 import RegisteredDevicesPanel from "../RegisteredDevicesPanel";
 
 vi.mock("../BatteryHistoryChart", () => ({
@@ -149,6 +149,25 @@ describe("RegisteredDevicesPanel", () => {
 		expect(overlay).not.toBeNull();
 		await user.click(overlay!);
 		expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+	});
+
+	it("commits a custom device display name via setRegisteredDevices", async () => {
+		const user = userEvent.setup();
+		const onSet = vi.fn();
+		render(
+			<RegisteredDevicesPanel registeredDevices={[sampleDevice]} setRegisteredDevices={onSet} />,
+		);
+
+		await user.click(screen.getByRole("button", { name: "Edit device display name" }));
+		const field = screen.getByDisplayValue("MockBoard");
+		await user.clear(field);
+		await user.keyboard("Custom KB{Enter}");
+
+		expect(onSet).toHaveBeenCalled();
+		const updater = onSet.mock.calls.at(-1)![0] as (prev: RegisteredDevice[]) => RegisteredDevice[];
+		const next = updater([sampleDevice]);
+		expect(next[0].displayName).toBe("Custom KB");
+		expect(next[0].name).toBe("MockBoard");
 	});
 
 	it("commits a custom battery part label and persists via setRegisteredDevices", async () => {
