@@ -164,7 +164,9 @@ describe("RegisteredDevicesPanel", () => {
 		await user.keyboard("Custom KB{Enter}");
 
 		expect(onSet).toHaveBeenCalled();
-		const updater = onSet.mock.calls.at(-1)![0] as (prev: RegisteredDevice[]) => RegisteredDevice[];
+		const updater = onSet.mock.calls[onSet.mock.calls.length - 1]![0] as (
+			prev: RegisteredDevice[],
+		) => RegisteredDevice[];
 		const next = updater([sampleDevice]);
 		expect(next[0].displayName).toBe("Custom KB");
 		expect(next[0].name).toBe("MockBoard");

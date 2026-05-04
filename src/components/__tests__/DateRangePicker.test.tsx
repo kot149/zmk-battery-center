@@ -30,6 +30,7 @@ describe("DateRangePicker", () => {
 		const onApply = vi.fn();
 		render(<DateRangePicker onApply={onApply} onCancel={vi.fn()} />);
 
+		await user.click(screen.getByRole("button", { name: "Previous month" }));
 		const day10 = screen.getAllByRole("button", { name: "10" })[0];
 		const day12 = screen.getAllByRole("button", { name: "12" })[0];
 		await user.click(day10);
