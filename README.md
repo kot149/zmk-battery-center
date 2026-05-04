@@ -38,13 +38,19 @@ This requires admin privileges. If you don't have admin privileges, manually ins
 #### macOS
 
 ```sh
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_mac.sh)"
+curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_mac.sh | bash
 ```
 [View install script](scripts/install_mac.sh)
 
 #### Linux
 
-Coming soon, please install manually for now.
+```sh
+curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_linux.sh | bash
+```
+[View install script](scripts/install_linux.sh)
+
+You will be prompted to select the package format from AppImage, .deb, or .rpm.
+AppImage installs to `~/.local/bin/zmk-battery-center.AppImage`. Debian and RPM packages install system-wide via `sudo` and usually add a desktop entry.
 
 ### Install manually
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
