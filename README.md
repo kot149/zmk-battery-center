@@ -37,6 +37,22 @@ This requires admin privileges. If you don't have admin privileges, manually ins
 
 #### macOS
 
+##### Using Homebrew
+
+```sh
+brew tap kot149/tap
+brew install --cask kot149/tap/zmk-battery-center
+```
+
+> **Note:** The app may be blocked from opening as is not code-signed. To allow it, either:
+> - Open **System Settings > Privacy & Security > Security** and click **Open Anyway**.
+> - Or run the following command in Terminal:
+>   ```sh
+>   sudo xattr -d com.apple.quarantine /Applications/zmk-battery-center.app
+>   ```
+
+##### Using the install script
+
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_mac.sh | bash
 ```
