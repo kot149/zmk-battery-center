@@ -451,53 +451,65 @@ async fn battery_connection_watcher(
             return;
         }
 
-        // obtain a Device handle via discover_devices.
-        // connected devices are yielded first; unconnected ones appear once BLE scanning begins.
-        log::debug!("BLE I/O: connection watcher starting discover_devices device_id={device_id}");
-        let mut discover = match adapter
-            .discover_devices(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("BLE I/O: connection watcher discover_devices failed device_id={device_id}: {e}");
-                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
-                    return;
-                }
-                continue 'outer;
+        let target_device = match get_target_device(&adapter, &device_id).await {
+            Ok(device) => {
+                log::debug!(
+                    "BLE I/O: connection watcher reusing connected device handle device_id={device_id}"
+                );
+                device
             }
-        };
-
-        // Wait until the target device appears in the stream.
-        let target_device = loop {
-            tokio::select! {
-                changed = stop_rx.changed() => {
-                    if changed.is_err() || *stop_rx.borrow() {
-                        return;
+            Err(_) => {
+                // If the device is not currently connected, obtain a fresh handle via
+                // discover_devices so reconnections after a power-off cycle still work.
+                // Some platforms may not surface already connected devices here.
+                log::debug!("BLE I/O: connection watcher starting discover_devices device_id={device_id}");
+                let mut discover = match adapter
+                    .discover_devices(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
+                    .await
+                {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::warn!("BLE I/O: connection watcher discover_devices failed device_id={device_id}: {e}");
+                        if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
+                            return;
+                        }
+                        continue 'outer;
                     }
-                }
-                result = discover.next() => {
-                    match result {
-                        Some(Ok(device)) if is_target_device(&device, &device_id) => {
-                            log::debug!("BLE I/O: connection watcher found target device device_id={device_id}");
-                            break device;
-                        }
-                        Some(Ok(_)) => {} // not our target
-                        Some(Err(e)) => {
-                            log::warn!("BLE I/O: connection watcher discover error device_id={device_id}: {e}");
-                        }
-                        None => {
-                            log::warn!("BLE I/O: connection watcher discover stream ended device_id={device_id}");
-                            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                };
+
+                // Wait until the target device appears in the stream.
+                let target_device = loop {
+                    tokio::select! {
+                        changed = stop_rx.changed() => {
+                            if changed.is_err() || *stop_rx.borrow() {
                                 return;
                             }
-                            continue 'outer;
+                        }
+                        result = discover.next() => {
+                            match result {
+                                Some(Ok(device)) if is_target_device(&device, &device_id) => {
+                                    log::debug!("BLE I/O: connection watcher found target device device_id={device_id}");
+                                    break device;
+                                }
+                                Some(Ok(_)) => {} // not our target
+                                Some(Err(e)) => {
+                                    log::warn!("BLE I/O: connection watcher discover error device_id={device_id}: {e}");
+                                }
+                                None => {
+                                    log::warn!("BLE I/O: connection watcher discover stream ended device_id={device_id}");
+                                    if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
+                                        return;
+                                    }
+                                    continue 'outer;
+                                }
+                            }
                         }
                     }
-                }
+                };
+                drop(discover); // stop scanning
+                target_device
             }
         };
-        drop(discover); // stop scanning
 
         log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
         // On macOS, bluest connection should be Established before subscribing to device_connection_events().
