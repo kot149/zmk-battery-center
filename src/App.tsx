@@ -6,7 +6,6 @@ import {
 	stopBatteryNotificationMonitor,
 	stopAllBatteryMonitors,
 	BleDeviceInfo,
-	BatteryInfo,
 	BatteryInfoNotificationEvent,
 	BatteryMonitorStatusEvent,
 } from "./utils/ble";
@@ -31,7 +30,7 @@ import { load, getStorePath } from '@/utils/storage';
 import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
 import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
-import { sleep } from "./utils/common";
+import { fireAndForget, sleep, withTimeout } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
@@ -40,6 +39,7 @@ import { appendBatteryHistory } from '@/utils/batteryHistory';
 import {
 	upsertBatteryInfo,
 	mergeBatteryInfos,
+	mapIsLowBattery,
 	normalizeLoadedDevices,
 	getRegisteredDeviceDisplayName,
 	type RegisteredDevice,
@@ -58,6 +58,7 @@ enum State {
 }
 
 const DEVICES_FILENAME = 'devices.json';
+const DEVICE_FETCH_TIMEOUT_MS = 20_000;
 
 async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 	const storePath = await getStorePath(DEVICES_FILENAME);
@@ -70,9 +71,7 @@ async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 const NOOP = () => {};
 
 function App() {
-	const [registeredDevices, setRegisteredDevices] = useState<
-		RegisteredDevice[] | undefined
-	>(undefined);
+	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[] | undefined>(undefined);
 	const isDeviceLoaded = registeredDevices !== undefined;
 	const deviceList = useMemo(
 		() => registeredDevices ?? [],
@@ -101,7 +100,7 @@ function App() {
 					return prev;
 				}
 				const next = recipe(prev);
-				void persistRegisteredDevices(next);
+				fireAndForget(persistRegisteredDevices(next), "Failed to persist registered devices");
 				return next;
 			});
 		},
@@ -143,11 +142,11 @@ function App() {
 
 	// Initialize window and tray event listeners
 	const handleWindowPositionChange = useCallback((position: { x: number; y: number }) => {
-		emit('update-config', { windowPosition: position });
+		fireAndForget(emit('update-config', { windowPosition: position }), "Failed to emit window position update");
 	}, []);
 
 	const handleManualWindowPositioningChange = useCallback((enabled: boolean) => {
-		emit('update-config', { manualWindowPositioning: enabled });
+		fireAndForget(emit('update-config', { manualWindowPositioning: enabled }), "Failed to emit manual window positioning update");
 	}, []);
 
 	useWindowEvents({
@@ -167,7 +166,10 @@ function App() {
 		if (!isConfigLoaded) return;
 		if (platform() !== "macos") return;
 		const id = window.setTimeout(() => {
-			void syncTrayBatteryIcon(registeredDevices, config.trayIconComponents);
+			fireAndForget(
+				syncTrayBatteryIcon(registeredDevices, config.trayIconComponents),
+				"Failed to sync tray battery icon",
+			);
 		}, 60);
 		return () => clearTimeout(id);
 	}, [registeredDevices, config.trayIconComponents, isConfigLoaded]);
@@ -191,7 +193,7 @@ function App() {
 			});
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
 		};
-		void fetchRegisteredDevices();
+		fireAndForget(fetchRegisteredDevices(), "Failed to load registered devices");
 		return () => {
 			cancelled = true;
 		};
@@ -200,48 +202,32 @@ function App() {
 	async function fetchDevices() {
 		setState(State.fetchingDevices);
 		setError("");
-		let timeoutId: number | null = null;
-		let finished = false;
 
 		const isMac = platform() === 'macos';
+		const createTimeoutError = () => {
+			let msg = "Failed to fetch devices.";
+			if (isMac) {
+				msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
+			}
+			return new Error(msg);
+		};
 
 		try {
-			const timeoutPromise = new Promise<never>((_, reject) => {
-				timeoutId = window.setTimeout(() => {
-					finished = true;
-					let msg = "Failed to fetch devices.";
-					if (isMac) {
-						msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
-					}
-					setError(msg);
-					setState(State.addDeviceModal);
-					reject(new Error(msg));
-				}, 20000);
-			});
-			const result = await Promise.race([
+			const result = await withTimeout(
 				listBatteryDevices(),
-				timeoutPromise
-			]);
-			if (!finished) {
-				setDevices(result as BleDeviceInfo[]);
-				setState(State.addDeviceModal);
-			}
+				DEVICE_FETCH_TIMEOUT_MS,
+				createTimeoutError,
+			);
+			setDevices(result);
+			setState(State.addDeviceModal);
 		} catch (e: unknown) {
-			if (!finished) {
-				let msg = e instanceof Error ? e.message : String(e);
-				if (isMac && !msg.includes("Bluetooth permission")) {
-					msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
-				}
-				setError(msg);
-				setState(State.addDeviceModal);
+			let msg = e instanceof Error ? e.message : String(e);
+			if (isMac && !msg.includes("Bluetooth permission")) {
+				msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
 			}
-		} finally {
-			if (timeoutId) clearTimeout(timeoutId);
+			setError(msg);
+			setState(State.addDeviceModal);
 		}
-	}
-
-	const mapIsLowBattery = (batteryInfos: BatteryInfo[]) => {
-		return batteryInfos.map(info => info.battery_level !== null ? info.battery_level <= 20 : false);
 	}
 
 	const handleAddDevice = async (id: string) => {
@@ -307,15 +293,17 @@ function App() {
 
 				// Record battery history
 				for (const info of infoArray) {
-					if (info.battery_level !== null) {
-						appendBatteryHistory(
-							device.name,
-							device.id,
-							info.user_description ?? 'Central',
-							info.battery_level,
-						).then(() => {
-							void emit('battery-history-updated', { deviceId: device.id });
-						});
+					const batteryLevel = info.battery_level;
+					if (batteryLevel !== null) {
+						fireAndForget((async () => {
+							await appendBatteryHistory(
+								device.name,
+								device.id,
+								info.user_description ?? 'Central',
+								batteryLevel,
+							);
+							await emit('battery-history-updated', { deviceId: device.id });
+						})(), `Failed to update battery history for ${device.id}`);
 					}
 				}
 
@@ -328,11 +316,14 @@ function App() {
 					const displayName = getRegisteredDeviceDisplayName(device);
 					for(let i = 0; i < isLowBattery.length && i < isLowBatteryPrev.length; i++){
 						if(!isLowBatteryPrev[i] && isLowBattery[i]){
-							sendNotification(`${displayName}${
-								infoArray.length >= 2 ?
-									' ' + (infoArray[i].user_description ?? 'Central')
-									: ''
-							} has low battery.`);
+							fireAndForget(
+								sendNotification(`${displayName}${
+									infoArray.length >= 2 ?
+										' ' + (infoArray[i].user_description ?? 'Central')
+										: ''
+								} has low battery.`),
+								`Failed to send low battery notification for ${device.id}`,
+							);
 							logger.info(`${displayName} has low battery.`);
 						}
 					}
@@ -414,18 +405,20 @@ function App() {
 		}
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
 			const payload = event.payload;
+			const batteryLevel = payload.battery_info.battery_level;
 			// Record battery history for notification-mode updates
-			if (payload.battery_info.battery_level !== null) {
+			if (batteryLevel !== null) {
 				const device = registeredDevicesRef.current.find(d => d.id === payload.id);
 				if (device) {
-					appendBatteryHistory(
-						device.name,
-						device.id,
-						payload.battery_info.user_description ?? 'Central',
-						payload.battery_info.battery_level,
-					).then(() => {
-						void emit('battery-history-updated', { deviceId: payload.id });
-					});
+					fireAndForget((async () => {
+						await appendBatteryHistory(
+							device.name,
+							device.id,
+							payload.battery_info.user_description ?? 'Central',
+							batteryLevel,
+						);
+						await emit('battery-history-updated', { deviceId: payload.id });
+					})(), `Failed to update battery history for ${payload.id}`);
 				}
 			}
 			commitRegisteredDevices(prev => prev.map(device => {
@@ -441,7 +434,10 @@ function App() {
 		});
 
 		return () => {
-			unlistenPromise.then(unlisten => unlisten());
+			fireAndForget(
+				unlistenPromise.then(unlisten => unlisten()),
+				"Failed to clean up battery info listener",
+			);
 		};
 	}, [isDeviceLoaded, commitRegisteredDevices]);
 
@@ -475,12 +471,15 @@ function App() {
 			}));
 
 			if (notificationMessage) {
-				void sendNotification(notificationMessage);
+				fireAndForget(sendNotification(notificationMessage), "Failed to send monitor status notification");
 			}
 		});
 
 		return () => {
-			unlistenPromise.then(unlisten => unlisten());
+			fireAndForget(
+				unlistenPromise.then(unlisten => unlisten()),
+				"Failed to clean up battery monitor status listener",
+			);
 		};
 	}, [isDeviceLoaded, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
 
@@ -546,7 +545,7 @@ function App() {
 			}
 		};
 
-		syncNotificationMonitors();
+		fireAndForget(syncNotificationMonitors(), "Failed to synchronize battery notification monitors");
 
 		return () => {
 			isCancelled = true;
@@ -565,7 +564,10 @@ function App() {
 			const activeMonitorIds = [...activeMonitors.keys()];
 			activeMonitors.clear();
 			for (const id of activeMonitorIds) {
-				void stopBatteryNotificationMonitor(id);
+				fireAndForget(
+					stopBatteryNotificationMonitor(id),
+					`Failed to stop battery notification monitor for ${id}`,
+				);
 			}
 		};
 	}, []);
@@ -593,7 +595,7 @@ function App() {
 		};
 	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, config.fetchInterval, updateBatteryInfo]);
 
-	const handleExitSettings = useCallback(async () => {
+	const handleExitSettings = useCallback(() => {
 		setState(State.main);
 	}, []);
 
@@ -718,5 +720,3 @@ function App() {
 }
 
 export default App;
-
-export { upsertBatteryInfo, mergeBatteryInfos, normalizeLoadedDevices, getRegisteredDeviceDisplayName };

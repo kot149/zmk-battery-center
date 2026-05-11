@@ -40,6 +40,11 @@ export function getRegisteredDeviceDisplayName(device: {
 }
 
 const DEVICE_ID_PATTERN = /^DeviceId\("(.+)"\)$/;
+const LOW_BATTERY_THRESHOLD = 20;
+
+export function mapIsLowBattery(batteryInfos: BatteryInfo[]) {
+	return batteryInfos.map((info) => info.battery_level !== null ? info.battery_level <= LOW_BATTERY_THRESHOLD : false);
+}
 
 export function upsertBatteryInfo(batteryInfos: BatteryInfo[], nextInfo: BatteryInfo): BatteryInfo[] {
 	const key = nextInfo.user_description ?? null;
