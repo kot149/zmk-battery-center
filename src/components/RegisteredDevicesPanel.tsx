@@ -7,6 +7,7 @@ import {
 	ArrowUturnLeftIcon,
 	EllipsisHorizontalIcon,
 	PencilSquareIcon,
+	WifiIcon,
 } from "@heroicons/react/24/outline";
 import type { BatteryInfo } from "@/utils/ble";
 import {
@@ -16,6 +17,15 @@ import {
 } from "@/utils/batteryLabels";
 import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 import { cn } from "@/lib/utils";
+
+const WifiOffIcon: React.FC<{ className?: string }> = ({ className }) => (
+	<span className={cn("relative inline-flex self-center", className)} aria-label="Disconnected" title="Disconnected">
+		<WifiIcon className="size-5" />
+		<svg className="absolute inset-0 h-full w-full pointer-events-none" viewBox="0 0 24 24" aria-hidden="true">
+			<line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+		</svg>
+	</span>
+);
 
 const ChartCurveIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (
 	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -498,7 +508,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 							)}
 						</div>
 						{device.isDisconnected && (
-							<span className="text-xs text-destructive">disconnected</span>
+							<WifiOffIcon className="text-destructive" />
 						)}
 					</div>
 
