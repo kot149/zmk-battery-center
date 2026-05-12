@@ -55,10 +55,6 @@ const trayIconComponentOptions = [
 	{ label: "Battery percentage", value: TrayIconComponent.BatteryPercent },
 ];
 
-const settingsScrollAreaClassName = cn(
-	"app-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain",
-);
-
 const Settings: React.FC<SettingsScreenProps> = ({
 	onExit
 }) => {
@@ -93,8 +89,9 @@ const Settings: React.FC<SettingsScreenProps> = ({
 				/>
 			</div>
 
-			<div className={settingsScrollAreaClassName}>
-				<div className="mx-3  mb-3 flex min-w-0 max-w-md flex-col gap-3 pt-1">
+			{/* Scroll area */}
+			<div className="app-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
+				<div className="ml-4 mr-2 mb-4 flex min-w-0 max-w-md flex-col gap-3 pt-1">
 					{/* Auto start at login */}
 					<SettingsGroup>
 						<div className="flex items-center justify-between gap-3">
