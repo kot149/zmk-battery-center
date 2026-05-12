@@ -29,7 +29,7 @@ export const SettingsGroup: React.FC<SettingsGroupProps> = ({ children, classNam
 );
 
 interface SettingsScreenProps {
-	onExit: () => Promise<void>;
+	onExit: () => void | Promise<void>;
 }
 
 const Dot = () => (
