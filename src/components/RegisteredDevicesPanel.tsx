@@ -41,8 +41,6 @@ interface DeviceListProps {
 	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
 	onChartOpenChange?: (isOpen: boolean) => void;
 	onLayoutChange?: () => void;
-	collapsedDeviceIds?: ReadonlySet<string>;
-	onCollapsedDeviceIdsChange?: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 type DeviceTopBarProps = {
@@ -308,8 +306,6 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	onRemoveDevice,
 	onChartOpenChange,
 	onLayoutChange,
-	collapsedDeviceIds,
-	onCollapsedDeviceIdsChange,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
 	const [chartOpen, setChartOpen] = useState<string | null>(null);
@@ -324,10 +320,6 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	const [deviceNameDraft, setDeviceNameDraft] = useState("");
 	const deviceNameInputRef = useRef<HTMLInputElement>(null);
 	const skipDeviceNameCommitOnBlur = useRef(false);
-	const [internalCollapsedDevices, setInternalCollapsedDevices] = useState<Set<string>>(new Set());
-	const collapsedDevices = collapsedDeviceIds ?? internalCollapsedDevices;
-	const setCollapsedDevices = onCollapsedDeviceIdsChange ?? setInternalCollapsedDevices;
-
 	useEffect(() => {
 		if (labelEdit && labelInputRef.current) {
 			labelInputRef.current.focus();
@@ -412,12 +404,16 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	};
 
 	const toggleCollapse = (deviceId: string) => {
-		setCollapsedDevices((prev) => {
-			const next = new Set(prev);
-			if (next.has(deviceId)) next.delete(deviceId);
-			else next.add(deviceId);
-			return next;
-		});
+		setRegisteredDevices((prev) =>
+			prev.map((device) =>
+				device.id === deviceId
+					? {
+						...device,
+						isCollapsed: !device.isCollapsed,
+					}
+					: device,
+			),
+		);
 		onLayoutChange?.();
 	};
 
@@ -477,7 +473,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 					)}
 
 					{(() => {
-						const isCollapsed = collapsedDevices.has(device.id);
+						const isCollapsed = device.isCollapsed === true;
 						return (
 						<>
 						<div className="mb-2 flex flex-wrap items-center gap-x-1 gap-y-1">

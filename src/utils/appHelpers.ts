@@ -8,6 +8,7 @@ export type RegisteredDevice = {
 	displayName?: string;
 	batteryInfos: BatteryInfo[];
 	isDisconnected: boolean;
+	isCollapsed: boolean;
 	/** Custom display names per part; keys match battery history user_description (null → "Central"). */
 	batteryPartLabels?: Record<string, string>;
 };
@@ -99,6 +100,7 @@ export function normalizeLoadedDevices(raw: unknown): RegisteredDevice[] {
 			name: extractFromDeviceId(rawName),
 			batteryInfos,
 			isDisconnected: d.isDisconnected === true,
+			isCollapsed: d.isCollapsed === true,
 			batteryPartLabels: normalizeBatteryPartLabels(d.batteryPartLabels),
 		};
 		return displayName !== undefined ? { ...base, displayName } : base;

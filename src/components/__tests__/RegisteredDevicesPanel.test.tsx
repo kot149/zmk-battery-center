@@ -17,6 +17,7 @@ const sampleDevice: RegisteredDevice = {
 	id: "dev-1",
 	name: "MockBoard",
 	isDisconnected: false,
+	isCollapsed: false,
 	batteryInfos: [{ battery_level: 55, user_description: "Central" }],
 };
 
@@ -32,7 +33,6 @@ function Harness({ initialDevices }: { initialDevices: RegisteredDevice[] }) {
 
 function ControlledCollapseHarness({ initialDevices }: { initialDevices: RegisteredDevice[] }) {
 	const [registeredDevices, setRegisteredDevices] = useState(initialDevices);
-	const [collapsedDeviceIds, setCollapsedDeviceIds] = useState<Set<string>>(new Set());
 	const [visible, setVisible] = useState(true);
 
 	return (
@@ -44,8 +44,6 @@ function ControlledCollapseHarness({ initialDevices }: { initialDevices: Registe
 				<RegisteredDevicesPanel
 					registeredDevices={registeredDevices}
 					setRegisteredDevices={setRegisteredDevices}
-					collapsedDeviceIds={collapsedDeviceIds}
-					onCollapsedDeviceIdsChange={setCollapsedDeviceIds}
 				/>
 			) : null}
 		</>

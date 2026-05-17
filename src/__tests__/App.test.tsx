@@ -133,6 +133,7 @@ describe("App", () => {
 					id: "kbd-1",
 					name: "MockBoard One",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
 				},
 			]);
@@ -160,6 +161,7 @@ describe("App", () => {
 					id: "kbd-1",
 					name: "MockBoard One",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
 				},
 			]);
@@ -221,6 +223,7 @@ describe("App", () => {
 					id: "kbd-1",
 					name: "MockBoard One",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
 				},
 			]);
@@ -238,6 +241,7 @@ describe("App", () => {
 				id: "kbd-1",
 				name: "MockBoard One",
 				isDisconnected: false,
+				isCollapsed: false,
 				batteryInfos: [{ battery_level: 87, user_description: "Central" }],
 			},
 		];
@@ -295,6 +299,7 @@ describe("App", () => {
 				id: "kbd-1",
 				name: "MockBoard One",
 				isDisconnected: false,
+				isCollapsed: false,
 				batteryInfos: [{ battery_level: 87, user_description: "Central" }],
 			},
 		];
@@ -320,5 +325,73 @@ describe("App", () => {
 
 		const rows = screen.getAllByText("MockBoard One");
 		expect(rows).toHaveLength(1);
+	});
+
+	it("hydrates collapsed state and keeps the device collapsed after reload", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: true,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		expect(screen.queryByText("87%")).toBeNull();
+	});
+
+	it("persists collapsed state when the user collapses a device", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		mockStore.set.mockClear();
+
+		await act(async () => {
+			screen.getByRole("button", { name: "Collapse device" }).click();
+		});
+
+		await waitFor(() => {
+			expect(mockStore.set).toHaveBeenCalledWith(
+				"devices",
+				expect.arrayContaining([
+					expect.objectContaining({
+						id: "kbd-1",
+						isCollapsed: true,
+					}),
+				]),
+			);
+		});
 	});
 });

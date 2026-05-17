@@ -112,6 +112,7 @@ describe("App helpers", () => {
 					id: "abc-123",
 					name: "My Keyboard",
 					isDisconnected: true,
+					isCollapsed: false,
 					batteryInfos: [
 						{ battery_level: 88, user_description: "Left" },
 						{ battery_level: null, user_description: "Right" },
@@ -131,6 +132,7 @@ describe("App helpers", () => {
 					id: "dev-1",
 					name: "Keyboard",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [],
 				},
 			]);
@@ -143,6 +145,7 @@ describe("App helpers", () => {
 					id: "",
 					name: "",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [],
 				},
 			]);
@@ -162,6 +165,7 @@ describe("App helpers", () => {
 					id: "plain-id",
 					name: "Plain Name",
 					isDisconnected: true,
+					isCollapsed: false,
 					batteryInfos: [],
 				},
 			]);
@@ -174,8 +178,8 @@ describe("App helpers", () => {
 					{ id: "b", name: "B", batteryInfos: [] },
 				]),
 			).toEqual([
-				{ id: "a", name: "A", isDisconnected: false, batteryInfos: [] },
-				{ id: "b", name: "B", isDisconnected: false, batteryInfos: [] },
+				{ id: "a", name: "A", isDisconnected: false, isCollapsed: false, batteryInfos: [] },
+				{ id: "b", name: "B", isDisconnected: false, isCollapsed: false, batteryInfos: [] },
 			]);
 		});
 
@@ -196,6 +200,7 @@ describe("App helpers", () => {
 					id: "dev-1",
 					name: "Keyboard",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [
 						{ battery_level: 20, user_description: null },
 						{ battery_level: 25, user_description: null },
@@ -219,6 +224,7 @@ describe("App helpers", () => {
 					id: "dev-1",
 					name: "Keyboard",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [],
 					displayName: "Living room",
 				},
@@ -240,6 +246,7 @@ describe("App helpers", () => {
 					id: "dev-1",
 					name: "Keyboard",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [],
 				},
 			]);
@@ -260,6 +267,7 @@ describe("App helpers", () => {
 					id: "dev-1",
 					name: "Keyboard",
 					isDisconnected: false,
+					isCollapsed: false,
 					batteryInfos: [],
 					batteryPartLabels: { Central: "Left" },
 				},
