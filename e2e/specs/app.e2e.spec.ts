@@ -134,21 +134,21 @@ test.describe("legacy saved device payload", () => {
     },
   });
 
-  test("is normalized on load", async ({ page }) => {
-    await expect(page.getByText("Legacy Keyboard")).toBeVisible();
-    await expect(page.getByTestId(batteryLevelTestId("legacy-id", "Left"))).toHaveText("73%");
-    await expect(page.getByText("disconnected")).toBeVisible();
-  });
+test("is normalized on load", async ({ page }) => {
+  await expect(page.getByText("Legacy Keyboard")).toBeVisible();
+  await expect(page.getByTestId(batteryLevelTestId("legacy-id", "Left"))).toHaveText("73%");
+  await expect(page.getByLabel("Disconnected")).toBeVisible();
+});
 });
 
 test("notification monitor status event updates disconnected badge", async ({ page }) => {
   await addFirstDevice(page);
 
   await page.evaluate(() => window.__e2eTauriMock.emitMonitorStatus("kbd-1", false));
-  await expect(page.getByText("disconnected")).toBeVisible();
+  await expect(page.getByLabel("Disconnected")).toBeVisible();
 
   await page.evaluate(() => window.__e2eTauriMock.emitMonitorStatus("kbd-1", true));
-  await expect(page.getByText("disconnected")).toHaveCount(0);
+  await expect(page.getByLabel("Disconnected")).toHaveCount(0);
 });
 
 test("adding same device twice does not duplicate registered entry", async ({ page }) => {
@@ -177,7 +177,7 @@ test.describe("monitor startup with empty initial battery info", () => {
 
   test("marks device disconnected until first event", async ({ page }) => {
     await addFirstDevice(page);
-    await expect(page.getByText("disconnected")).toBeVisible();
+    await expect(page.getByLabel("Disconnected")).toBeVisible();
 
     await page.evaluate(() => {
       return window.__e2eTauriMock.emitBatteryInfo("kbd-1", {
@@ -185,7 +185,7 @@ test.describe("monitor startup with empty initial battery info", () => {
         user_description: "Central",
       });
     });
-    await expect(page.getByText("disconnected")).toHaveCount(0);
+    await expect(page.getByLabel("Disconnected")).toHaveCount(0);
     await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("51%");
   });
 });

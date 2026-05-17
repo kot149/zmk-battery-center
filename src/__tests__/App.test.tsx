@@ -172,12 +172,12 @@ describe("App", () => {
 		await act(async () => {
 			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: false } });
 		});
-		expect(screen.getByText("disconnected")).toBeTruthy();
+		expect(screen.getByLabelText("Disconnected")).toBeTruthy();
 
 		await act(async () => {
 			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: true } });
 		});
-		expect(screen.queryByText("disconnected")).toBeNull();
+		expect(screen.queryByLabelText("Disconnected")).toBeNull();
 	});
 
 	it("cleans up event listeners on unmount", async () => {

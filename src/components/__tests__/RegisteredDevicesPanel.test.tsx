@@ -79,7 +79,7 @@ describe("RegisteredDevicesPanel", () => {
 			/>,
 		);
 
-		expect(screen.getByText("disconnected")).toBeTruthy();
+		expect(screen.getByLabelText("Disconnected")).toBeTruthy();
 	});
 
 	it("renders 'No battery information' when batteryInfos is empty", () => {
