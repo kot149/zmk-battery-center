@@ -193,7 +193,7 @@ const Settings: React.FC<SettingsScreenProps> = ({
 						</div>
 					</SettingsGroup>
 
-					{ /* Tray icon components (macOS only) * / }
+					{ /* Tray icon components (macOS only) */ }
 					{isMac && (
 						<SettingsGroup className="flex w-full flex-col gap-2">
 							<div className="flex justify-between">
