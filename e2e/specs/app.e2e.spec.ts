@@ -116,6 +116,36 @@ test("persistence reload flow loads devices from mocked store on new page", asyn
   await reloadedPage.close();
 });
 
+test("collapsed device state persists across reload", async ({ page, context }) => {
+  await addFirstDevice(page);
+  await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
+
+  await page.getByRole("button", { name: "Collapse device" }).click();
+  await expect(page.getByRole("button", { name: "Expand device" })).toBeVisible();
+  await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveCount(0);
+
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        return window.__e2eTauriMock.readStore("devices.json").devices?.[0]?.isCollapsed ?? false;
+      });
+    })
+    .toBe(true);
+
+  const reloadedPage = await createSeededPage(context, {
+    platform: "windows",
+    availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
+    batteryById: {
+      "kbd-1": [{ battery_level: 87, user_description: "Central" }],
+    },
+  });
+
+  await expect(reloadedPage.getByText("MockBoard One")).toBeVisible();
+  await expect(reloadedPage.getByRole("button", { name: "Expand device" })).toBeVisible();
+  await expect(reloadedPage.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveCount(0);
+  await reloadedPage.close();
+});
+
 test.describe("legacy saved device payload", () => {
   test.use({
     seed: {

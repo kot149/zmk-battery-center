@@ -4,6 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { defaultConfig } from "@/utils/config";
 
+const { mockMoveWindowToTrayCenter, mockResizeWindowToContent } = vi.hoisted(() => ({
+	mockMoveWindowToTrayCenter: vi.fn(async () => undefined),
+	mockResizeWindowToContent: vi.fn(async () => undefined),
+}));
+
 const mockStore = {
 	get: vi.fn(),
 	set: vi.fn(async () => undefined),
@@ -66,8 +71,8 @@ vi.mock("@/hooks/useTrayEvents", () => ({
 }));
 
 vi.mock("@/utils/window", () => ({
-	moveWindowToTrayCenter: vi.fn(async () => undefined),
-	resizeWindowToContent: vi.fn(async () => undefined),
+	moveWindowToTrayCenter: mockMoveWindowToTrayCenter,
+	resizeWindowToContent: mockResizeWindowToContent,
 }));
 
 vi.mock("@/utils/notification", () => ({
@@ -94,6 +99,8 @@ describe("App", () => {
 		mockListen.mockReset();
 		mockUnlistenBatteryInfo.mockReset();
 		mockUnlistenMonitorStatus.mockReset();
+		mockMoveWindowToTrayCenter.mockClear();
+		mockResizeWindowToContent.mockClear();
 		monitorStatusHandler = undefined;
 		batteryInfoNotificationHandler = undefined;
 		deviceGetResolvers = [];
@@ -392,6 +399,52 @@ describe("App", () => {
 					}),
 				]),
 			);
+		});
+	});
+
+	it("resizes the window when the user toggles device collapse", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		mockResizeWindowToContent.mockClear();
+		mockMoveWindowToTrayCenter.mockClear();
+
+		await act(async () => {
+			screen.getByRole("button", { name: "Collapse device" }).click();
+		});
+
+		await waitFor(() => {
+			expect(mockResizeWindowToContent).toHaveBeenCalled();
+		});
+
+		mockResizeWindowToContent.mockClear();
+		mockMoveWindowToTrayCenter.mockClear();
+
+		await act(async () => {
+			screen.getByRole("button", { name: "Expand device" }).click();
+		});
+
+		await waitFor(() => {
+			expect(mockResizeWindowToContent).toHaveBeenCalled();
 		});
 	});
 });
