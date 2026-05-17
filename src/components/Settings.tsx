@@ -182,6 +182,18 @@ const Settings: React.FC<SettingsScreenProps> = ({
 						</div>
 					</SettingsGroup>
 
+					{/* Auto collapse disconnected devices */}
+					<SettingsGroup>
+						<div className="flex items-center justify-between gap-3">
+							<span className="shrink-0">Auto collapse disconnected devices</span>
+							<Switch
+								checked={config.autoCollapseDisconnectedDevices}
+								onCheckedChange={checked => setConfig(c => ({ ...c, autoCollapseDisconnectedDevices: checked }))}
+							/>
+						</div>
+					</SettingsGroup>
+
+					{ /* Tray icon components (macOS only) * / }
 					{isMac && (
 						<SettingsGroup className="flex w-full flex-col gap-2">
 							<div className="flex justify-between">

@@ -70,6 +70,20 @@ async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 
 const NOOP = () => {};
 
+function collapseIfDisconnected(device: RegisteredDevice, shouldCollapse: boolean): RegisteredDevice {
+	if (!shouldCollapse || !device.isDisconnected || device.isCollapsed) {
+		return device;
+	}
+	return { ...device, isCollapsed: true };
+}
+
+function expandIfConnected(device: RegisteredDevice, shouldExpand: boolean): RegisteredDevice {
+	if (!shouldExpand || device.isDisconnected || !device.isCollapsed) {
+		return device;
+	}
+	return { ...device, isCollapsed: false };
+}
+
 function App() {
 	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[] | undefined>(undefined);
 	const isDeviceLoaded = registeredDevices !== undefined;
@@ -258,7 +272,7 @@ function App() {
 				name: device.name,
 				batteryInfos: infoArray,
 				isDisconnected: isNotificationMonitorMode ? infoArray.length === 0 : false,
-				isCollapsed: false,
+				isCollapsed: isNotificationMonitorMode && infoArray.length === 0 && config.autoCollapseDisconnectedDevices,
 			};
 			commitRegisteredDevices(prev => [...prev, newDevice]);
 			handleCloseModal();
@@ -271,10 +285,12 @@ function App() {
 
 	const pushNotificationRef = useRef(config.pushNotification);
 	const pushNotificationWhenRef = useRef(config.pushNotificationWhen);
+	const autoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
 	useEffect(() => {
 		pushNotificationRef.current = config.pushNotification;
 		pushNotificationWhenRef.current = config.pushNotificationWhen;
-	}, [config.pushNotification, config.pushNotificationWhen]);
+		autoCollapseDisconnectedDevicesRef.current = config.autoCollapseDisconnectedDevices;
+	}, [config.pushNotification, config.pushNotificationWhen, config.autoCollapseDisconnectedDevices]);
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
@@ -290,7 +306,10 @@ function App() {
 				const infoArray = Array.isArray(info) ? info : [info];
 				commitRegisteredDevices(prev => prev.map(d => {
 					if (d.id !== device.id) return d;
-					return { ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false };
+					return expandIfConnected(
+						{ ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false },
+						autoCollapseDisconnectedDevicesRef.current,
+					);
 				}));
 
 				// Record battery history
@@ -335,7 +354,15 @@ function App() {
 			} catch {
 				attempts++;
 				if (attempts >= maxAttempts) {
-					commitRegisteredDevices(prev => prev.map(d => d.id === device.id ? { ...d, isDisconnected: true } : d));
+					commitRegisteredDevices(prev => prev.map(d => {
+						if (d.id !== device.id) {
+							return d;
+						}
+						return collapseIfDisconnected(
+							{ ...d, isDisconnected: true },
+							autoCollapseDisconnectedDevicesRef.current,
+						);
+					}));
 
 					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
 						await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been disconnected.`);
@@ -427,11 +454,11 @@ function App() {
 				if (device.id !== payload.id) {
 					return device;
 				}
-				return {
+				return expandIfConnected({
 					...device,
 					batteryInfos: upsertBatteryInfo(device.batteryInfos, payload.battery_info),
 					isDisconnected: false,
-				};
+				}, autoCollapseDisconnectedDevicesRef.current);
 			}));
 		});
 
@@ -441,7 +468,25 @@ function App() {
 				"Failed to clean up battery info listener",
 			);
 		};
-	}, [isDeviceLoaded, commitRegisteredDevices]);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, commitRegisteredDevices]);
+
+	const previousAutoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
+	useEffect(() => {
+		if (!isDeviceLoaded) {
+			previousAutoCollapseDisconnectedDevicesRef.current = config.autoCollapseDisconnectedDevices;
+			return;
+		}
+
+		const wasEnabled = previousAutoCollapseDisconnectedDevicesRef.current;
+		previousAutoCollapseDisconnectedDevicesRef.current = config.autoCollapseDisconnectedDevices;
+		if (wasEnabled || !config.autoCollapseDisconnectedDevices) {
+			return;
+		}
+
+		commitRegisteredDevices((prev) =>
+			prev.map((device) => collapseIfDisconnected(device, true)),
+		);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, commitRegisteredDevices]);
 
 	useEffect(() => {
 		if (!isDeviceLoaded) {
@@ -469,7 +514,15 @@ function App() {
 					notificationMessage = `${getRegisteredDeviceDisplayName(device)} has been disconnected.`;
 				}
 
-				return { ...device, isDisconnected: nextDisconnected };
+				return nextDisconnected
+					? collapseIfDisconnected(
+						{ ...device, isDisconnected: true },
+						autoCollapseDisconnectedDevicesRef.current,
+					)
+					: expandIfConnected(
+						{ ...device, isDisconnected: false },
+						autoCollapseDisconnectedDevicesRef.current,
+					);
 			}));
 
 			if (notificationMessage) {
@@ -483,7 +536,7 @@ function App() {
 				"Failed to clean up battery monitor status listener",
 			);
 		};
-	}, [isDeviceLoaded, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
 
 	useEffect(() => {
 		if (!isConfigLoaded || !isDeviceLoaded) {
@@ -532,7 +585,18 @@ function App() {
 					// the watcher emits a battery-info-notification event on connection.
 					if (infoArray.length > 0) {
 						commitRegisteredDevices(prev => prev.map(device => device.id === id
-							? { ...device, batteryInfos: mergeBatteryInfos(device.batteryInfos, infoArray), isDisconnected: false }
+							? expandIfConnected(
+								{ ...device, batteryInfos: mergeBatteryInfos(device.batteryInfos, infoArray), isDisconnected: false },
+								autoCollapseDisconnectedDevicesRef.current,
+							)
+							: device
+						));
+					} else {
+						commitRegisteredDevices(prev => prev.map(device => device.id === id
+							? collapseIfDisconnected(
+								{ ...device, isDisconnected: true },
+								autoCollapseDisconnectedDevicesRef.current,
+							)
 							: device
 						));
 					}
@@ -541,7 +605,10 @@ function App() {
 						if (device.id !== id || device.isDisconnected) {
 							return device;
 						}
-						return { ...device, isDisconnected: true };
+						return collapseIfDisconnected(
+							{ ...device, isDisconnected: true },
+							autoCollapseDisconnectedDevicesRef.current,
+						);
 					}));
 				}
 			}
@@ -557,6 +624,7 @@ function App() {
 		isNotificationMonitorMode,
 		isConfigLoaded,
 		isDeviceLoaded,
+		config.autoCollapseDisconnectedDevices,
 		commitRegisteredDevices,
 	]);
 

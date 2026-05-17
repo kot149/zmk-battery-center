@@ -1,8 +1,9 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
-import { StrictMode } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode, useState, type Dispatch, type SetStateAction } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
-import { defaultConfig } from "@/utils/config";
+import { getBatteryInfo, startBatteryNotificationMonitor } from "@/utils/ble";
+import { defaultConfig, FETCH_INTERVAL_AUTO } from "@/utils/config";
 
 const { mockMoveWindowToTrayCenter, mockResizeWindowToContent } = vi.hoisted(() => ({
 	mockMoveWindowToTrayCenter: vi.fn(async () => undefined),
@@ -30,6 +31,8 @@ let batteryInfoNotificationHandler:
 
 /** Resolves every in-flight `mockStore.get("devices")` promise (e.g. React StrictMode double effect). */
 let deviceGetResolvers: Array<(value: unknown) => void> = [];
+let mockedConfig = defaultConfig;
+let setMockedConfigInApp: Dispatch<SetStateAction<typeof defaultConfig>> | undefined;
 
 function resolveDeviceStoreGets(payload: unknown) {
 	while (deviceGetResolvers.length > 0) {
@@ -43,10 +46,15 @@ function getStoreSetCalls(): [string, unknown][] {
 }
 
 vi.mock("@/context/ConfigContext", () => ({
-	useConfigContext: () => ({
-		config: defaultConfig,
-		isConfigLoaded: true,
-	}),
+	useConfigContext: () => {
+		const [config, setConfig] = useState(mockedConfig);
+		setMockedConfigInApp = setConfig;
+		return {
+			config,
+			isConfigLoaded: true,
+			setConfig,
+		};
+	},
 }));
 
 vi.mock("@/utils/storage", () => ({
@@ -104,6 +112,10 @@ describe("App", () => {
 		monitorStatusHandler = undefined;
 		batteryInfoNotificationHandler = undefined;
 		deviceGetResolvers = [];
+		mockedConfig = defaultConfig;
+		setMockedConfigInApp = undefined;
+		vi.mocked(getBatteryInfo).mockReset();
+		vi.mocked(getBatteryInfo).mockResolvedValue([{ battery_level: 87, user_description: "Central" }]);
 
 		mockListen.mockImplementation(async (event: string, handler: unknown) => {
 			if (event === "battery-info-notification") {
@@ -187,6 +199,285 @@ describe("App", () => {
 			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: true } });
 		});
 		expect(screen.queryByLabelText("Disconnected")).toBeNull();
+	});
+
+	it("collapses a device when it becomes disconnected and the option is enabled", async () => {
+		mockedConfig = {
+			...defaultConfig,
+			autoCollapseDisconnectedDevices: true,
+		};
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		await act(async () => {
+			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: false } });
+		});
+
+		expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		expect(screen.queryByText("87%")).toBeNull();
+	});
+
+	it("expands a device when it reconnects and the option is enabled", async () => {
+		mockedConfig = {
+			...defaultConfig,
+			autoCollapseDisconnectedDevices: true,
+		};
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Collapse device" })).toBeTruthy();
+		});
+
+		await act(async () => {
+			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: false } });
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		});
+
+		await act(async () => {
+			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: true } });
+		});
+
+		expect(screen.getByRole("button", { name: "Collapse device" })).toBeTruthy();
+		expect(screen.getByText("87%")).toBeTruthy();
+	});
+
+	it("uses the latest auto collapse setting for battery-monitor-status events after rerender", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Collapse device" })).toBeTruthy();
+		});
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				autoCollapseDisconnectedDevices: true,
+			}));
+		});
+
+		await act(async () => {
+			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: false } });
+		});
+
+		expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		expect(screen.queryByText("87%")).toBeNull();
+	});
+
+	it("uses the latest auto collapse setting for battery-info-notification events after rerender", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: true,
+					isCollapsed: true,
+					batteryInfos: [{ battery_level: 40, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		});
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				autoCollapseDisconnectedDevices: true,
+			}));
+		});
+
+		await act(async () => {
+			batteryInfoNotificationHandler?.({
+				payload: {
+					id: "kbd-1",
+					battery_info: { battery_level: 87, user_description: "Central" },
+				},
+			});
+		});
+
+		expect(screen.getByRole("button", { name: "Collapse device" })).toBeTruthy();
+		expect(screen.queryByLabelText("Disconnected")).toBeNull();
+		expect(screen.getByText("87%")).toBeTruthy();
+	});
+
+	it("uses the latest auto collapse setting for manual reload after rerender", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: true,
+					isCollapsed: true,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		});
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				autoCollapseDisconnectedDevices: true,
+			}));
+		});
+		await act(async () => {
+			fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Collapse device" })).toBeTruthy();
+		});
+		expect(screen.getByText("87%")).toBeTruthy();
+	});
+
+	it("marks a device disconnected when switching to auto monitoring and the initial monitor snapshot is empty", async () => {
+		vi.mocked(startBatteryNotificationMonitor).mockResolvedValue([]);
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Collapse device" })).toBeTruthy();
+		});
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				fetchInterval: FETCH_INTERVAL_AUTO,
+				autoCollapseDisconnectedDevices: true,
+			}));
+		});
+
+		await waitFor(() => {
+			expect(startBatteryNotificationMonitor).toHaveBeenCalledWith("kbd-1");
+		});
+
+		expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+		expect(screen.getByLabelText("Disconnected")).toBeTruthy();
+		expect(screen.queryByText("87%")).toBeNull();
+	});
+
+	it("does not refetch battery info when toggling auto collapse in polling mode", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+		});
+
+		vi.mocked(getBatteryInfo).mockClear();
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				autoCollapseDisconnectedDevices: true,
+			}));
+		});
+
+		await act(async () => {
+			await Promise.resolve();
+		});
+
+		expect(getBatteryInfo).not.toHaveBeenCalled();
 	});
 
 	it("cleans up event listeners on unmount", async () => {

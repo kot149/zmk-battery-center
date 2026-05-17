@@ -24,6 +24,7 @@ export type Config = {
 	theme: Theme;
 	fetchInterval: FetchInterval;
 	autoStart: boolean;
+	autoCollapseDisconnectedDevices: boolean;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
 	manualWindowPositioning: boolean;
@@ -41,6 +42,7 @@ export const defaultConfig: Config = {
 	theme: 'dark' as Theme,
 	fetchInterval: 60_000,
 	autoStart: false,
+	autoCollapseDisconnectedDevices: false,
 	pushNotification: false,
 	pushNotificationWhen: {
 		[NotificationType.LowBattery]: true,
