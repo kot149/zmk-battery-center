@@ -81,6 +81,7 @@ const device: RegisteredDevice = {
 	name: "MockBoard One",
 	batteryInfos: [{ battery_level: 87, user_description: "Central" }],
 	isDisconnected: false,
+	isCollapsed: false,
 };
 
 const HOUR_MS = 60 * 60 * 1000;

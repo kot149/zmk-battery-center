@@ -17,6 +17,7 @@ const sampleDevice: RegisteredDevice = {
 	id: "dev-1",
 	name: "MockBoard",
 	isDisconnected: false,
+	isCollapsed: false,
 	batteryInfos: [{ battery_level: 55, user_description: "Central" }],
 };
 
@@ -26,6 +27,25 @@ function Harness({ initialDevices }: { initialDevices: RegisteredDevice[] }) {
 		<>
 			<RegisteredDevicesPanel registeredDevices={registeredDevices} setRegisteredDevices={setRegisteredDevices} />
 			<div data-testid="device-count">{registeredDevices.length}</div>
+		</>
+	);
+}
+
+function ControlledCollapseHarness({ initialDevices }: { initialDevices: RegisteredDevice[] }) {
+	const [registeredDevices, setRegisteredDevices] = useState(initialDevices);
+	const [visible, setVisible] = useState(true);
+
+	return (
+		<>
+			<button type="button" onClick={() => setVisible((prev) => !prev)}>
+				Toggle Panel
+			</button>
+			{visible ? (
+				<RegisteredDevicesPanel
+					registeredDevices={registeredDevices}
+					setRegisteredDevices={setRegisteredDevices}
+				/>
+			) : null}
 		</>
 	);
 }
@@ -221,5 +241,43 @@ describe("RegisteredDevicesPanel", () => {
 
 		await user.click(screen.getByRole("button", { name: "Close mocked chart" }));
 		expect(onChartOpenChange).toHaveBeenCalledWith(false);
+	});
+
+	it("keeps collapse state when remounted with controlled state", async () => {
+		const user = userEvent.setup();
+		render(<ControlledCollapseHarness initialDevices={[sampleDevice]} />);
+
+		expect(screen.getByText("55%")).toBeTruthy();
+		await user.click(screen.getByRole("button", { name: "Collapse device" }));
+		expect(screen.queryByText("55%")).toBeNull();
+
+		await user.click(screen.getByRole("button", { name: "Toggle Panel" }));
+		expect(screen.queryByText("MockBoard")).toBeNull();
+
+		await user.click(screen.getByRole("button", { name: "Toggle Panel" }));
+		expect(screen.queryByText("55%")).toBeNull();
+		expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
+	});
+
+	it("uses container gap without margin for collapsed spacing", async () => {
+		const user = userEvent.setup();
+		render(<ControlledCollapseHarness initialDevices={[sampleDevice]} />);
+
+		const collapseButton = screen.getByRole("button", { name: "Collapse device" });
+		const expandedHeaderRow = collapseButton.closest("div");
+		const expandedContentRow = screen.getByTestId("device-battery-row-dev-1-Central").parentElement;
+		const expandedStack = expandedHeaderRow?.parentElement;
+		expect(expandedStack?.className).toContain("gap-2");
+		expect(expandedStack?.children).toHaveLength(2);
+		expect(expandedStack?.children[0]).toBe(expandedHeaderRow);
+		expect(expandedStack?.children[1]).toBe(expandedContentRow);
+
+		await user.click(collapseButton);
+
+		const expandButton = screen.getByRole("button", { name: "Expand device" });
+		const collapsedHeaderRow = expandButton.closest("div");
+		const collapsedStack = collapsedHeaderRow?.parentElement;
+		expect(collapsedStack?.className).toContain("gap-2");
+		expect(collapsedStack?.children).toHaveLength(1);
 	});
 });

@@ -5,6 +5,7 @@ import type { RegisteredDevice } from "@/utils/appHelpers";
 import { Button } from "@/components/Button";
 import {
 	ArrowUturnLeftIcon,
+	ChevronDownIcon,
 	EllipsisHorizontalIcon,
 	PencilSquareIcon,
 	WifiIcon,
@@ -39,6 +40,7 @@ interface DeviceListProps {
 	setRegisteredDevices: React.Dispatch<React.SetStateAction<RegisteredDevice[]>>;
 	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
 	onChartOpenChange?: (isOpen: boolean) => void;
+	onLayoutChange?: () => void;
 }
 
 type DeviceTopBarProps = {
@@ -68,7 +70,7 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 			: "fixed bottom-4 right-4";
 
 	return (
-		<div className="absolute top-2 right-2 w-14 z-10 flex items-center gap-0.5">
+		<div className="absolute right-0 top-1/2 z-10 flex h-8 w-16 -translate-y-1/2 items-center justify-end -space-x-1">
 			<Button
 				className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
 				onClick={onChart}
@@ -77,7 +79,7 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 				<ChartCurveIcon className="size-5 mx-auto" />
 			</Button>
 			<Button
-				className="w-10 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
+				className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
 				onClick={onOpenMenu}
 				aria-label="Open menu"
 			>
@@ -303,6 +305,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	setRegisteredDevices,
 	onRemoveDevice,
 	onChartOpenChange,
+	onLayoutChange,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
 	const [chartOpen, setChartOpen] = useState<string | null>(null);
@@ -317,7 +320,6 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	const [deviceNameDraft, setDeviceNameDraft] = useState("");
 	const deviceNameInputRef = useRef<HTMLInputElement>(null);
 	const skipDeviceNameCommitOnBlur = useRef(false);
-
 	useEffect(() => {
 		if (labelEdit && labelInputRef.current) {
 			labelInputRef.current.focus();
@@ -401,6 +403,20 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 		setLabelEdit({ deviceId: device.id, partKey });
 	};
 
+	const toggleCollapse = (deviceId: string) => {
+		setRegisteredDevices((prev) =>
+			prev.map((device) =>
+				device.id === deviceId
+					? {
+						...device,
+						isCollapsed: !device.isCollapsed,
+					}
+					: device,
+			),
+		);
+		onLayoutChange?.();
+	};
+
 	const resetLabelAndCloseEdit = (deviceId: string, userDescription: string | null) => {
 		const def = defaultBatteryPartDisplayName(userDescription);
 		commitPartLabel(deviceId, userDescription, def);
@@ -414,135 +430,153 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 			{registeredDevices.map((device, deviceIdx) => (
 				<div
 					key={device.id}
-					className={cn("relative group bg-card rounded-lg p-4", deviceIdx > 0 && "mt-4")}
+					className={cn(
+						"relative group bg-card rounded-lg px-4",
+						device.isCollapsed ? "py-2" : "py-4",
+						deviceIdx > 0 && "mt-4",
+					)}
 				>
-					<DeviceTopBar
-						deviceIdx={deviceIdx}
-						deviceCount={n}
-						isMenuOpen={menuOpen === device.id}
-						onChart={() => handleToggleChart(device.id)}
-						onOpenMenu={() => setMenuOpen(device.id)}
-						onMoveUp={() => {
-							if (deviceIdx > 0) {
-								setRegisteredDevices((prev) => {
-									const arr = [...prev];
-									[arr[deviceIdx - 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx - 1]];
-									return arr;
-								});
-							}
-							handleMenuClose();
-						}}
-						onMoveDown={() => {
-							if (deviceIdx < n - 1) {
-								setRegisteredDevices((prev) => {
-									const arr = [...prev];
-									[arr[deviceIdx + 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx + 1]];
-									return arr;
-								});
-							}
-							handleMenuClose();
-						}}
-						onRemove={async () => {
-							if (onRemoveDevice) {
-								await onRemoveDevice(device);
-							} else {
-								setRegisteredDevices((prev) => prev.filter((d) => d.id !== device.id));
-							}
-							handleMenuClose();
-						}}
-					/>
-
 					{menuOpen === device.id && (
 						<div className="fixed inset-0 z-0" onClick={handleMenuClose}></div>
 					)}
 
-					<div className="mb-2 flex flex-wrap items-baseline gap-x-0 gap-y-1">
-						<div
-							className={cn(
-								"group/devicename gap-1 mr-1 flex min-w-0 items-center",
-								device.isDisconnected ? "max-w-45" : "max-w-60",
-							)}
-							data-testid={`device-display-name-${device.id}`}
-						>
-							{deviceNameEditId === device.id ? (
-								<PartLabelEdit
-									value={deviceNameDraft}
-									onChange={setDeviceNameDraft}
-									onCommitBlur={() => {
-										if (skipDeviceNameCommitOnBlur.current) {
-											skipDeviceNameCommitOnBlur.current = false;
-											return;
-										}
-										commitDeviceDisplayName(device.id, deviceNameDraft);
-										setDeviceNameEditId(null);
-									}}
-									onEnter={() => deviceNameInputRef.current?.blur()}
-									onEscape={() => {
-										skipDeviceNameCommitOnBlur.current = true;
-										setDeviceNameEditId(null);
-									}}
-									onReset={() => resetDeviceNameAndCloseEdit(device)}
-									inputRef={deviceNameInputRef}
-									skipLabelCommitOnBlur={skipDeviceNameCommitOnBlur}
-									resetAriaLabel="Reset device name and close"
-									resetTitle="Reset to advertised name and close"
-									inputClassName="text-lg font-semibold"
-								/>
-							) : (
-								<>
-									<span
-										className="min-w-0 flex-1 truncate text-lg font-semibold text-card-foreground"
-										title={device.name}
-									>
-										{getRegisteredDeviceDisplayName(device)}
-									</span>
-									<Button
+					{(() => {
+						const isCollapsed = device.isCollapsed === true;
+						return (
+							<div className="flex flex-col gap-2">
+								<div className="relative flex min-h-8 flex-wrap items-center gap-x-1 gap-y-1 pr-16">
+									<button
 										type="button"
-										className="h-5 w-0 group-hover/devicename:w-5 shrink-0 overflow-hidden p-0! text-muted-foreground opacity-0 pointer-events-none transition-[width,margin,opacity] duration-150 hover:bg-muted hover:text-foreground group-hover/devicename:ml-1  group-hover/devicename:opacity-100 group-hover/devicename:pointer-events-auto"
-										aria-label="Edit device display name"
-										onClick={() => startDeviceNameEdit(device)}
+										className="-ml-1.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+										onClick={() => toggleCollapse(device.id)}
+										aria-label={isCollapsed ? "Expand device" : "Collapse device"}
 									>
-										<PencilSquareIcon className="size-4" />
-									</Button>
-								</>
-							)}
-						</div>
-						{device.isDisconnected && (
-							<WifiOffIcon className="text-destructive" />
-						)}
-					</div>
-
-					{device.batteryInfos.length === 0 ? (
-						<div className="text-muted-foreground mx-auto">No battery information</div>
-					) : (
-						<div className="space-y-1 ml-7">
-							{device.batteryInfos.map((b, batteryIndex) => {
-								const partKey = batteryPartLabelStorageKey(b.user_description);
-								const isEditing =
-									labelEdit?.deviceId === device.id && labelEdit.partKey === partKey;
-								return (
-									<BatteryPartRow
-										key={batteryIndex}
-										device={device}
-										b={b}
-										isEditing={isEditing}
-										displayName={getBatteryPartDisplayName(
-											device.batteryPartLabels,
-											b.user_description,
+										<ChevronDownIcon className={cn("size-4 transition-transform duration-150", isCollapsed && "-rotate-90")} />
+									</button>
+									<div
+										className={cn(
+											"group/devicename gap-1 mr-1 flex min-w-0 items-center",
+											device.isDisconnected ? "max-w-45" : "max-w-60",
 										)}
-										labelDraft={labelDraft}
-										setLabelDraft={setLabelDraft}
-										inputRef={labelInputRef}
-										skipLabelCommitOnBlur={skipLabelCommitOnBlur}
-										onCommitPartLabel={commitPartLabel}
-										setLabelEdit={setLabelEdit}
-										startLabelEdit={startLabelEdit}
-										resetLabelAndCloseEdit={resetLabelAndCloseEdit}
+										data-testid={`device-display-name-${device.id}`}
+									>
+										{deviceNameEditId === device.id ? (
+											<PartLabelEdit
+												value={deviceNameDraft}
+												onChange={setDeviceNameDraft}
+												onCommitBlur={() => {
+													if (skipDeviceNameCommitOnBlur.current) {
+														skipDeviceNameCommitOnBlur.current = false;
+														return;
+													}
+													commitDeviceDisplayName(device.id, deviceNameDraft);
+													setDeviceNameEditId(null);
+												}}
+												onEnter={() => deviceNameInputRef.current?.blur()}
+												onEscape={() => {
+													skipDeviceNameCommitOnBlur.current = true;
+													setDeviceNameEditId(null);
+												}}
+												onReset={() => resetDeviceNameAndCloseEdit(device)}
+												inputRef={deviceNameInputRef}
+												skipLabelCommitOnBlur={skipDeviceNameCommitOnBlur}
+												resetAriaLabel="Reset device name and close"
+												resetTitle="Reset to advertised name and close"
+												inputClassName="text-lg font-semibold"
+											/>
+										) : (
+											<>
+												<span
+													className="min-w-0 flex-1 truncate text-lg font-semibold text-card-foreground"
+													title={device.name}
+												>
+													{getRegisteredDeviceDisplayName(device)}
+												</span>
+												<Button
+													type="button"
+													className="h-5 w-0 group-hover/devicename:w-5 shrink-0 overflow-hidden p-0! text-muted-foreground opacity-0 pointer-events-none transition-[width,margin,opacity] duration-150 hover:bg-muted hover:text-foreground group-hover/devicename:ml-1  group-hover/devicename:opacity-100 group-hover/devicename:pointer-events-auto"
+													aria-label="Edit device display name"
+													onClick={() => startDeviceNameEdit(device)}
+												>
+													<PencilSquareIcon className="size-4" />
+												</Button>
+											</>
+										)}
+									</div>
+									{device.isDisconnected && (
+										<WifiOffIcon className="text-destructive" />
+									)}
+									<DeviceTopBar
+										deviceIdx={deviceIdx}
+										deviceCount={n}
+										isMenuOpen={menuOpen === device.id}
+										onChart={() => handleToggleChart(device.id)}
+										onOpenMenu={() => setMenuOpen(device.id)}
+										onMoveUp={() => {
+											if (deviceIdx > 0) {
+												setRegisteredDevices((prev) => {
+													const arr = [...prev];
+													[arr[deviceIdx - 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx - 1]];
+													return arr;
+												});
+											}
+											handleMenuClose();
+										}}
+										onMoveDown={() => {
+											if (deviceIdx < n - 1) {
+												setRegisteredDevices((prev) => {
+													const arr = [...prev];
+													[arr[deviceIdx + 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx + 1]];
+													return arr;
+												});
+											}
+											handleMenuClose();
+										}}
+										onRemove={async () => {
+											if (onRemoveDevice) {
+												await onRemoveDevice(device);
+											} else {
+												setRegisteredDevices((prev) => prev.filter((d) => d.id !== device.id));
+											}
+											handleMenuClose();
+										}}
 									/>
-								);
-							})}
-						</div>
-					)}
+								</div>
+
+								{!isCollapsed && (device.batteryInfos.length === 0 ? (
+									<div className="text-muted-foreground mx-auto">No battery information</div>
+								) : (
+									<div className="space-y-1 ml-7">
+										{device.batteryInfos.map((b, batteryIndex) => {
+											const partKey = batteryPartLabelStorageKey(b.user_description);
+											const isEditing =
+												labelEdit?.deviceId === device.id && labelEdit.partKey === partKey;
+											return (
+												<BatteryPartRow
+													key={batteryIndex}
+													device={device}
+													b={b}
+													isEditing={isEditing}
+													displayName={getBatteryPartDisplayName(
+														device.batteryPartLabels,
+														b.user_description,
+													)}
+													labelDraft={labelDraft}
+													setLabelDraft={setLabelDraft}
+													inputRef={labelInputRef}
+													skipLabelCommitOnBlur={skipLabelCommitOnBlur}
+													onCommitPartLabel={commitPartLabel}
+													setLabelEdit={setLabelEdit}
+													startLabelEdit={startLabelEdit}
+													resetLabelAndCloseEdit={resetLabelAndCloseEdit}
+												/>
+											);
+										})}
+									</div>
+								))}
+							</div>
+						);
+					})()}
 				</div>
 			))}
 			<OpenChartOverlay
