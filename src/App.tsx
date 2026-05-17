@@ -121,6 +121,7 @@ function App() {
 	);
 
 	const [state, setState] = useState<State>(State.main);
+	const [panelLayoutRevision, setPanelLayoutRevision] = useState(0);
 	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
 	const isNotificationMonitorMode = !isPollingMode;
 
@@ -397,7 +398,7 @@ function App() {
 				}, 100);
 			}
 		});
-	}, [deviceList, state, config.manualWindowPositioning, isConfigLoaded]);
+	}, [deviceList, state, panelLayoutRevision, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
 		if (!isDeviceLoaded) {
@@ -607,6 +608,10 @@ function App() {
 		setState(isOpen ? State.chart : State.main);
 	}, []);
 
+	const handlePanelLayoutChange = useCallback(() => {
+		setPanelLayoutRevision((prev) => prev + 1);
+	}, []);
+
 	return (
 		<div id="app" className={`relative flex flex-col bg-background text-foreground rounded-lg p-2 ${
 			state === State.main && deviceList.length > 0 ? 'w-90' :
@@ -690,6 +695,7 @@ function App() {
 								setRegisteredDevices={setRegisteredDevicesForPanel}
 								onRemoveDevice={handleRemoveDevice}
 								onChartOpenChange={handleChartOpenChange}
+								onLayoutChange={handlePanelLayoutChange}
 							/>
 						</main>
 					) : (

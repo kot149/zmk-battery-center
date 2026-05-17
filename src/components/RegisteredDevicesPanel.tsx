@@ -5,6 +5,7 @@ import type { RegisteredDevice } from "@/utils/appHelpers";
 import { Button } from "@/components/Button";
 import {
 	ArrowUturnLeftIcon,
+	ChevronDownIcon,
 	EllipsisHorizontalIcon,
 	PencilSquareIcon,
 	WifiIcon,
@@ -39,6 +40,7 @@ interface DeviceListProps {
 	setRegisteredDevices: React.Dispatch<React.SetStateAction<RegisteredDevice[]>>;
 	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
 	onChartOpenChange?: (isOpen: boolean) => void;
+	onLayoutChange?: () => void;
 }
 
 type DeviceTopBarProps = {
@@ -303,6 +305,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	setRegisteredDevices,
 	onRemoveDevice,
 	onChartOpenChange,
+	onLayoutChange,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
 	const [chartOpen, setChartOpen] = useState<string | null>(null);
@@ -317,6 +320,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	const [deviceNameDraft, setDeviceNameDraft] = useState("");
 	const deviceNameInputRef = useRef<HTMLInputElement>(null);
 	const skipDeviceNameCommitOnBlur = useRef(false);
+	const [collapsedDevices, setCollapsedDevices] = useState<Set<string>>(new Set());
 
 	useEffect(() => {
 		if (labelEdit && labelInputRef.current) {
@@ -401,6 +405,16 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 		setLabelEdit({ deviceId: device.id, partKey });
 	};
 
+	const toggleCollapse = (deviceId: string) => {
+		setCollapsedDevices((prev) => {
+			const next = new Set(prev);
+			if (next.has(deviceId)) next.delete(deviceId);
+			else next.add(deviceId);
+			return next;
+		});
+		onLayoutChange?.();
+	};
+
 	const resetLabelAndCloseEdit = (deviceId: string, userDescription: string | null) => {
 		const def = defaultBatteryPartDisplayName(userDescription);
 		commitPartLabel(deviceId, userDescription, def);
@@ -456,7 +470,19 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 						<div className="fixed inset-0 z-0" onClick={handleMenuClose}></div>
 					)}
 
-					<div className="mb-2 flex flex-wrap items-baseline gap-x-0 gap-y-1">
+					{(() => {
+						const isCollapsed = collapsedDevices.has(device.id);
+						return (
+						<>
+						<div className="mb-2 flex flex-wrap items-center gap-x-1 gap-y-1">
+							<button
+								type="button"
+								className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+								onClick={() => toggleCollapse(device.id)}
+								aria-label={isCollapsed ? "Expand device" : "Collapse device"}
+							>
+								<ChevronDownIcon className={cn("size-4 transition-transform duration-150", isCollapsed && "-rotate-90")} />
+							</button>
 						<div
 							className={cn(
 								"group/devicename gap-1 mr-1 flex min-w-0 items-center",
@@ -512,7 +538,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 						)}
 					</div>
 
-					{device.batteryInfos.length === 0 ? (
+					{!isCollapsed && (device.batteryInfos.length === 0 ? (
 						<div className="text-muted-foreground mx-auto">No battery information</div>
 					) : (
 						<div className="space-y-1 ml-7">
@@ -542,7 +568,10 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 								);
 							})}
 						</div>
-					)}
+					))}
+					</>
+					);
+					})()}
 				</div>
 			))}
 			<OpenChartOverlay

@@ -37,14 +37,14 @@ export async function resizeWindow(x: number, y: number) {
     const height = y * scaleFactor;
     logger.info(`scaled size: ${width}x${height}`);
 
-	appWindow.setSize(new LogicalSize(width, height));
+	await appWindow.setSize(new LogicalSize(width, height));
 }
 
 export async function resizeWindowToContent() {
     const appEl = document.getElementById('app');
     const width = appEl?.clientWidth ?? 0;
     const height = appEl?.clientHeight ?? 0;
-    resizeWindow(width, height);
+    await resizeWindow(width, height);
 }
 
 export function isWindowVisible() {
