@@ -430,7 +430,11 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 			{registeredDevices.map((device, deviceIdx) => (
 				<div
 					key={device.id}
-					className={cn("relative group bg-card rounded-lg p-4", deviceIdx > 0 && "mt-4")}
+					className={cn(
+						"relative group bg-card rounded-lg px-4",
+						device.isCollapsed ? "py-2" : "py-4",
+						deviceIdx > 0 && "mt-4",
+					)}
 				>
 					<DeviceTopBar
 						deviceIdx={deviceIdx}
