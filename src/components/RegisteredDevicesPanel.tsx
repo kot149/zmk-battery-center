@@ -70,7 +70,7 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 			: "fixed bottom-4 right-4";
 
 	return (
-		<div className="absolute top-2 right-2 w-14 z-10 flex items-center gap-0.5">
+		<div className="absolute right-0 top-1/2 z-10 flex h-8 w-16 -translate-y-1/2 items-center justify-end -space-x-1">
 			<Button
 				className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
 				onClick={onChart}
@@ -79,7 +79,7 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
 				<ChartCurveIcon className="size-5 mx-auto" />
 			</Button>
 			<Button
-				className="w-10 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
+				className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
 				onClick={onOpenMenu}
 				aria-label="Open menu"
 			>
@@ -436,42 +436,6 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 						deviceIdx > 0 && "mt-4",
 					)}
 				>
-					<DeviceTopBar
-						deviceIdx={deviceIdx}
-						deviceCount={n}
-						isMenuOpen={menuOpen === device.id}
-						onChart={() => handleToggleChart(device.id)}
-						onOpenMenu={() => setMenuOpen(device.id)}
-						onMoveUp={() => {
-							if (deviceIdx > 0) {
-								setRegisteredDevices((prev) => {
-									const arr = [...prev];
-									[arr[deviceIdx - 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx - 1]];
-									return arr;
-								});
-							}
-							handleMenuClose();
-						}}
-						onMoveDown={() => {
-							if (deviceIdx < n - 1) {
-								setRegisteredDevices((prev) => {
-									const arr = [...prev];
-									[arr[deviceIdx + 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx + 1]];
-									return arr;
-								});
-							}
-							handleMenuClose();
-						}}
-						onRemove={async () => {
-							if (onRemoveDevice) {
-								await onRemoveDevice(device);
-							} else {
-								setRegisteredDevices((prev) => prev.filter((d) => d.id !== device.id));
-							}
-							handleMenuClose();
-						}}
-					/>
-
 					{menuOpen === device.id && (
 						<div className="fixed inset-0 z-0" onClick={handleMenuClose}></div>
 					)}
@@ -480,10 +444,10 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 						const isCollapsed = device.isCollapsed === true;
 						return (
 							<div className="flex flex-col gap-2">
-								<div className="flex flex-wrap items-center gap-x-1 gap-y-1">
+								<div className="relative flex min-h-8 flex-wrap items-center gap-x-1 gap-y-1 pr-16">
 									<button
 										type="button"
-										className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+										className="-ml-1.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
 										onClick={() => toggleCollapse(device.id)}
 										aria-label={isCollapsed ? "Expand device" : "Collapse device"}
 									>
@@ -542,6 +506,41 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 									{device.isDisconnected && (
 										<WifiOffIcon className="text-destructive" />
 									)}
+									<DeviceTopBar
+										deviceIdx={deviceIdx}
+										deviceCount={n}
+										isMenuOpen={menuOpen === device.id}
+										onChart={() => handleToggleChart(device.id)}
+										onOpenMenu={() => setMenuOpen(device.id)}
+										onMoveUp={() => {
+											if (deviceIdx > 0) {
+												setRegisteredDevices((prev) => {
+													const arr = [...prev];
+													[arr[deviceIdx - 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx - 1]];
+													return arr;
+												});
+											}
+											handleMenuClose();
+										}}
+										onMoveDown={() => {
+											if (deviceIdx < n - 1) {
+												setRegisteredDevices((prev) => {
+													const arr = [...prev];
+													[arr[deviceIdx + 1], arr[deviceIdx]] = [arr[deviceIdx], arr[deviceIdx + 1]];
+													return arr;
+												});
+											}
+											handleMenuClose();
+										}}
+										onRemove={async () => {
+											if (onRemoveDevice) {
+												await onRemoveDevice(device);
+											} else {
+												setRegisteredDevices((prev) => prev.filter((d) => d.id !== device.id));
+											}
+											handleMenuClose();
+										}}
+									/>
 								</div>
 
 								{!isCollapsed && (device.batteryInfos.length === 0 ? (
