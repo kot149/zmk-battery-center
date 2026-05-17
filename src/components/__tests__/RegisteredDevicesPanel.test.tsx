@@ -258,4 +258,26 @@ describe("RegisteredDevicesPanel", () => {
 		expect(screen.queryByText("55%")).toBeNull();
 		expect(screen.getByRole("button", { name: "Expand device" })).toBeTruthy();
 	});
+
+	it("uses container gap without margin for collapsed spacing", async () => {
+		const user = userEvent.setup();
+		render(<ControlledCollapseHarness initialDevices={[sampleDevice]} />);
+
+		const collapseButton = screen.getByRole("button", { name: "Collapse device" });
+		const expandedHeaderRow = collapseButton.closest("div");
+		const expandedContentRow = screen.getByTestId("device-battery-row-dev-1-Central").parentElement;
+		const expandedStack = expandedHeaderRow?.parentElement;
+		expect(expandedStack?.className).toContain("gap-2");
+		expect(expandedStack?.children).toHaveLength(2);
+		expect(expandedStack?.children[0]).toBe(expandedHeaderRow);
+		expect(expandedStack?.children[1]).toBe(expandedContentRow);
+
+		await user.click(collapseButton);
+
+		const expandButton = screen.getByRole("button", { name: "Expand device" });
+		const collapsedHeaderRow = expandButton.closest("div");
+		const collapsedStack = collapsedHeaderRow?.parentElement;
+		expect(collapsedStack?.className).toContain("gap-2");
+		expect(collapsedStack?.children).toHaveLength(1);
+	});
 });
