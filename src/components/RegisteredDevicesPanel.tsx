@@ -41,6 +41,8 @@ interface DeviceListProps {
 	onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
 	onChartOpenChange?: (isOpen: boolean) => void;
 	onLayoutChange?: () => void;
+	collapsedDeviceIds?: ReadonlySet<string>;
+	onCollapsedDeviceIdsChange?: React.Dispatch<React.SetStateAction<Set<string>>>;
 }
 
 type DeviceTopBarProps = {
@@ -306,6 +308,8 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	onRemoveDevice,
 	onChartOpenChange,
 	onLayoutChange,
+	collapsedDeviceIds,
+	onCollapsedDeviceIdsChange,
 }) => {
 	const [menuOpen, setMenuOpen] = useState<string | null>(null);
 	const [chartOpen, setChartOpen] = useState<string | null>(null);
@@ -320,7 +324,9 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	const [deviceNameDraft, setDeviceNameDraft] = useState("");
 	const deviceNameInputRef = useRef<HTMLInputElement>(null);
 	const skipDeviceNameCommitOnBlur = useRef(false);
-	const [collapsedDevices, setCollapsedDevices] = useState<Set<string>>(new Set());
+	const [internalCollapsedDevices, setInternalCollapsedDevices] = useState<Set<string>>(new Set());
+	const collapsedDevices = collapsedDeviceIds ?? internalCollapsedDevices;
+	const setCollapsedDevices = onCollapsedDeviceIdsChange ?? setInternalCollapsedDevices;
 
 	useEffect(() => {
 		if (labelEdit && labelInputRef.current) {

@@ -85,6 +85,15 @@ function App() {
 	useEffect(() => {
 		registeredDevicesRef.current = deviceList;
 	}, [deviceList]);
+	const [collapsedDeviceIds, setCollapsedDeviceIds] = useState<Set<string>>(new Set());
+
+	useEffect(() => {
+		setCollapsedDeviceIds((prev) => {
+			const activeIds = new Set(deviceList.map((device) => device.id));
+			const filtered = new Set([...prev].filter((id) => activeIds.has(id)));
+			return filtered.size === prev.size ? prev : filtered;
+		});
+	}, [deviceList]);
 
 	const persistRegisteredDevices = useCallback(async (devices: RegisteredDevice[]) => {
 		const storePath = await getStorePath(DEVICES_FILENAME);
@@ -696,6 +705,8 @@ function App() {
 								onRemoveDevice={handleRemoveDevice}
 								onChartOpenChange={handleChartOpenChange}
 								onLayoutChange={handlePanelLayoutChange}
+								collapsedDeviceIds={collapsedDeviceIds}
+								onCollapsedDeviceIdsChange={setCollapsedDeviceIds}
 							/>
 						</main>
 					) : (
