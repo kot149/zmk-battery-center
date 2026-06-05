@@ -1,0 +1,40 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": ["react", "typescript", "unicorn"],
+	"env": {
+		"browser": true,
+		"es2024": true,
+		"node": true
+	},
+	"ignorePatterns": ["dist/**", "node_modules/**", "src-tauri/**"],
+	"categories": {
+		"correctness": "warn"
+	},
+	"rules": {
+		"react-hooks/rules-of-hooks": "error",
+		"react-hooks/exhaustive-deps": "error",
+		"no-unused-vars": [
+			"warn",
+			{
+				"argsIgnorePattern": "^_",
+				"varsIgnorePattern": "^_"
+			}
+		],
+		"typescript/no-unused-vars": [
+			"warn",
+			{
+				"argsIgnorePattern": "^_",
+				"varsIgnorePattern": "^_"
+			}
+		]
+	},
+	"overrides": [
+		{
+			"files": ["e2e/**/*.ts"],
+			"rules": {
+				"react-hooks/rules-of-hooks": "off",
+				"react-hooks/exhaustive-deps": "off"
+			}
+		}
+	]
+}
