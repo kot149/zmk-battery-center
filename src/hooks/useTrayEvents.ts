@@ -2,12 +2,14 @@ import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { TrayIcon, TrayIconEvent } from '@tauri-apps/api/tray';
 import { Menu, Submenu, CheckMenuItem } from '@tauri-apps/api/menu';
-import { isWindowVisible, showWindow, hideWindow, moveWindowToTrayCenter, setWindowFocus, setTrayPositionSet } from '@/utils/window';
+import { isWindowVisible, showWindow, hideWindow, moveWindowToTrayCenter, setWindowFocus, setTrayPositionSet, moveWindowTo } from '@/utils/window';
 import { exitApp } from '@/utils/common';
 import { stopAllBatteryMonitors } from '@/utils/ble';
 import { logger } from '@/utils/log';
 import { Config } from '@/utils/config';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { platform } from '@tauri-apps/plugin-os';
+import { invoke } from '@tauri-apps/api/core';
 
 interface UseTrayEventsOptions {
     config: Config;
@@ -16,34 +18,49 @@ interface UseTrayEventsOptions {
 }
 
 export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositioningChange }: UseTrayEventsOptions) {
-    const manualWindowPositioningRef = useRef(config.manualWindowPositioning);
-    const onManualWindowPositioningChangeRef = useRef(onManualWindowPositioningChange);
+    const configRef = useRef(config);
+    configRef.current = config;
 
-    manualWindowPositioningRef.current = config.manualWindowPositioning;
+    const onManualWindowPositioningChangeRef = useRef(onManualWindowPositioningChange);
     onManualWindowPositioningChangeRef.current = onManualWindowPositioningChange;
+
+    // Synchronize backend state whenever manualWindowPositioning config changes
+    useEffect(() => {
+        if (!isConfigLoaded) return;
+        if (platform() === 'linux') {
+            invoke('update_manual_positioning', { enabled: config.manualWindowPositioning })
+                .catch(err => logger.error(`Failed to update manual positioning in backend: ${err}`));
+        }
+    }, [config.manualWindowPositioning, isConfigLoaded]);
 
     useEffect(() => {
         if (!isConfigLoaded) return;
 
         let unlistenTrayEvent: (() => void) | null = null;
         let unlistenTrayLeftClick: (() => void) | null = null;
+        let unlistenTrayMenuRefresh: (() => void) | null = null;
+        let unlistenTrayMenuToggleManual: (() => void) | null = null;
+        let unlistenTrayMenuAbout: (() => void) | null = null;
 
         const setupTray = async () => {
-            const tray = await TrayIcon.getById('tray_icon');
-            if (!tray) {
+            const isLinux = platform() === 'linux';
+            const tray = isLinux ? null : await TrayIcon.getById('tray_icon');
+            if (!isLinux && !tray) {
                 logger.error('Tray icon not found');
                 return;
             }
 
             // Set tray position flag on first tray event
             let isTrayPositionSet = false;
-            unlistenTrayEvent = await listen<TrayIconEvent>('tray_event', () => {
-                if (!isTrayPositionSet) {
-                    isTrayPositionSet = true;
-                    setTrayPositionSet(true);
-                    logger.info('Tray position set');
-                }
-            });
+            if (tray) {
+                unlistenTrayEvent = await listen<TrayIconEvent>('tray_event', () => {
+                    if (!isTrayPositionSet) {
+                        isTrayPositionSet = true;
+                        setTrayPositionSet(true);
+                        logger.info('Tray position set');
+                    }
+                });
+            }
 
             // Handle tray left click
             unlistenTrayLeftClick = await listen('tray_left_click', async () => {
@@ -52,8 +69,10 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                     hideWindow();
                 } else {
                     showWindow();
-                    if (!manualWindowPositioningRef.current) {
+                    if (!configRef.current.manualWindowPositioning) {
                         moveWindowToTrayCenter();
+                    } else {
+                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
                     }
                     setWindowFocus();
                 }
@@ -65,10 +84,12 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                     {
                         id: 'show',
                         text: 'Show',
-                        action: () => {
+                        action: async () => {
                             showWindow();
-                            if (!manualWindowPositioningRef.current) {
+                            if (!configRef.current.manualWindowPositioning) {
                                 moveWindowToTrayCenter();
+                            } else {
+                                await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
                             }
                         }
                     },
@@ -83,25 +104,28 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                     await stopAllBatteryMonitors();
                                     location.reload();
                                     showWindow();
-                                    if (!manualWindowPositioningRef.current) {
+                                    if (!configRef.current.manualWindowPositioning) {
                                         moveWindowToTrayCenter();
+                                    } else {
+                                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
                                     }
                                 },
                             },
                             {
                                 id: 'manual_window_positioning',
                                 text: 'Manual window positioning',
-                                checked: config.manualWindowPositioning,
+                                checked: configRef.current.manualWindowPositioning,
                                 action: async (trayId: string) => {
                                     const controlMenu = await menu?.get('control') as Submenu | null;
                                     const thisMenu = await controlMenu?.get(trayId) as CheckMenuItem | null;
                                     if (!thisMenu) return;
 
                                     const isChecked = await thisMenu.isChecked();
-                                    manualWindowPositioningRef.current = isChecked;
                                     showWindow();
-                                    if (!manualWindowPositioningRef.current) {
+                                    if (!isChecked) {
                                         moveWindowToTrayCenter();
+                                    } else {
+                                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
                                     }
 
                                     onManualWindowPositioningChangeRef.current(isChecked);
@@ -139,8 +163,55 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                 ]
             });
 
-            tray.setMenu(menu);
-            tray.setShowMenuOnLeftClick(false);
+            if (platform() !== 'linux') {
+                if (tray) {
+                    await tray.setMenu(menu);
+                    await tray.setShowMenuOnLeftClick(false);
+                }
+            } else {
+                // Initialize Rust state
+                await invoke('update_manual_positioning', { enabled: configRef.current.manualWindowPositioning });
+
+                unlistenTrayMenuRefresh = await listen('tray_menu_refresh', async () => {
+                    await stopAllBatteryMonitors();
+                    location.reload();
+                    showWindow();
+                    if (!configRef.current.manualWindowPositioning) {
+                        moveWindowToTrayCenter();
+                    } else {
+                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
+                    }
+                });
+
+                unlistenTrayMenuToggleManual = await listen('tray_menu_toggle_manual_positioning', async () => {
+                    const isChecked = !configRef.current.manualWindowPositioning;
+                    showWindow();
+                    if (!isChecked) {
+                        moveWindowToTrayCenter();
+                    } else {
+                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
+                    }
+                    onManualWindowPositioningChangeRef.current(isChecked);
+                    await invoke('update_manual_positioning', { enabled: isChecked });
+                });
+
+                unlistenTrayMenuAbout = await listen('tray_menu_about', async () => {
+                    let aboutWindow = await WebviewWindow.getByLabel('about');
+                    if (!aboutWindow) {
+                        aboutWindow = new WebviewWindow('about', {
+                            url: 'about.html',
+                            title: 'zmk-battery-center - About',
+                            width: 600,
+                            height: 500,
+                            center: true,
+                            resizable: true,
+                            decorations: true,
+                        });
+                    }
+                    await aboutWindow.show();
+                    await aboutWindow.setFocus();
+                });
+            }
         };
 
         setupTray();
@@ -148,6 +219,9 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
         return () => {
             if (unlistenTrayEvent) unlistenTrayEvent();
             if (unlistenTrayLeftClick) unlistenTrayLeftClick();
+            if (unlistenTrayMenuRefresh) unlistenTrayMenuRefresh();
+            if (unlistenTrayMenuToggleManual) unlistenTrayMenuToggleManual();
+            if (unlistenTrayMenuAbout) unlistenTrayMenuAbout();
         };
     }, [isConfigLoaded]);
 }

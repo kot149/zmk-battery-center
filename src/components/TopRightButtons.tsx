@@ -18,7 +18,7 @@ interface TopRightButtonsProps {
  */
 const TopRightButtons: React.FC<TopRightButtonsProps> = ({ buttons }) => {
 	return (
-		<div className="flex flex-row ml-auto justify-end">
+		<div className="flex flex-row ml-auto justify-end pr-2 pt-0.5 gap-1">
 			{buttons.map((btn) => (
 				<Button
 					key={btn.ariaLabel}

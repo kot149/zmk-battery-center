@@ -33,8 +33,14 @@ async function waitForWindowMoveEnd(){
 export async function resizeWindow(x: number, y: number) {
 	logger.info(`resizeWindow: ${x}x${y}`);
     const scaleFactor = await invoke<number>('get_windows_text_scale_factor');
-    const width = x * scaleFactor;
-    const height = y * scaleFactor;
+    let width = x * scaleFactor;
+    let height = y * scaleFactor;
+
+    if (currentPlatform === 'linux') {
+        width += 16;
+        height += 8;
+    }
+
     logger.info(`scaled size: ${width}x${height}`);
 
 	await appWindow.setSize(new LogicalSize(width, height));

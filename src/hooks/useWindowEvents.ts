@@ -38,6 +38,13 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
         let unlistenOnFocusChanged: (() => void) | null = null;
 
         const saveWindowPosition = async (position: { x: number; y: number }) => {
+            const isVisible = await window.isVisible();
+            const isFocused = await window.isFocused();
+            if (!isVisible || !isFocused) {
+                logger.debug(`Skipped saving window position: isVisible=${isVisible}, isFocused=${isFocused} (position: ${position.x}, ${position.y})`);
+                return;
+            }
+
             if (await platform() === 'macos') {
                 // Convert logical position to physical position
                 const monitor = await currentMonitor();
@@ -53,6 +60,7 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
 
         const setupListeners = async () => {
             unlistenOnMoved = await window.onMoved(async ({ payload: position }) => {
+                logger.debug(`Window onMoved event received: x=${position.x}, y=${position.y}`);
                 if (!isWindowMovingRef.current) {
                     logger.debug("Window move start");
                 }

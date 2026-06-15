@@ -64,6 +64,9 @@ tauri-plugin-autostart = "2"
 tauri-plugin-positioner = "2"
 tauri-plugin-single-instance = "2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = "0.3.5"
+
 [target.'cfg(windows)'.dependencies.windows]
 version = "~0"
 features = [
