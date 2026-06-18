@@ -2,10 +2,9 @@ import React from "react";
 import Button from "./Button";
 import { FETCH_INTERVAL_AUTO, NotificationType, TrayIconComponent } from "../utils/config";
 import { useTheme, type Theme } from "@/context/theme-provider";
-import { Moon, Sun } from "lucide-react";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch"
-import { XMarkIcon } from "@heroicons/react/24/outline";
+import { XMarkIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 import { useConfigContext } from "@/context/ConfigContext";
 import TopRightButtons from "./TopRightButtons";
 import { platform } from "@tauri-apps/plugin-os";
@@ -111,21 +110,21 @@ const Settings: React.FC<SettingsScreenProps> = ({
 								{[
 									{ key: "light", icon: (
 										<div className="flex flex-col items-center justify-center">
-											<Sun className="w-6 h-6" />
+											<SunIcon className="w-6 h-6" />
 											<span className="text-xs">Light</span>
 										</div>
 									), label: "Light" },
 									{ key: "dark", icon: (
 										<div className="flex flex-col items-center justify-center">
-											<Moon className="w-6 h-6" />
+											<MoonIcon className="w-6 h-6" />
 											<span className="text-xs">Dark</span>
 										</div>
 									), label: "Dark" },
 									{ key: "system", icon: (
 										<div className="flex flex-col items-center justify-center">
 											<span className="relative w-6 h-6 flex items-center justify-center">
-												<Sun className="absolute w-4 h-4 left-[-7%] top-[-7%]" />
-												<Moon className="absolute w-4 h-4 right-[-7%] bottom-[-7%]" />
+												<SunIcon className="absolute w-4 h-4 left-[-7%] top-[-7%]" />
+												<MoonIcon className="absolute w-4 h-4 right-[-7%] bottom-[-7%]" />
 												<svg className="absolute left-0 top-0 w-6 h-6 pointer-events-none" width="24" height="24">
 													<line x1="0" y1="20" x2="20" y2="0" stroke="currentColor" strokeWidth="0.5" strokeLinecap="round" />
 												</svg>
