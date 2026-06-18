@@ -1,7 +1,16 @@
 use csv::{ReaderBuilder, WriterBuilder};
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
+
+static HISTORY_FILE_LOCK: Mutex<()> = Mutex::new(());
+
+static PRUNED_FILES: LazyLock<Mutex<HashSet<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+const HISTORY_RETENTION_DAYS: u64 = 365;
 
 #[cfg(debug_assertions)]
 const DATA_DIR_ENV: &str = "ZMK_BATTERY_CENTER_DATA_DIR";
@@ -93,6 +102,84 @@ fn append_battery_history_at_dir(
     writeln!(file, "{line}").map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+fn prune_battery_history_at_dir(
+    dir: &std::path::Path,
+    device_name: &str,
+    ble_id: &str,
+    cutoff_timestamp: &str,
+) -> Result<(), String> {
+    let filename = safe_filename(device_name, ble_id);
+    let path = dir.join(filename);
+
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let records = read_battery_history_from_dir(dir, device_name, ble_id)?;
+    let surviving: Vec<&BatteryHistoryRecord> = records
+        .iter()
+        .filter(|r| r.timestamp.as_str() >= cutoff_timestamp)
+        .collect();
+
+    if surviving.len() == records.len() {
+        return Ok(());
+    }
+
+    let tmp_path = path.with_extension("csv.tmp");
+    {
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&tmp_path)
+            .map_err(|e| e.to_string())?;
+        writeln!(file, "timestamp,user_description,battery_level").map_err(|e| e.to_string())?;
+        for record in &surviving {
+            let line = csv_record_line(
+                &record.timestamp,
+                &record.user_description,
+                record.battery_level,
+            )?;
+            writeln!(file, "{line}").map_err(|e| e.to_string())?;
+        }
+    }
+    fs::rename(&tmp_path, &path).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+fn civil_date_from_days(mut days_since_epoch: i64) -> (i64, u32, u32) {
+    days_since_epoch += 719_468;
+    let era = if days_since_epoch >= 0 {
+        days_since_epoch
+    } else {
+        days_since_epoch - 146_096
+    } / 146_097;
+    let doe = (days_since_epoch - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn rfc3339_date_n_days_ago(now_secs: u64, days: u64) -> String {
+    let epoch_day = (now_secs / 86400) as i64 - days as i64;
+    let (y, m, d) = civil_date_from_days(epoch_day);
+    format!("{y:04}-{m:02}-{d:02}T00:00:00Z")
+}
+
+fn cutoff_timestamp_n_days_ago(days: u64) -> Result<String, String> {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    Ok(rfc3339_date_n_days_ago(now_secs, days))
 }
 
 fn read_battery_history_from_dir(
@@ -193,7 +280,25 @@ pub fn append_battery_history(
     user_description: String,
     battery_level: i32,
 ) -> Result<(), String> {
+    let _guard = HISTORY_FILE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
     let dir = history_dir(&app);
+
+    let filename = safe_filename(&device_name, &ble_id);
+    let path = dir.join(&filename);
+    {
+        let mut pruned = PRUNED_FILES
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if !pruned.contains(&path) {
+            let cutoff = cutoff_timestamp_n_days_ago(HISTORY_RETENTION_DAYS)?;
+            prune_battery_history_at_dir(&dir, &device_name, &ble_id, &cutoff)?;
+            pruned.insert(path);
+        }
+    }
+
     append_battery_history_at_dir(
         &dir,
         &device_name,
@@ -211,6 +316,10 @@ pub fn read_battery_history(
     device_name: String,
     ble_id: String,
 ) -> Result<Vec<BatteryHistoryRecord>, String> {
+    let _guard = HISTORY_FILE_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+
     let dir = history_dir(&app);
     read_battery_history_from_dir(&dir, &device_name, &ble_id)
 }
@@ -393,5 +502,105 @@ mod tests {
     #[test]
     fn resolve_dev_history_dir_returns_none_without_manifest_dir() {
         assert!(resolve_dev_history_dir(None, Some("local-data")).is_none());
+    }
+
+    #[test]
+    fn prune_drops_rows_older_than_cutoff() {
+        let dir = tempdir().expect("create temp dir");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2024-01-01T00:00:00Z", "old1", 90)
+            .expect("append");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-01-01T00:00:00Z", "mid", 80)
+            .expect("append");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-01-01T00:00:00Z", "new", 70)
+            .expect("append");
+
+        prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-06-01T00:00:00Z")
+            .expect("prune");
+
+        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1").expect("read");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].timestamp, "2026-01-01T00:00:00Z");
+        assert_eq!(records[0].user_description, "new");
+
+        let path = dir.path().join(safe_filename("Kb", "d1"));
+        let content = fs::read_to_string(path).expect("read csv");
+        let header_count = content
+            .lines()
+            .filter(|l| *l == "timestamp,user_description,battery_level")
+            .count();
+        assert_eq!(header_count, 1);
+    }
+
+    #[test]
+    fn prune_is_noop_when_nothing_expires() {
+        let dir = tempdir().expect("create temp dir");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-01-01T00:00:00Z", "a", 90)
+            .expect("append");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-06-01T00:00:00Z", "b", 80)
+            .expect("append");
+
+        let path = dir.path().join(safe_filename("Kb", "d1"));
+        let before = fs::read_to_string(&path).expect("read");
+
+        prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-01-01T00:00:00Z")
+            .expect("prune");
+
+        let after = fs::read_to_string(&path).expect("read");
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn prune_handles_missing_file() {
+        let dir = tempdir().expect("create temp dir");
+        let result = prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-01-01T00:00:00Z");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn prune_preserves_quoted_fields() {
+        let dir = tempdir().expect("create temp dir");
+        let desc = "Left, \"quoted\" side";
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-01-01T00:00:00Z", desc, 55)
+            .expect("append");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2024-01-01T00:00:00Z", "old", 10)
+            .expect("append");
+
+        prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-06-01T00:00:00Z")
+            .expect("prune");
+
+        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1").expect("read");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].user_description, desc);
+        assert_eq!(records[0].battery_level, 55);
+    }
+
+    #[test]
+    fn prune_then_append_roundtrip() {
+        let dir = tempdir().expect("create temp dir");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2024-01-01T00:00:00Z", "old", 90)
+            .expect("append");
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-01-01T00:00:00Z", "keep", 80)
+            .expect("append");
+
+        prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-06-01T00:00:00Z")
+            .expect("prune");
+
+        append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-06-01T00:00:00Z", "new", 70)
+            .expect("append");
+
+        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1").expect("read");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].timestamp, "2026-01-01T00:00:00Z");
+        assert_eq!(records[0].user_description, "keep");
+        assert_eq!(records[1].timestamp, "2026-06-01T00:00:00Z");
+        assert_eq!(records[1].user_description, "new");
+    }
+
+    #[test]
+    fn rfc3339_date_n_days_ago_known_values() {
+        let epoch_2026_06_13 = 20617 * 86400_u64;
+        assert!(rfc3339_date_n_days_ago(epoch_2026_06_13, 0).starts_with("2026-06-13"));
+        assert!(rfc3339_date_n_days_ago(epoch_2026_06_13, 365).starts_with("2025-06-13"));
+        assert!(rfc3339_date_n_days_ago(epoch_2026_06_13, 1).starts_with("2026-06-12"));
     }
 }
