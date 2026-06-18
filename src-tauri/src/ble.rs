@@ -849,3 +849,91 @@ pub async fn stop_battery_notification_monitor(id: String) -> Result<(), String>
     log::debug!("BLE I/O: stop notification monitor response success device_id={id}");
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::sync::watch;
+
+    #[test]
+    fn first_worker_connect_flips_aggregate_to_connected() {
+        let mut state = MonitorConnectionState::default();
+        assert_eq!(state.apply_worker_connection(0, true), Some(true));
+        assert!(state.is_connected);
+    }
+
+    #[test]
+    fn second_worker_connect_does_not_re_emit() {
+        let mut state = MonitorConnectionState::default();
+        state.apply_worker_connection(0, true);
+        assert_eq!(state.apply_worker_connection(1, true), None);
+    }
+
+    #[test]
+    fn partial_disconnect_keeps_connected() {
+        let mut state = MonitorConnectionState::default();
+        state.apply_worker_connection(0, true);
+        state.apply_worker_connection(1, true);
+        assert_eq!(state.apply_worker_connection(0, false), None);
+        assert!(state.is_connected);
+    }
+
+    #[test]
+    fn last_worker_disconnect_flips_to_disconnected() {
+        let mut state = MonitorConnectionState::default();
+        state.apply_worker_connection(0, true);
+        state.apply_worker_connection(1, true);
+        state.apply_worker_connection(0, false);
+        assert_eq!(state.apply_worker_connection(1, false), Some(false));
+        assert!(!state.is_connected);
+    }
+
+    #[test]
+    fn disconnect_of_unknown_worker_is_noop() {
+        let mut state = MonitorConnectionState::default();
+        assert_eq!(state.apply_worker_connection(7, false), None);
+        assert!(!state.is_connected);
+    }
+
+    #[test]
+    fn reconnect_after_full_disconnect_emits_again() {
+        let mut state = MonitorConnectionState::default();
+        state.apply_worker_connection(0, true);
+        state.apply_worker_connection(0, false);
+        assert_eq!(state.apply_worker_connection(0, true), Some(true));
+    }
+
+    #[test]
+    fn bytes_to_hex_formats_uppercase_space_separated() {
+        assert_eq!(bytes_to_hex(&[0x00, 0xAB, 0x05]), "00 AB 05");
+        assert_eq!(bytes_to_hex(&[]), "");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_returns_false_after_duration_elapses() {
+        let (_tx, mut rx) = watch::channel(false);
+        let result = wait_for_retry_or_stop(&mut rx, Duration::from_secs(5)).await;
+        assert!(!result);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_returns_true_when_stop_signal_sent() {
+        let (tx, mut rx) = watch::channel(false);
+        let handle = tokio::spawn(async move {
+            wait_for_retry_or_stop(&mut rx, Duration::from_secs(60)).await
+        });
+        tx.send(true).unwrap();
+        assert!(handle.await.unwrap());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_returns_true_when_sender_dropped() {
+        let (tx, mut rx) = watch::channel(false);
+        let handle = tokio::spawn(async move {
+            wait_for_retry_or_stop(&mut rx, Duration::from_secs(60)).await
+        });
+        drop(tx);
+        assert!(handle.await.unwrap());
+    }
+}
