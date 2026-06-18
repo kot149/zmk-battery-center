@@ -4,6 +4,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
     AppHandle, Emitter, Manager,
 };
+#[cfg(target_os = "linux")]
 use ksni::TrayMethods;
 
 pub struct TrayState {
