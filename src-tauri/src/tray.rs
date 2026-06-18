@@ -174,7 +174,10 @@ pub fn init_tray(app_handle: AppHandle) {
 
     #[cfg(not(target_os = "linux"))]
     {
-        let tray = app_handle.tray_by_id("tray_icon").unwrap();
+        let Some(tray) = app_handle.tray_by_id("tray_icon") else {
+            log::error!("init_tray: tray icon 'tray_icon' not found; tray events will be unavailable");
+            return;
+        };
 
         #[cfg(target_os = "macos")]
         {
