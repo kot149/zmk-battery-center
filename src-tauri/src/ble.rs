@@ -51,6 +51,23 @@ struct MonitorConnectionState {
     is_connected: bool,
 }
 
+impl MonitorConnectionState {
+    fn apply_worker_connection(&mut self, worker_id: usize, connected: bool) -> Option<bool> {
+        if connected {
+            self.connected_workers.insert(worker_id);
+        } else {
+            self.connected_workers.remove(&worker_id);
+        }
+        let next_connected = !self.connected_workers.is_empty();
+        if next_connected != self.is_connected {
+            self.is_connected = next_connected;
+            Some(next_connected)
+        } else {
+            None
+        }
+    }
+}
+
 struct BatteryNotificationWorkerArgs {
     app: AppHandle,
     adapter: Adapter,
@@ -284,20 +301,10 @@ async fn update_monitor_connection_state(
     state: &Arc<Mutex<MonitorConnectionState>>,
 ) {
     let state_changed = {
-        let mut state_lock = state.lock().await;
-        if connected {
-            state_lock.connected_workers.insert(worker_id);
-        } else {
-            state_lock.connected_workers.remove(&worker_id);
-        }
-
-        let next_connected = !state_lock.connected_workers.is_empty();
-        if next_connected != state_lock.is_connected {
-            state_lock.is_connected = next_connected;
-            Some(next_connected)
-        } else {
-            None
-        }
+        state
+            .lock()
+            .await
+            .apply_worker_connection(worker_id, connected)
     };
 
     if let Some(next_connected) = state_changed {
