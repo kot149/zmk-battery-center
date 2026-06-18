@@ -79,8 +79,8 @@ While this app is also released for Linux, it is not much tested, as the author 
 Feel free to report any issues you find on Linux, but I cannot guarantee that I can fix them.
 
 Also there are some limitations specifically on Linux:
-- The app may not appear around the system tray icon, and manual window positioning may not work properly
-- Left-click on the system tray icon cannot be captured by the app, and treated as right-click instead
+- The app may not appear around the system tray icon. Enable `Manual window positioning` (see [Window position is misaligned](#window-position-is-misaligned)) to place the window where you want it.
+- Tray icon left-click behavior depends on the SNI host (the desktop's tray implementation). On Ubuntu GNOME with the default `ubuntu-appindicators` extension, single left-click opens the context menu and **double-click** is required to toggle the window. On hosts that fully implement the SNI `Activate` method (e.g. KDE Plasma, sway/waybar), single left-click should toggle the window directly. Use the `Show` menu item as a universal fallback.
 - The app never disconnects the devices internally because call of `disconnect_device()` API on Linux causes OS-level disconnection. Unused connections might remain after the app exits.
 
 ## Troubleshooting
