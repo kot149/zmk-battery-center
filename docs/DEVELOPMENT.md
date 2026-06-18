@@ -206,6 +206,8 @@ Core scenarios:
 
 #### Layer 2: Desktop integration E2E on real Tauri shell (scheduled or manual)
 
+> **Status: planned, not implemented.** Nothing in this repository runs Layer 2 today — this section is a design sketch. Layer 1 (mocked Playwright E2E in `e2e/`) is the only implemented E2E layer.
+
 Purpose: cover integration points that browser-only tests cannot validate.
 
 Recommended stack:
