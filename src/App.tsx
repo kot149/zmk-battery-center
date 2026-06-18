@@ -4,7 +4,6 @@ import {
 	getBatteryInfo,
 	startBatteryNotificationMonitor,
 	stopBatteryNotificationMonitor,
-	stopAllBatteryMonitors,
 	BleDeviceInfo,
 	BatteryInfoNotificationEvent,
 	BatteryMonitorStatusEvent,
@@ -15,8 +14,6 @@ import {
 	useCallback,
 	useRef,
 	useMemo,
-	type Dispatch,
-	type SetStateAction,
 } from "react";
 import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
@@ -26,11 +23,10 @@ import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
 import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
 import Modal from "./components/Modal";
 import { useConfigContext } from "@/context/ConfigContext";
-import { load, getStorePath } from '@/utils/storage';
 import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
 import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
-import { fireAndForget, sleep, withTimeout } from "./utils/common";
+import { fireAndForget, withTimeout } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
@@ -38,13 +34,13 @@ import { emit, listen } from '@tauri-apps/api/event';
 import { appendBatteryHistory } from '@/utils/batteryHistory';
 import {
 	upsertBatteryInfo,
-	mergeBatteryInfos,
-	mapIsLowBattery,
-	normalizeLoadedDevices,
 	getRegisteredDeviceDisplayName,
 	type RegisteredDevice,
 } from "@/utils/appHelpers";
 import { syncTrayBatteryIcon } from "@/utils/trayBatteryIcon";
+import { useRegisteredDevices, collapseIfDisconnected, expandIfConnected } from "@/hooks/useRegisteredDevices";
+import { useNotificationMonitors } from "@/hooks/useNotificationMonitors";
+import { useBatteryPolling } from "@/hooks/useBatteryPolling";
 
 export type { RegisteredDevice };
 
@@ -57,99 +53,31 @@ enum State {
 	chart = 'chart',
 }
 
-const DEVICES_FILENAME = 'devices.json';
 const DEVICE_FETCH_TIMEOUT_MS = 20_000;
-
-async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
-	const storePath = await getStorePath(DEVICES_FILENAME);
-	const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
-	const raw = await deviceStore.get<unknown>("devices");
-	const devices = normalizeLoadedDevices(raw);
-	return devices;
-}
 
 const NOOP = () => {};
 
-function collapseIfDisconnected(device: RegisteredDevice, shouldCollapse: boolean): RegisteredDevice {
-	if (!shouldCollapse || !device.isDisconnected || device.isCollapsed) {
-		return device;
-	}
-	return { ...device, isCollapsed: true };
-}
-
-function expandIfConnected(device: RegisteredDevice, shouldExpand: boolean): RegisteredDevice {
-	if (!shouldExpand || device.isDisconnected || !device.isCollapsed) {
-		return device;
-	}
-	return { ...device, isCollapsed: false };
-}
-
 function App() {
-	const [registeredDevices, setRegisteredDevices] = useState<RegisteredDevice[] | undefined>(undefined);
-	const isDeviceLoaded = registeredDevices !== undefined;
-	const deviceList = useMemo(
-		() => registeredDevices ?? [],
-		[registeredDevices],
-	);
+	const {
+		registeredDevices,
+		isDeviceLoaded,
+		deviceList,
+		registeredDevicesRef,
+		registeredDeviceIds,
+		registeredDeviceIdsKey,
+		commitRegisteredDevices,
+		setRegisteredDevicesForPanel,
+	} = useRegisteredDevices();
+
 	const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
 	const [error, setError] = useState("");
 	const { config, isConfigLoaded } = useConfigContext();
-	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
-	const registeredDevicesRef = useRef<RegisteredDevice[]>(deviceList);
-	useEffect(() => {
-		registeredDevicesRef.current = deviceList;
-	}, [deviceList]);
-
-	const persistRegisteredDevices = useCallback(async (devices: RegisteredDevice[]) => {
-		const storePath = await getStorePath(DEVICES_FILENAME);
-		const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
-		await deviceStore.set("devices", devices);
-		logger.info('Saved registered devices');
-	}, []);
-
-	const commitRegisteredDevices = useCallback(
-		(recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => {
-			setRegisteredDevices((prev) => {
-				if (prev === undefined) {
-					return prev;
-				}
-				const next = recipe(prev);
-				fireAndForget(persistRegisteredDevices(next), "Failed to persist registered devices");
-				return next;
-			});
-		},
-		[persistRegisteredDevices],
-	);
-
-	const setRegisteredDevicesForPanel = useCallback<
-		Dispatch<SetStateAction<RegisteredDevice[]>>
-	>(
-		(action) => {
-			commitRegisteredDevices((prev) =>
-				typeof action === "function"
-					? (action as (p: RegisteredDevice[]) => RegisteredDevice[])(prev)
-					: action,
-			);
-		},
-		[commitRegisteredDevices],
-	);
 
 	const [state, setState] = useState<State>(State.main);
 	const [panelLayoutRevision, setPanelLayoutRevision] = useState(0);
 	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
 	const isNotificationMonitorMode = !isPollingMode;
 
-	const registeredDeviceIds = useMemo(
-		() => new Set(deviceList.map(d => d.id)),
-		[deviceList]
-	);
-	// Stable string key that changes only when the set of device IDs changes.
-	// Used as a dependency for syncNotificationMonitors so that battery-level
-	// or connection-status updates don't re-trigger the effect.
-	const registeredDeviceIdsKey = useMemo(
-		() => [...registeredDeviceIds].sort().join(','),
-		[registeredDeviceIds]
-	);
 	const availableDevices = useMemo(
 		() => devices.filter(d => !registeredDeviceIds.has(d.id)),
 		[devices, registeredDeviceIds]
@@ -188,31 +116,6 @@ function App() {
 		}, 60);
 		return () => clearTimeout(id);
 	}, [registeredDevices, config.trayIconComponents, isConfigLoaded]);
-
-	// Load saved devices
-	useEffect(() => {
-		let cancelled = false;
-		const fetchRegisteredDevices = async () => {
-			const devices = await loadDevicesFromFile();
-			if (cancelled) {
-				return;
-			}
-			setRegisteredDevices((prev) => {
-				// Avoid overwriting user-visible state (e.g. after remove) when a
-				// slower load completes — common with StrictMode double-mount or
-				// store I/O contending with notification-mode persistence.
-				if (prev !== undefined) {
-					return prev;
-				}
-				return devices.map(d => ({ ...d, isDisconnected: true }));
-			});
-			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
-		};
-		fireAndForget(fetchRegisteredDevices(), "Failed to load registered devices");
-		return () => {
-			cancelled = true;
-		};
-	}, []);
 
 	async function fetchDevices() {
 		setState(State.fetchingDevices);
@@ -283,99 +186,17 @@ function App() {
 		}
 	};
 
-	const pushNotificationRef = useRef(config.pushNotification);
-	const pushNotificationWhenRef = useRef(config.pushNotificationWhen);
-	const autoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
-	useEffect(() => {
-		pushNotificationRef.current = config.pushNotification;
-		pushNotificationWhenRef.current = config.pushNotificationWhen;
-		autoCollapseDisconnectedDevicesRef.current = config.autoCollapseDisconnectedDevices;
-	}, [config.pushNotification, config.pushNotificationWhen, config.autoCollapseDisconnectedDevices]);
-
-	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
-		const isDisconnectedPrev = device.isDisconnected;
-		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos);
-
-		let attempts = 0;
-		const maxAttempts = isDisconnectedPrev ? 1 : 3;
-
-		while (attempts < maxAttempts) {
-			logger.info(`Updating battery info for: ${device.id} (attempt ${attempts + 1} of ${maxAttempts})`);
-			try {
-				const info = await getBatteryInfo(device.id);
-				const infoArray = Array.isArray(info) ? info : [info];
-				commitRegisteredDevices(prev => prev.map(d => {
-					if (d.id !== device.id) return d;
-					return expandIfConnected(
-						{ ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false },
-						autoCollapseDisconnectedDevicesRef.current,
-					);
-				}));
-
-				// Record battery history
-				for (const info of infoArray) {
-					const batteryLevel = info.battery_level;
-					if (batteryLevel !== null) {
-						fireAndForget((async () => {
-							await appendBatteryHistory(
-								device.name,
-								device.id,
-								info.user_description ?? 'Central',
-								batteryLevel,
-							);
-							await emit('battery-history-updated', { deviceId: device.id });
-						})(), `Failed to update battery history for ${device.id}`);
-					}
-				}
-
-				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
-					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);
-				}
-
-				if(pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.LowBattery]){
-					const isLowBattery = mapIsLowBattery(infoArray);
-					const displayName = getRegisteredDeviceDisplayName(device);
-					for(let i = 0; i < isLowBattery.length && i < isLowBatteryPrev.length; i++){
-						if(!isLowBatteryPrev[i] && isLowBattery[i]){
-							fireAndForget(
-								sendNotification(`${displayName}${
-									infoArray.length >= 2 ?
-										' ' + (infoArray[i].user_description ?? 'Central')
-										: ''
-								} has low battery.`),
-								`Failed to send low battery notification for ${device.id}`,
-							);
-							logger.info(`${displayName} has low battery.`);
-						}
-					}
-				}
-
-				return;
-			} catch {
-				attempts++;
-				if (attempts >= maxAttempts) {
-					commitRegisteredDevices(prev => prev.map(d => {
-						if (d.id !== device.id) {
-							return d;
-						}
-						return collapseIfDisconnected(
-							{ ...d, isDisconnected: true },
-							autoCollapseDisconnectedDevicesRef.current,
-						);
-					}));
-
-					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
-						fireAndForget(
-							sendNotification(`${getRegisteredDeviceDisplayName(device)} has been disconnected.`),
-							`Failed to send disconnected notification for ${device.id}`,
-						);
-						return;
-					}
-				}
-			}
-			await sleep(500);
-		}
-	}, [commitRegisteredDevices]);
+	const { updateBatteryInfo, autoCollapseDisconnectedDevicesRef } = useBatteryPolling({
+		isPollingMode,
+		isConfigLoaded,
+		isDeviceLoaded,
+		fetchInterval: config.fetchInterval,
+		registeredDevicesRef,
+		commitRegisteredDevices,
+		pushNotification: config.pushNotification,
+		pushNotificationWhen: config.pushNotificationWhen,
+		autoCollapseDisconnectedDevices: config.autoCollapseDisconnectedDevices,
+	});
 
 	const handleCloseModal = () => {
 		setState(State.main);
@@ -541,140 +362,15 @@ function App() {
 		};
 	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
 
-	useEffect(() => {
-		if (!isConfigLoaded || !isDeviceLoaded) {
-			return;
-		}
-
-		let isCancelled = false;
-
-		const syncNotificationMonitors = async () => {
-			const active = activeNotificationMonitorsRef.current;
-			// Derive the desired set from the stable key so that this effect
-			// does NOT re-run when battery levels or connection status change.
-			const desiredIds = registeredDeviceIdsKey ? registeredDeviceIdsKey.split(',') : [];
-			const desired = isNotificationMonitorMode
-				? new Set(desiredIds)
-				: new Set<string>();
-
-			const idsToStop = [...active].filter(id => !desired.has(id));
-			for (const id of idsToStop) {
-				try {
-					await stopBatteryNotificationMonitor(id);
-				} catch (e) {
-					logger.warn(`Failed to stop notification monitor for ${id}: ${String(e)}`);
-				}
-				active.delete(id);
-			}
-
-			if (!isNotificationMonitorMode) {
-				await stopAllBatteryMonitors();
-				return;
-			}
-
-			const monitorsToStart = [...desired].filter(id => !active.has(id));
-			for (const id of monitorsToStart) {
-				if (isCancelled) break;
-				try {
-					const info = await startBatteryNotificationMonitor(id);
-					if (isCancelled) {
-						await stopBatteryNotificationMonitor(id);
-						continue;
-					}
-					active.add(id);
-					const infoArray = Array.isArray(info) ? info : [info];
-					// Empty array means the device was not connected at startup and a
-					// connection watcher was launched. Keep isDisconnected:true until
-					// the watcher emits a battery-info-notification event on connection.
-					if (infoArray.length > 0) {
-						commitRegisteredDevices(prev => prev.map(device => device.id === id
-							? expandIfConnected(
-								{ ...device, batteryInfos: mergeBatteryInfos(device.batteryInfos, infoArray), isDisconnected: false },
-								autoCollapseDisconnectedDevicesRef.current,
-							)
-							: device
-						));
-					} else {
-						commitRegisteredDevices(prev => prev.map(device => device.id === id
-							? collapseIfDisconnected(
-								{ ...device, isDisconnected: true },
-								autoCollapseDisconnectedDevicesRef.current,
-							)
-							: device
-						));
-					}
-				} catch {
-					commitRegisteredDevices(prev => prev.map(device => {
-						if (device.id !== id || device.isDisconnected) {
-							return device;
-						}
-						return collapseIfDisconnected(
-							{ ...device, isDisconnected: true },
-							autoCollapseDisconnectedDevicesRef.current,
-						);
-					}));
-				}
-			}
-		};
-
-		fireAndForget(syncNotificationMonitors(), "Failed to synchronize battery notification monitors");
-
-		return () => {
-			isCancelled = true;
-		};
-	}, [
-		registeredDeviceIdsKey,
+	const { activeNotificationMonitorsRef } = useNotificationMonitors({
 		isNotificationMonitorMode,
 		isConfigLoaded,
 		isDeviceLoaded,
-		config.autoCollapseDisconnectedDevices,
+		registeredDeviceIdsKey,
+		autoCollapseDisconnectedDevicesRef,
 		commitRegisteredDevices,
-	]);
+	});
 
-	useEffect(() => {
-		const activeMonitors = activeNotificationMonitorsRef.current;
-		return () => {
-			const activeMonitorIds = [...activeMonitors.keys()];
-			activeMonitors.clear();
-			for (const id of activeMonitorIds) {
-				fireAndForget(
-					stopBatteryNotificationMonitor(id),
-					`Failed to stop battery notification monitor for ${id}`,
-				);
-			}
-		};
-	}, []);
-
-	// Polling: use registeredDevicesRef so this effect doesn't re-run on every
-	// device update (which would cause an infinite loop).
-	useEffect(() => {
-		if (!isPollingMode || !isConfigLoaded || !isDeviceLoaded) {
-			return;
-		}
-
-		let isUnmounted = false;
-		let isPollInFlight = false;
-
-		const runPollCycle = () => {
-			if (isUnmounted || isPollInFlight) return;
-			isPollInFlight = true;
-			fireAndForget(
-				Promise.all(registeredDevicesRef.current.map(updateBatteryInfo))
-					.finally(() => { isPollInFlight = false; }),
-				"Polling cycle failed",
-			);
-		};
-
-		// Run the first poll immediately without waiting for the interval
-		runPollCycle();
-
-		const interval = setInterval(runPollCycle, config.fetchInterval as number);
-
-		return () => {
-			isUnmounted = true;
-			clearInterval(interval);
-		};
-	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, config.fetchInterval, updateBatteryInfo]);
 
 	const handleExitSettings = useCallback(() => {
 		setState(State.main);
