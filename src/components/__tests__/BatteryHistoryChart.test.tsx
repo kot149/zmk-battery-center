@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { RegisteredDevice } from "@/utils/appHelpers";
 import BatteryHistoryChart, {
+	findRowIndexAtOrBefore,
 	getXAxisConfig,
 	MIN_X_AXIS_TICKS,
 	MAX_X_AXIS_TICKS,
@@ -466,5 +467,78 @@ describe("getXAxisConfig", () => {
 		expect(result.xTicks).toHaveLength(6);
 		expect(result.xTicks.length).toBeGreaterThanOrEqual(MIN_X_AXIS_TICKS);
 		expect(result.xTicks.length).toBeLessThanOrEqual(MAX_X_AXIS_TICKS);
+	});
+});
+
+describe("findRowIndexAtOrBefore", () => {
+	it("returns -1 for an empty array", () => {
+		expect(findRowIndexAtOrBefore([], 100)).toBe(-1);
+	});
+
+	it("returns -1 when target is before all rows", () => {
+		const rows: ChartRow[] = [{ timestamp: 10 }, { timestamp: 20 }];
+		expect(findRowIndexAtOrBefore(rows, 5)).toBe(-1);
+	});
+
+	it("returns the exact index on an exact match", () => {
+		const rows: ChartRow[] = [{ timestamp: 10 }, { timestamp: 20 }, { timestamp: 30 }];
+		expect(findRowIndexAtOrBefore(rows, 20)).toBe(1);
+	});
+
+	it("returns the earlier index when target is between two rows", () => {
+		const rows: ChartRow[] = [{ timestamp: 10 }, { timestamp: 20 }, { timestamp: 30 }];
+		expect(findRowIndexAtOrBefore(rows, 25)).toBe(1);
+	});
+
+	it("returns the last index when target is after all rows", () => {
+		const rows: ChartRow[] = [{ timestamp: 10 }, { timestamp: 20 }, { timestamp: 30 }];
+		expect(findRowIndexAtOrBefore(rows, 100)).toBe(2);
+	});
+});
+
+describe("Tooltip value resolution", () => {
+	const rows: ChartRow[] = [
+		{ timestamp: 100, Left: 80, Right: 90 },
+		{ timestamp: 200, Left: 70 },
+		{ timestamp: 300, Left: 60, Right: 50 },
+	];
+
+	function resolveValue(recordedData: ChartRow[], labelTimestamp: number, allKeys: string[]) {
+		const atOrBefore = findRowIndexAtOrBefore(recordedData, labelTimestamp);
+		const row = atOrBefore >= 0 && recordedData[atOrBefore].timestamp === labelTimestamp
+			? recordedData[atOrBefore] : undefined;
+		const fallbackStartIndex = atOrBefore;
+
+		return (key: string): number | undefined => {
+			if (row?.[key] != null) return row[key] as number;
+			for (let j = fallbackStartIndex; j >= 0; j--) {
+				if (recordedData[j][key] != null) return recordedData[j][key] as number;
+			}
+			return undefined;
+		};
+	}
+
+	it("returns exact values for a timestamp with all keys present", () => {
+		const resolve = resolveValue(rows, 100, ["Left", "Right"]);
+		expect(resolve("Left")).toBe(80);
+		expect(resolve("Right")).toBe(90);
+	});
+
+	it("falls back to previous value when a key is missing in the exact row", () => {
+		const resolve = resolveValue(rows, 200, ["Left", "Right"]);
+		expect(resolve("Left")).toBe(70);
+		expect(resolve("Right")).toBe(90);
+	});
+
+	it("returns undefined for a non-exact timestamp with no prior data", () => {
+		const resolve = resolveValue(rows, 50, ["Left", "Right"]);
+		expect(resolve("Left")).toBeUndefined();
+		expect(resolve("Right")).toBeUndefined();
+	});
+
+	it("uses at-or-before fallback for a timestamp between rows", () => {
+		const resolve = resolveValue(rows, 250, ["Left", "Right"]);
+		expect(resolve("Left")).toBe(70);
+		expect(resolve("Right")).toBe(90);
 	});
 });

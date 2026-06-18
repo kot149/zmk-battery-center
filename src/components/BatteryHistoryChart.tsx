@@ -96,6 +96,15 @@ export function formatXTick(ts: number, rangeMs: number): string {
 	return d.toLocaleDateString([], { month: "numeric", day: "numeric" });
 }
 
+export function findRowIndexAtOrBefore(rows: ChartRow[], target: number): number {
+	let lo = 0, hi = rows.length - 1, ans = -1;
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		if (rows[mid].timestamp <= target) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+	}
+	return ans;
+}
+
 function formatTooltipLabel(ts: number): string {
 	const d = new Date(ts);
 	return d.toLocaleString([], {
@@ -379,13 +388,21 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		[device.batteryPartLabels],
 	);
 
+	const smoothedByKey = useMemo<Map<string, BatteryHistoryRecord[]>>(() => {
+		const out = new Map<string, BatteryHistoryRecord[]>();
+		for (const key of allKeys) {
+			const raw = grouped.get(key) ?? [];
+			out.set(key, smoothingWindow > 0 ? smooth(raw, smoothingWindow) : raw);
+		}
+		return out;
+	}, [grouped, allKeys, smoothingWindow]);
+
 	const recordedData = useMemo<ChartRow[]>(() => {
 		const now = Date.now();
 		let cutoff: number;
 		let ceiling: number | undefined;
 
 		if (rangeMs === -1 && customRange) {
-			// Custom range
 			cutoff = customRange.start.getTime();
 			ceiling = customRange.end.getTime();
 		} else if (rangeMs > 0) {
@@ -396,12 +413,10 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 			ceiling = undefined;
 		}
 
-		// Collect every unique timestamp across all parts
 		const tsMap = new Map<number, ChartRow>();
 
 		for (const key of allKeys) {
-			const raw = grouped.get(key) ?? [];
-			const smoothed = smoothingWindow > 0 ? smooth(raw, smoothingWindow) : raw;
+			const smoothed = smoothedByKey.get(key) ?? [];
 			for (const r of smoothed) {
 				const ts = new Date(r.timestamp).getTime();
 				if (ts < cutoff) continue;
@@ -414,7 +429,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		}
 
 		return [...tsMap.values()].sort((a, b) => a.timestamp - b.timestamp);
-	}, [grouped, allKeys, rangeMs, customRange, smoothingWindow]);
+	}, [smoothedByKey, allKeys, rangeMs, customRange]);
 
 	const now = useMemo(() => Date.now(), [recordedData]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -601,21 +616,13 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 							<Tooltip
 								content={({ active, payload, label }) => {
 									if (!active && (!payload || payload.length === 0)) return null;
-									// Find the row matching the current label to show all parts
 									const labelTimestamp = typeof label === "number" ? label : Number(label);
-									const rowIdx = recordedData.findIndex((r) => r.timestamp === labelTimestamp);
-									const row = rowIdx >= 0 ? recordedData[rowIdx] : undefined;
+									const atOrBefore = findRowIndexAtOrBefore(recordedData, labelTimestamp);
+									const row = atOrBefore >= 0 && recordedData[atOrBefore].timestamp === labelTimestamp
+										? recordedData[atOrBefore] : undefined;
 									const hasRecordedValueAtLabel = row != null && allKeys.some((key) => row[key] != null);
 									if (!hasRecordedValueAtLabel) return null;
-									let fallbackStartIndex = rowIdx;
-									if (fallbackStartIndex < 0) {
-										for (let i = recordedData.length - 1; i >= 0; i--) {
-											if (recordedData[i].timestamp <= labelTimestamp) {
-												fallbackStartIndex = i;
-												break;
-											}
-										}
-									}
+									const fallbackStartIndex = atOrBefore;
 
 									// For each key, find the last known value if the current row doesn't have it
 									const resolveValue = (key: string): number | undefined => {
