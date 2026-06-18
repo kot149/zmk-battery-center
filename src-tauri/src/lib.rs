@@ -1,4 +1,5 @@
 use ansi_term::Color;
+use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 
 mod ble;
@@ -20,6 +21,11 @@ const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Warn;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    {
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(
@@ -73,8 +79,15 @@ pub fn run() {
             history::append_battery_history,
             history::read_battery_history,
             tray::update_tray_battery_icon,
+            tray::update_manual_positioning,
         ])
         .setup(|app| {
+            app.manage(tray::TrayState {
+                manual_positioning: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(target_os = "linux")]
+                tray_handle: std::sync::Mutex::new(None),
+            });
+
             tray::init_tray(app.handle().clone());
 
             #[cfg(target_os = "macos")]
