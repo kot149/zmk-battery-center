@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { getBatteryInfo, startBatteryNotificationMonitor } from "@/utils/ble";
 import { defaultConfig, FETCH_INTERVAL_AUTO } from "@/utils/config";
+import { sendNotification } from "@/utils/notification";
 
 const { mockMoveWindowToTrayCenter, mockResizeWindowToContent } = vi.hoisted(() => ({
 	mockMoveWindowToTrayCenter: vi.fn(async () => undefined),
@@ -736,6 +737,105 @@ describe("App", () => {
 
 		await waitFor(() => {
 			expect(mockResizeWindowToContent).toHaveBeenCalled();
+		});
+	});
+
+	describe("polling overlap guard", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("skips a poll cycle when the previous one is still in flight", async () => {
+			const fetchInterval = 5_000;
+			mockedConfig = { ...defaultConfig, fetchInterval };
+
+			let resolvePoll!: (value: { battery_level: number; user_description: string }[]) => void;
+			vi.mocked(getBatteryInfo).mockImplementation(
+				() => new Promise((resolve) => { resolvePoll = resolve; }),
+			);
+
+			await act(async () => {
+				render(<App />);
+			});
+
+			await act(async () => {
+				resolveDeviceStoreGets([
+					{
+						id: "kbd-1",
+						name: "MockBoard One",
+						isDisconnected: false,
+						isCollapsed: false,
+						batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+					},
+				]);
+			});
+
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				vi.advanceTimersByTime(fetchInterval);
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				vi.advanceTimersByTime(fetchInterval);
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				resolvePoll([{ battery_level: 90, user_description: "Central" }]);
+			});
+
+			await act(async () => {
+				vi.advanceTimersByTime(fetchInterval);
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(2);
+		});
+
+		it("does not cause unhandled rejection when getBatteryInfo and sendNotification both reject", async () => {
+			const fetchInterval = 5_000;
+			mockedConfig = {
+				...defaultConfig,
+				fetchInterval,
+				pushNotification: true,
+				pushNotificationWhen: { Disconnected: true, LowBattery: true },
+			};
+
+			vi.mocked(getBatteryInfo).mockRejectedValue(new Error("BLE error"));
+			vi.mocked(sendNotification).mockRejectedValue(new Error("Notification error"));
+
+			await act(async () => {
+				render(<App />);
+			});
+
+			await act(async () => {
+				resolveDeviceStoreGets([
+					{
+						id: "kbd-1",
+						name: "MockBoard One",
+						isDisconnected: false,
+						isCollapsed: false,
+						batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+					},
+				]);
+			});
+
+			// Advance through retry sleeps (3 attempts × 500ms)
+			for (let i = 0; i < 3; i++) {
+				await act(async () => {
+					vi.advanceTimersByTime(500);
+				});
+			}
+
+			await act(async () => {
+				await Promise.resolve();
+			});
+
+			expect(screen.getByLabelText("Disconnected")).toBeTruthy();
 		});
 	});
 });

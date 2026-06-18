@@ -365,7 +365,10 @@ function App() {
 					}));
 
 					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
-						await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been disconnected.`);
+						fireAndForget(
+							sendNotification(`${getRegisteredDeviceDisplayName(device)} has been disconnected.`),
+							`Failed to send disconnected notification for ${device.id}`,
+						);
 						return;
 					}
 				}
@@ -650,14 +653,22 @@ function App() {
 		}
 
 		let isUnmounted = false;
+		let isPollInFlight = false;
+
+		const runPollCycle = () => {
+			if (isUnmounted || isPollInFlight) return;
+			isPollInFlight = true;
+			fireAndForget(
+				Promise.all(registeredDevicesRef.current.map(updateBatteryInfo))
+					.finally(() => { isPollInFlight = false; }),
+				"Polling cycle failed",
+			);
+		};
 
 		// Run the first poll immediately without waiting for the interval
-		Promise.all(registeredDevicesRef.current.map(updateBatteryInfo));
+		runPollCycle();
 
-		const interval = setInterval(() => {
-			if (isUnmounted) return;
-			Promise.all(registeredDevicesRef.current.map(updateBatteryInfo));
-		}, config.fetchInterval as number);
+		const interval = setInterval(runPollCycle, config.fetchInterval as number);
 
 		return () => {
 			isUnmounted = true;
