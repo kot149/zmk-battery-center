@@ -30,7 +30,8 @@ export function notifyBatteryEdgeTransitions({
 		notificationType: NotificationType,
 		prev: boolean[],
 		curr: boolean[],
-		label: string,
+		verb: string,
+		threshold: number,
 	) => {
 		if (!pushNotification || !pushNotificationWhen[notificationType]) {
 			return;
@@ -40,12 +41,12 @@ export function notifyBatteryEdgeTransitions({
 			const suffix = newBatteryInfos.length >= 2
 				? ' ' + (newBatteryInfos[i].user_description ?? 'Central')
 				: '';
-			const message = `${deviceDisplayName}${suffix} has ${label} battery.`;
+			const message = `${deviceDisplayName}${suffix} battery ${verb} ${threshold}%.`;
 			fireAndForget(
 				sendNotification(message),
-				`Failed to send ${label} battery notification for ${deviceId}`,
+				`Failed to send battery notification for ${deviceId}`,
 			);
-			logger.info(`${deviceDisplayName} has ${label} battery.`);
+			logger.info(message);
 		}
 	};
 
@@ -53,12 +54,14 @@ export function notifyBatteryEdgeTransitions({
 		NotificationType.LowBattery,
 		mapIsLowBattery(prevBatteryInfos, lowBatteryThreshold),
 		mapIsLowBattery(newBatteryInfos, lowBatteryThreshold),
-		'low',
+		'dropped below',
+		lowBatteryThreshold,
 	);
 	notify(
 		NotificationType.HighBattery,
 		mapIsHighBattery(prevBatteryInfos, highBatteryThreshold),
 		mapIsHighBattery(newBatteryInfos, highBatteryThreshold),
-		'high',
+		'reached',
+		highBatteryThreshold,
 	);
 }
