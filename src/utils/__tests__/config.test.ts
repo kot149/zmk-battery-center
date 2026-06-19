@@ -68,6 +68,7 @@ describe("config utils", () => {
 			autoStart: true,
 			fetchInterval: 60_000,
 			pushNotificationWhen: {
+				...defaultConfig.pushNotificationWhen,
 				low_battery: false,
 				disconnected: true,
 				connected: false,
@@ -176,6 +177,66 @@ describe("config utils", () => {
 		expect(enable).toHaveBeenCalledTimes(1);
 		expect(mockRequestNotificationPermission).toHaveBeenCalledTimes(1);
 		expect(mockLoggerInfo).toHaveBeenCalledWith("Notification permission granted");
+	});
+
+	it("clampBatteryThreshold clamps and rounds out-of-range values", async () => {
+		const { clampBatteryThreshold } = await import("../config");
+		expect(clampBatteryThreshold(0, 20)).toBe(1);
+		expect(clampBatteryThreshold(100, 95)).toBe(99);
+		expect(clampBatteryThreshold(50.6, 20)).toBe(51);
+		expect(clampBatteryThreshold(Number.NaN, 30)).toBe(30);
+		expect(clampBatteryThreshold(Number.POSITIVE_INFINITY, 30)).toBe(30);
+	});
+
+	it("clampBatteryThreshold honors custom min/max bounds", async () => {
+		const { clampBatteryThreshold } = await import("../config");
+		expect(clampBatteryThreshold(50, 20, { max: 40 })).toBe(40);
+		expect(clampBatteryThreshold(10, 80, { min: 50 })).toBe(50);
+		expect(clampBatteryThreshold(60, 20, { min: 30, max: 70 })).toBe(60);
+	});
+
+	it("loadSavedConfig clamps stored thresholds and falls back to defaults", async () => {
+		mockStore.get.mockResolvedValue({
+			lowBatteryThreshold: 0,
+			highBatteryThreshold: 250,
+		});
+
+		const { loadSavedConfig } = await import("../config");
+		const loaded = await loadSavedConfig();
+
+		expect(loaded.lowBatteryThreshold).toBe(1);
+		expect(loaded.highBatteryThreshold).toBe(99);
+	});
+
+	it("loadSavedConfig falls back to defaults when stored thresholds overlap", async () => {
+		mockStore.get.mockResolvedValue({
+			lowBatteryThreshold: 80,
+			highBatteryThreshold: 20,
+		});
+
+		const { loadSavedConfig, defaultConfig } = await import("../config");
+		const loaded = await loadSavedConfig();
+
+		expect(loaded.lowBatteryThreshold).toBe(defaultConfig.lowBatteryThreshold);
+		expect(loaded.highBatteryThreshold).toBe(defaultConfig.highBatteryThreshold);
+	});
+
+	it("loadSavedConfig deep-merges pushNotificationWhen so missing keys keep defaults", async () => {
+		mockStore.get.mockResolvedValue({
+			pushNotificationWhen: {
+				low_battery: false,
+				connected: false,
+				disconnected: false,
+			},
+		});
+
+		const { loadSavedConfig, defaultConfig } = await import("../config");
+		const loaded = await loadSavedConfig();
+
+		expect(loaded.pushNotificationWhen.low_battery).toBe(false);
+		expect(loaded.pushNotificationWhen.high_battery).toBe(defaultConfig.pushNotificationWhen.high_battery);
+		expect(loaded.pushNotificationWhen.connected).toBe(false);
+		expect(loaded.pushNotificationWhen.disconnected).toBe(false);
 	});
 
 	it("loadSavedConfig reuses config store so load is only invoked once", async () => {

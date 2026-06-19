@@ -6,9 +6,9 @@ import { emit } from "@tauri-apps/api/event";
 import { appendBatteryHistory } from "@/utils/batteryHistory";
 import { sendNotification } from "@/utils/notification";
 import { NotificationType } from "@/utils/config";
+import { notifyBatteryEdgeTransitions } from "@/utils/batteryEdgeNotification";
 import {
 	mergeBatteryInfos,
-	mapIsLowBattery,
 	getRegisteredDeviceDisplayName,
 	type RegisteredDevice,
 } from "@/utils/appHelpers";
@@ -23,6 +23,8 @@ interface UseBatteryPollingOptions {
 	commitRegisteredDevices: (recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => void;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
+	lowBatteryThreshold: number;
+	highBatteryThreshold: number;
 	autoCollapseDisconnectedDevices: boolean;
 }
 
@@ -35,20 +37,25 @@ export function useBatteryPolling({
 	commitRegisteredDevices,
 	pushNotification,
 	pushNotificationWhen,
+	lowBatteryThreshold,
+	highBatteryThreshold,
 	autoCollapseDisconnectedDevices,
 }: UseBatteryPollingOptions) {
 	const pushNotificationRef = useRef(pushNotification);
 	const pushNotificationWhenRef = useRef(pushNotificationWhen);
+	const lowBatteryThresholdRef = useRef(lowBatteryThreshold);
+	const highBatteryThresholdRef = useRef(highBatteryThreshold);
 	const autoCollapseDisconnectedDevicesRef = useRef(autoCollapseDisconnectedDevices);
 	useEffect(() => {
 		pushNotificationRef.current = pushNotification;
 		pushNotificationWhenRef.current = pushNotificationWhen;
+		lowBatteryThresholdRef.current = lowBatteryThreshold;
+		highBatteryThresholdRef.current = highBatteryThreshold;
 		autoCollapseDisconnectedDevicesRef.current = autoCollapseDisconnectedDevices;
-	}, [pushNotification, pushNotificationWhen, autoCollapseDisconnectedDevices]);
+	}, [pushNotification, pushNotificationWhen, lowBatteryThreshold, highBatteryThreshold, autoCollapseDisconnectedDevices]);
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
-		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos);
 
 		let attempts = 0;
 		const maxAttempts = isDisconnectedPrev ? 1 : 3;
@@ -85,23 +92,16 @@ export function useBatteryPolling({
 					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);
 				}
 
-				if(pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.LowBattery]){
-					const isLowBattery = mapIsLowBattery(infoArray);
-					const displayName = getRegisteredDeviceDisplayName(device);
-					for(let i = 0; i < isLowBattery.length && i < isLowBatteryPrev.length; i++){
-						if(!isLowBatteryPrev[i] && isLowBattery[i]){
-							fireAndForget(
-								sendNotification(`${displayName}${
-									infoArray.length >= 2 ?
-										' ' + (infoArray[i].user_description ?? 'Central')
-										: ''
-								} has low battery.`),
-								`Failed to send low battery notification for ${device.id}`,
-							);
-							logger.info(`${displayName} has low battery.`);
-						}
-					}
-				}
+				notifyBatteryEdgeTransitions({
+					deviceDisplayName: getRegisteredDeviceDisplayName(device),
+					deviceId: device.id,
+					prevBatteryInfos: device.batteryInfos,
+					newBatteryInfos: infoArray,
+					lowBatteryThreshold: lowBatteryThresholdRef.current,
+					highBatteryThreshold: highBatteryThresholdRef.current,
+					pushNotification: pushNotificationRef.current,
+					pushNotificationWhen: pushNotificationWhenRef.current,
+				});
 
 				return;
 			} catch {

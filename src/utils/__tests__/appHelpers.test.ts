@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeBatteryInfos, normalizeLoadedDevices, upsertBatteryInfo, getRegisteredDeviceDisplayName } from "../appHelpers";
+import { mapIsHighBattery, mapIsLowBattery, mergeBatteryInfos, normalizeLoadedDevices, upsertBatteryInfo, getRegisteredDeviceDisplayName } from "../appHelpers";
 
 describe("App helpers", () => {
 	describe("getRegisteredDeviceDisplayName", () => {
@@ -12,6 +12,35 @@ describe("App helpers", () => {
 			expect(getRegisteredDeviceDisplayName({ name: "BLE", displayName: "  " })).toBe("BLE");
 		});
 	});
+	describe("mapIsLowBattery", () => {
+		it("marks levels at or below threshold as low", () => {
+			const infos = [
+				{ battery_level: 30, user_description: "Left" },
+				{ battery_level: 20, user_description: "Right" },
+				{ battery_level: 19, user_description: "Central" },
+				{ battery_level: null, user_description: "Aux" },
+			];
+			expect(mapIsLowBattery(infos, 20)).toEqual([false, true, true, false]);
+		});
+
+		it("respects a custom threshold", () => {
+			const infos = [{ battery_level: 30, user_description: null }];
+			expect(mapIsLowBattery(infos, 50)).toEqual([true]);
+		});
+	});
+
+	describe("mapIsHighBattery", () => {
+		it("marks levels at or above threshold as high", () => {
+			const infos = [
+				{ battery_level: 94, user_description: "Left" },
+				{ battery_level: 95, user_description: "Right" },
+				{ battery_level: 100, user_description: "Central" },
+				{ battery_level: null, user_description: "Aux" },
+			];
+			expect(mapIsHighBattery(infos, 95)).toEqual([false, true, true, false]);
+		});
+	});
+
 	describe("upsertBatteryInfo", () => {
 		it("appends when user description is not present", () => {
 			const prev = [{ battery_level: 80, user_description: "Left" }];

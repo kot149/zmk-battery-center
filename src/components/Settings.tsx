@@ -1,6 +1,14 @@
 import React from "react";
 import Button from "./Button";
-import { FETCH_INTERVAL_AUTO, NotificationType, TrayIconComponent } from "../utils/config";
+import {
+	FETCH_INTERVAL_AUTO,
+	NotificationType,
+	TrayIconComponent,
+	MIN_BATTERY_THRESHOLD,
+	MAX_BATTERY_THRESHOLD,
+	clampBatteryThreshold,
+	defaultConfig,
+} from "../utils/config";
 import { useTheme, type Theme } from "@/context/theme-provider";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch"
@@ -34,6 +42,72 @@ interface SettingsScreenProps {
 const Dot = () => (
 	<span className="mr-1 font-bold">•</span>
 );
+
+interface BatteryThresholdInputProps {
+	value: number;
+	disabled: boolean;
+	disabledTitle?: string;
+	fallback: number;
+	min?: number;
+	max?: number;
+	onCommit: (value: number) => void;
+	ariaLabel: string;
+}
+
+function BatteryThresholdInput({
+	value,
+	disabled,
+	disabledTitle,
+	fallback,
+	min = MIN_BATTERY_THRESHOLD,
+	max = MAX_BATTERY_THRESHOLD,
+	onCommit,
+	ariaLabel,
+}: BatteryThresholdInputProps) {
+	const [draft, setDraft] = React.useState<string>(String(value));
+
+	React.useEffect(() => {
+		setDraft(String(value));
+	}, [value]);
+
+	const commit = () => {
+		if (draft.trim() === "") {
+			setDraft(String(value));
+			return;
+		}
+		const parsed = Number(draft);
+		const next = clampBatteryThreshold(parsed, fallback, { min, max });
+		setDraft(String(next));
+		if (next !== value) {
+			onCommit(next);
+		}
+	};
+
+	return (
+		<input
+			type="number"
+			min={min}
+			max={max}
+			step={1}
+			value={draft}
+			disabled={disabled}
+			aria-label={ariaLabel}
+			title={disabled ? disabledTitle : undefined}
+			onChange={e => setDraft(e.target.value)}
+			onBlur={commit}
+			onKeyDown={e => {
+				if (e.key === "Enter") {
+					e.currentTarget.blur();
+				}
+			}}
+			className={cn(
+				"mx-1 h-7 w-12 rounded border border-input bg-background px-1 text-center text-sm",
+				"focus:outline-none focus:ring-1 focus:ring-ring",
+				"disabled:cursor-not-allowed disabled:opacity-50",
+			)}
+		/>
+	);
+}
 
 const fetchIntervalOptions = [
 	{ label: 'Auto (experimental)', value: FETCH_INTERVAL_AUTO },
@@ -230,14 +304,55 @@ const Settings: React.FC<SettingsScreenProps> = ({
 						</div>
 						<ul className={`w-full space-y-0.5 pl-2 ${!config.pushNotification ? ' text-muted-foreground' : 'text-card-foreground'}`}>
 							<li className="flex items-center justify-between gap-3">
-								<div>
-									<Dot /> when battery level ≤ 20%
+								<div className="flex items-center gap-1">
+									<Dot /> when battery level ≤
+									<BatteryThresholdInput
+										value={config.lowBatteryThreshold}
+										disabled={!config.pushNotification || !config.pushNotificationWhen[NotificationType.LowBattery]}
+										disabledTitle={
+											!config.pushNotification
+												? "Enable push notifications to edit"
+												: "Enable the toggle on the right to edit"
+										}
+										fallback={defaultConfig.lowBatteryThreshold}
+										max={config.highBatteryThreshold - 1}
+										onCommit={value => setConfig(c => ({ ...c, lowBatteryThreshold: value }))}
+										ariaLabel="Low battery threshold"
+									/>
+									%
 								</div>
 								<Switch
 									checked={config.pushNotificationWhen[NotificationType.LowBattery]}
 									onCheckedChange={checked => setConfig(c => ({
 										...c,
 										pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.LowBattery]: checked }
+									}))}
+									disabled={!config.pushNotification}
+								/>
+							</li>
+							<li className="flex items-center justify-between gap-3">
+								<div className="flex items-center gap-1">
+									<Dot /> when battery level ≥
+									<BatteryThresholdInput
+										value={config.highBatteryThreshold}
+										disabled={!config.pushNotification || !config.pushNotificationWhen[NotificationType.HighBattery]}
+										disabledTitle={
+											!config.pushNotification
+												? "Enable push notifications to edit"
+												: "Enable the toggle on the right to edit"
+										}
+										fallback={defaultConfig.highBatteryThreshold}
+										min={config.lowBatteryThreshold + 1}
+										onCommit={value => setConfig(c => ({ ...c, highBatteryThreshold: value }))}
+										ariaLabel="High battery threshold"
+									/>
+									%
+								</div>
+								<Switch
+									checked={config.pushNotificationWhen[NotificationType.HighBattery]}
+									onCheckedChange={checked => setConfig(c => ({
+										...c,
+										pushNotificationWhen: { ...c.pushNotificationWhen, [NotificationType.HighBattery]: checked }
 									}))}
 									disabled={!config.pushNotification}
 								/>
