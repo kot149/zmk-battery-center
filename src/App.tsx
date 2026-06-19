@@ -195,6 +195,8 @@ function App() {
 		commitRegisteredDevices,
 		pushNotification: config.pushNotification,
 		pushNotificationWhen: config.pushNotificationWhen,
+		lowBatteryThreshold: config.lowBatteryThreshold,
+		highBatteryThreshold: config.highBatteryThreshold,
 		autoCollapseDisconnectedDevices: config.autoCollapseDisconnectedDevices,
 	});
 

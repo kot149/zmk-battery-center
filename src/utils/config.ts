@@ -6,9 +6,13 @@ import { logger } from './log';
 
 export enum NotificationType {
 	LowBattery = 'low_battery',
+	HighBattery = 'high_battery',
 	Disconnected = 'disconnected',
 	Connected = 'connected',
 }
+
+export const MIN_BATTERY_THRESHOLD = 1;
+export const MAX_BATTERY_THRESHOLD = 99;
 
 export enum TrayIconComponent {
 	AppIcon = 'appIcon',
@@ -27,6 +31,8 @@ export type Config = {
 	autoCollapseDisconnectedDevices: boolean;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
+	lowBatteryThreshold: number;
+	highBatteryThreshold: number;
 	manualWindowPositioning: boolean;
 	windowPosition: {
 		x: number;
@@ -46,9 +52,12 @@ export const defaultConfig: Config = {
 	pushNotification: false,
 	pushNotificationWhen: {
 		[NotificationType.LowBattery]: true,
+		[NotificationType.HighBattery]: false,
 		[NotificationType.Connected]: true,
 		[NotificationType.Disconnected]: true,
 	},
+	lowBatteryThreshold: 20,
+	highBatteryThreshold: 95,
 	manualWindowPositioning: false,
 	windowPosition: {
 		x: 0,
@@ -74,13 +83,53 @@ async function getConfigStore() {
 	return configStoreInstance;
 }
 
+interface ClampBatteryThresholdBounds {
+	min?: number;
+	max?: number;
+}
+
+export function clampBatteryThreshold(
+	value: number,
+	fallback: number,
+	bounds: ClampBatteryThresholdBounds = {},
+): number {
+	if (!Number.isFinite(value)) return fallback;
+	const min = bounds.min ?? MIN_BATTERY_THRESHOLD;
+	const max = bounds.max ?? MAX_BATTERY_THRESHOLD;
+	const rounded = Math.round(value);
+	if (rounded < min) return min;
+	if (rounded > max) return max;
+	return rounded;
+}
+
 export async function loadSavedConfig(): Promise<Config> {
-	const config = await getConfigStore().then((store: Store) => store.get<Config>('config'));
+	const config = await getConfigStore().then((store: Store) => store.get<Partial<Config>>('config'));
 	logger.info(`Loaded config: ${JSON.stringify(config, null, 4)}`);
-	return {
+	const merged: Config = {
 		...defaultConfig,
 		...config,
+		pushNotificationWhen: {
+			...defaultConfig.pushNotificationWhen,
+			...(config?.pushNotificationWhen ?? {}),
+		},
+		windowPosition: {
+			...defaultConfig.windowPosition,
+			...(config?.windowPosition ?? {}),
+		},
 	};
+	const candidateLow = clampBatteryThreshold(
+		merged.lowBatteryThreshold,
+		defaultConfig.lowBatteryThreshold,
+		{ max: MAX_BATTERY_THRESHOLD - 1 },
+	);
+	const candidateHigh = clampBatteryThreshold(
+		merged.highBatteryThreshold,
+		defaultConfig.highBatteryThreshold,
+	);
+	const hasValidOrdering = candidateLow < candidateHigh;
+	const lowBatteryThreshold = hasValidOrdering ? candidateLow : defaultConfig.lowBatteryThreshold;
+	const highBatteryThreshold = hasValidOrdering ? candidateHigh : defaultConfig.highBatteryThreshold;
+	return { ...merged, lowBatteryThreshold, highBatteryThreshold };
 };
 
 export async function setConfig(config: Config) {

@@ -9,6 +9,7 @@ import { NotificationType } from "@/utils/config";
 import {
 	mergeBatteryInfos,
 	mapIsLowBattery,
+	mapIsHighBattery,
 	getRegisteredDeviceDisplayName,
 	type RegisteredDevice,
 } from "@/utils/appHelpers";
@@ -23,6 +24,8 @@ interface UseBatteryPollingOptions {
 	commitRegisteredDevices: (recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => void;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
+	lowBatteryThreshold: number;
+	highBatteryThreshold: number;
 	autoCollapseDisconnectedDevices: boolean;
 }
 
@@ -35,20 +38,29 @@ export function useBatteryPolling({
 	commitRegisteredDevices,
 	pushNotification,
 	pushNotificationWhen,
+	lowBatteryThreshold,
+	highBatteryThreshold,
 	autoCollapseDisconnectedDevices,
 }: UseBatteryPollingOptions) {
 	const pushNotificationRef = useRef(pushNotification);
 	const pushNotificationWhenRef = useRef(pushNotificationWhen);
+	const lowBatteryThresholdRef = useRef(lowBatteryThreshold);
+	const highBatteryThresholdRef = useRef(highBatteryThreshold);
 	const autoCollapseDisconnectedDevicesRef = useRef(autoCollapseDisconnectedDevices);
 	useEffect(() => {
 		pushNotificationRef.current = pushNotification;
 		pushNotificationWhenRef.current = pushNotificationWhen;
+		lowBatteryThresholdRef.current = lowBatteryThreshold;
+		highBatteryThresholdRef.current = highBatteryThreshold;
 		autoCollapseDisconnectedDevicesRef.current = autoCollapseDisconnectedDevices;
-	}, [pushNotification, pushNotificationWhen, autoCollapseDisconnectedDevices]);
+	}, [pushNotification, pushNotificationWhen, lowBatteryThreshold, highBatteryThreshold, autoCollapseDisconnectedDevices]);
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
-		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos);
+		const lowThreshold = lowBatteryThresholdRef.current;
+		const highThreshold = highBatteryThresholdRef.current;
+		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos, lowThreshold);
+		const isHighBatteryPrev = mapIsHighBattery(device.batteryInfos, highThreshold);
 
 		let attempts = 0;
 		const maxAttempts = isDisconnectedPrev ? 1 : 3;
@@ -85,23 +97,42 @@ export function useBatteryPolling({
 					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);
 				}
 
-				if(pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.LowBattery]){
-					const isLowBattery = mapIsLowBattery(infoArray);
-					const displayName = getRegisteredDeviceDisplayName(device);
-					for(let i = 0; i < isLowBattery.length && i < isLowBatteryPrev.length; i++){
-						if(!isLowBatteryPrev[i] && isLowBattery[i]){
-							fireAndForget(
-								sendNotification(`${displayName}${
-									infoArray.length >= 2 ?
-										' ' + (infoArray[i].user_description ?? 'Central')
-										: ''
-								} has low battery.`),
-								`Failed to send low battery notification for ${device.id}`,
-							);
-							logger.info(`${displayName} has low battery.`);
-						}
+				const displayName = getRegisteredDeviceDisplayName(device);
+				const notifyEdgeTransition = (
+					notificationType: NotificationType,
+					prev: boolean[],
+					curr: boolean[],
+					label: string,
+				) => {
+					if (!pushNotificationRef.current || !pushNotificationWhenRef.current[notificationType]) {
+						return;
 					}
-				}
+					for (let i = 0; i < curr.length && i < prev.length; i++) {
+						if (prev[i] || !curr[i]) continue;
+						const suffix = infoArray.length >= 2
+							? ' ' + (infoArray[i].user_description ?? 'Central')
+							: '';
+						const message = `${displayName}${suffix} has ${label} battery.`;
+						fireAndForget(
+							sendNotification(message),
+							`Failed to send ${label} battery notification for ${device.id}`,
+						);
+						logger.info(`${displayName} has ${label} battery.`);
+					}
+				};
+
+				notifyEdgeTransition(
+					NotificationType.LowBattery,
+					isLowBatteryPrev,
+					mapIsLowBattery(infoArray, lowThreshold),
+					'low',
+				);
+				notifyEdgeTransition(
+					NotificationType.HighBattery,
+					isHighBatteryPrev,
+					mapIsHighBattery(infoArray, highThreshold),
+					'high',
+				);
 
 				return;
 			} catch {
