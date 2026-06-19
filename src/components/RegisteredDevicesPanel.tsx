@@ -125,7 +125,7 @@ type PartLabelEditProps = {
 	onEscape: () => void;
 	onReset: () => void;
 	inputRef: RefObject<HTMLInputElement | null>;
-	skipLabelCommitOnBlur: MutableRefObject<boolean>;
+	skipLabelCommitOnBlurRef: MutableRefObject<boolean>;
 	resetAriaLabel?: string;
 	resetTitle?: string;
 	inputClassName?: string;
@@ -139,7 +139,7 @@ const PartLabelEdit: React.FC<PartLabelEditProps> = ({
 	onEscape,
 	onReset,
 	inputRef,
-	skipLabelCommitOnBlur,
+	skipLabelCommitOnBlurRef,
 	resetAriaLabel = "Reset label and close",
 	resetTitle = "Reset label and close",
 	inputClassName,
@@ -167,7 +167,7 @@ const PartLabelEdit: React.FC<PartLabelEditProps> = ({
 			title={resetTitle}
 			onPointerDown={(e) => {
 				e.preventDefault();
-				skipLabelCommitOnBlur.current = true;
+				skipLabelCommitOnBlurRef.current = true;
 			}}
 			onClick={onReset}
 		>
@@ -215,7 +215,7 @@ type BatteryPartRowProps = {
 	labelDraft: string;
 	setLabelDraft: (v: string) => void;
 	inputRef: RefObject<HTMLInputElement | null>;
-	skipLabelCommitOnBlur: MutableRefObject<boolean>;
+	skipLabelCommitOnBlurRef: MutableRefObject<boolean>;
 	onCommitPartLabel: (deviceId: string, userDescription: string | null, value: string) => void;
 	setLabelEdit: React.Dispatch<React.SetStateAction<{ deviceId: string; partKey: string } | null>>;
 	startLabelEdit: (device: RegisteredDevice, userDescription: string | null) => void;
@@ -230,7 +230,7 @@ const BatteryPartRow: React.FC<BatteryPartRowProps> = ({
 	labelDraft,
 	setLabelDraft,
 	inputRef,
-	skipLabelCommitOnBlur,
+	skipLabelCommitOnBlurRef,
 	onCommitPartLabel,
 	setLabelEdit,
 	startLabelEdit,
@@ -240,8 +240,8 @@ const BatteryPartRow: React.FC<BatteryPartRowProps> = ({
 	const testIdPart = b.user_description ?? "Central";
 
 	const commitBlur = () => {
-		if (skipLabelCommitOnBlur.current) {
-			skipLabelCommitOnBlur.current = false;
+		if (skipLabelCommitOnBlurRef.current) {
+			skipLabelCommitOnBlurRef.current = false;
 			return;
 		}
 		onCommitPartLabel(device.id, b.user_description, labelDraft);
@@ -261,12 +261,12 @@ const BatteryPartRow: React.FC<BatteryPartRowProps> = ({
 						onCommitBlur={commitBlur}
 						onEnter={() => inputRef.current?.blur()}
 						onEscape={() => {
-							skipLabelCommitOnBlur.current = true;
+							skipLabelCommitOnBlurRef.current = true;
 							setLabelEdit(null);
 						}}
 						onReset={() => resetLabelAndCloseEdit(device.id, b.user_description)}
 						inputRef={inputRef}
-						skipLabelCommitOnBlur={skipLabelCommitOnBlur}
+						skipLabelCommitOnBlurRef={skipLabelCommitOnBlurRef}
 					/>
 				) : (
 					<PartLabelView
@@ -315,7 +315,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 	} | null>(null);
 	const [labelDraft, setLabelDraft] = useState("");
 	const labelInputRef = useRef<HTMLInputElement>(null);
-	const skipLabelCommitOnBlur = useRef(false);
+	const skipLabelCommitOnBlurRef = useRef(false);
 	const [deviceNameEditId, setDeviceNameEditId] = useState<string | null>(null);
 	const [deviceNameDraft, setDeviceNameDraft] = useState("");
 	const deviceNameInputRef = useRef<HTMLInputElement>(null);
@@ -479,7 +479,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 												}}
 												onReset={() => resetDeviceNameAndCloseEdit(device)}
 												inputRef={deviceNameInputRef}
-												skipLabelCommitOnBlur={skipDeviceNameCommitOnBlur}
+												skipLabelCommitOnBlurRef={skipDeviceNameCommitOnBlur}
 												resetAriaLabel="Reset device name and close"
 												resetTitle="Reset to advertised name and close"
 												inputClassName="text-lg font-semibold"
@@ -564,7 +564,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 													labelDraft={labelDraft}
 													setLabelDraft={setLabelDraft}
 													inputRef={labelInputRef}
-													skipLabelCommitOnBlur={skipLabelCommitOnBlur}
+													skipLabelCommitOnBlurRef={skipLabelCommitOnBlurRef}
 													onCommitPartLabel={commitPartLabel}
 													setLabelEdit={setLabelEdit}
 													startLabelEdit={startLabelEdit}

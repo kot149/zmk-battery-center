@@ -223,7 +223,7 @@ function App() {
 		} finally {
 			activeNotificationMonitorsRef.current.delete(device.id);
 		}
-	}, [isNotificationMonitorMode, commitRegisteredDevices]);
+	}, [isNotificationMonitorMode, commitRegisteredDevices, activeNotificationMonitorsRef]);
 
 	const handleReload = async () => {
 		if (!isPollingMode) {
@@ -292,7 +292,7 @@ function App() {
 				"Failed to clean up battery info listener",
 			);
 		};
-	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, commitRegisteredDevices]);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
 
 	const previousAutoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
 	useEffect(() => {
@@ -360,7 +360,7 @@ function App() {
 				"Failed to clean up battery monitor status listener",
 			);
 		};
-	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices]);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef]);
 
 	const { activeNotificationMonitorsRef } = useNotificationMonitors({
 		isNotificationMonitorMode,

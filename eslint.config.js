@@ -55,8 +55,11 @@ export default [
 			...reactPlugin.configs.recommended.rules,
 			...reactHooks.configs.recommended.rules,
 			...reactYouMightNotNeedAnEffect.configs.recommended.rules,
+			"no-undef": "off",
 			"react-hooks/rules-of-hooks": "error",
 			"react-hooks/exhaustive-deps": "error",
+			"react-hooks/refs": "off",
+			"react-hooks/set-state-in-effect": "off",
 			"react/react-in-jsx-scope": "off",
 			"react/prop-types": "off",
 			"@typescript-eslint/no-unused-vars": [

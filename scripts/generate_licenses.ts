@@ -116,7 +116,7 @@ async function findLicenseFromParentOrSibling(
 				if (s.startsWith(".")) continue;
 				searchDirs.push(path.join(scopeDir, s));
 			}
-		} catch {}
+		} catch { /* scope directory may not exist */ }
 		const unscopedName = scope.replace(/^@/, "");
 		searchDirs.push(path.join(nodeModules, unscopedName));
 	}

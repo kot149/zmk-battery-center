@@ -158,7 +158,7 @@ export function useBatteryPolling({
 			isUnmounted = true;
 			clearInterval(interval);
 		};
-	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, fetchInterval, updateBatteryInfo]);
+	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, fetchInterval, updateBatteryInfo, registeredDevicesRef]);
 
 	return { updateBatteryInfo, autoCollapseDisconnectedDevicesRef };
 }
