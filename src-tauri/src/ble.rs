@@ -458,53 +458,34 @@ async fn battery_connection_watcher(
             return;
         }
 
-        // obtain a Device handle via discover_devices.
-        // connected devices are yielded first; unconnected ones appear once BLE scanning begins.
-        log::debug!("BLE I/O: connection watcher starting discover_devices device_id={device_id}");
-        let mut discover = match adapter
-            .discover_devices(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("BLE I/O: connection watcher discover_devices failed device_id={device_id}: {e}");
-                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
-                    return;
-                }
-                continue 'outer;
-            }
-        };
-
-        // Wait until the target device appears in the stream.
+        // Poll connected_devices_with_services instead of discover_devices.
+        // discover_devices starts an active BLE radio scan which is expensive:
+        // on Windows the WinRT BluetoothLEAdvertisementWatcher floods the
+        // message pump with callbacks, making the system tray menu unresponsive
+        // and the whole system sluggish — especially when multiple disconnected
+        // devices each run their own scan concurrently.
+        // ZMK keyboards reconnect through OS-level BLE bonding, so we only need
+        // to check whether the device has appeared in the connected list.
+        log::debug!("BLE I/O: connection watcher polling for device device_id={device_id}");
         let target_device = loop {
-            tokio::select! {
-                changed = stop_rx.changed() => {
-                    if changed.is_err() || *stop_rx.borrow() {
-                        return;
+            match adapter
+                .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
+                .await
+            {
+                Ok(devices) => {
+                    if let Some(device) = devices.into_iter().find(|d| is_target_device(d, &device_id)) {
+                        log::debug!("BLE I/O: connection watcher found target device device_id={device_id}");
+                        break device;
                     }
                 }
-                result = discover.next() => {
-                    match result {
-                        Some(Ok(device)) if is_target_device(&device, &device_id) => {
-                            log::debug!("BLE I/O: connection watcher found target device device_id={device_id}");
-                            break device;
-                        }
-                        Some(Ok(_)) => {} // not our target
-                        Some(Err(e)) => {
-                            log::warn!("BLE I/O: connection watcher discover error device_id={device_id}: {e}");
-                        }
-                        None => {
-                            log::warn!("BLE I/O: connection watcher discover stream ended device_id={device_id}");
-                            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                                return;
-                            }
-                            continue 'outer;
-                        }
-                    }
+                Err(e) => {
+                    log::warn!("BLE I/O: connection watcher query failed device_id={device_id}: {e}");
                 }
             }
+            if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
+                return;
+            }
         };
-        drop(discover); // stop scanning
 
         log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
         // On macOS, bluest connection should be Established before subscribing to device_connection_events().
@@ -821,8 +802,8 @@ pub async fn start_battery_notification_monitor(
     }
 
     // Always use the connection watcher so that reconnections after a power-off
-    // cycle obtain a fresh Device handle via discover_devices instead of reusing
-    // a potentially stale one.
+    // cycle obtain a fresh Device handle instead of reusing a potentially stale
+    // one.
     let app_c = app.clone();
     let adapter_c = adapter.clone();
     let id_c = id.clone();
