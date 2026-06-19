@@ -57,7 +57,7 @@ export const defaultConfig: Config = {
 		[NotificationType.Disconnected]: true,
 	},
 	lowBatteryThreshold: 20,
-	highBatteryThreshold: 95,
+	highBatteryThreshold: 80,
 	manualWindowPositioning: false,
 	windowPosition: {
 		x: 0,
