@@ -740,6 +740,67 @@ describe("App", () => {
 		});
 	});
 
+	it("does not resize the window when only battery level changes in auto mode", async () => {
+		mockedConfig = { ...defaultConfig, fetchInterval: FETCH_INTERVAL_AUTO };
+
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText("MockBoard One")).toBeTruthy();
+		});
+
+		// First notification transitions isDisconnected (loaded devices start as
+		// disconnected) which legitimately triggers a layout change. Fire it and
+		// let the resulting effects settle.
+		await act(async () => {
+			batteryInfoNotificationHandler?.({
+				payload: {
+					id: "kbd-1",
+					battery_info: { battery_level: 60, user_description: "Central" },
+				},
+			});
+		});
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 200));
+		});
+
+		mockResizeWindowToContent.mockClear();
+		mockMoveWindowToTrayCenter.mockClear();
+
+		// Second notification only changes battery level — no layout change
+		await act(async () => {
+			batteryInfoNotificationHandler?.({
+				payload: {
+					id: "kbd-1",
+					battery_info: { battery_level: 42, user_description: "Central" },
+				},
+			});
+		});
+
+		await act(async () => {
+			await new Promise(resolve => setTimeout(resolve, 200));
+		});
+
+		expect(mockResizeWindowToContent).not.toHaveBeenCalled();
+		expect(mockMoveWindowToTrayCenter).not.toHaveBeenCalled();
+	});
+
 	describe("polling overlap guard", () => {
 		beforeEach(() => {
 			vi.useFakeTimers();

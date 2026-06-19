@@ -84,6 +84,11 @@ function App() {
 		[devices, registeredDeviceIds]
 	);
 
+	const deviceLayoutKey = useMemo(
+		() => deviceList.map(d => `${d.id}:${d.isCollapsed}:${d.isDisconnected}:${d.batteryInfos.length}`).join(','),
+		[deviceList],
+	);
+
 	// Initialize window and tray event listeners
 	const handleWindowPositionChange = useCallback((position: { x: number; y: number }) => {
 		fireAndForget(emit('update-config', { windowPosition: position }), "Failed to emit window position update");
@@ -262,7 +267,7 @@ function App() {
 				}, 100);
 			}
 		});
-	}, [deviceList, state, panelLayoutRevision, config.manualWindowPositioning, isConfigLoaded]);
+	}, [deviceLayoutKey, state, panelLayoutRevision, config.manualWindowPositioning, isConfigLoaded]);
 
 	useEffect(() => {
 		if (!isDeviceLoaded) {
