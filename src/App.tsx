@@ -198,6 +198,15 @@ function App() {
 		autoCollapseDisconnectedDevices: config.autoCollapseDisconnectedDevices,
 	});
 
+	const { activeNotificationMonitorsRef } = useNotificationMonitors({
+		isNotificationMonitorMode,
+		isConfigLoaded,
+		isDeviceLoaded,
+		registeredDeviceIdsKey,
+		autoCollapseDisconnectedDevicesRef,
+		commitRegisteredDevices,
+	});
+
 	const handleCloseModal = () => {
 		setState(State.main);
 		setError("");
@@ -361,15 +370,6 @@ function App() {
 			);
 		};
 	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef]);
-
-	const { activeNotificationMonitorsRef } = useNotificationMonitors({
-		isNotificationMonitorMode,
-		isConfigLoaded,
-		isDeviceLoaded,
-		registeredDeviceIdsKey,
-		autoCollapseDisconnectedDevicesRef,
-		commitRegisteredDevices,
-	});
 
 
 	const handleExitSettings = useCallback(() => {
