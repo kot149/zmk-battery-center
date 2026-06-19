@@ -6,10 +6,9 @@ import { emit } from "@tauri-apps/api/event";
 import { appendBatteryHistory } from "@/utils/batteryHistory";
 import { sendNotification } from "@/utils/notification";
 import { NotificationType } from "@/utils/config";
+import { notifyBatteryEdgeTransitions } from "@/utils/batteryEdgeNotification";
 import {
 	mergeBatteryInfos,
-	mapIsLowBattery,
-	mapIsHighBattery,
 	getRegisteredDeviceDisplayName,
 	type RegisteredDevice,
 } from "@/utils/appHelpers";
@@ -57,10 +56,6 @@ export function useBatteryPolling({
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
-		const lowThreshold = lowBatteryThresholdRef.current;
-		const highThreshold = highBatteryThresholdRef.current;
-		const isLowBatteryPrev = mapIsLowBattery(device.batteryInfos, lowThreshold);
-		const isHighBatteryPrev = mapIsHighBattery(device.batteryInfos, highThreshold);
 
 		let attempts = 0;
 		const maxAttempts = isDisconnectedPrev ? 1 : 3;
@@ -97,42 +92,16 @@ export function useBatteryPolling({
 					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);
 				}
 
-				const displayName = getRegisteredDeviceDisplayName(device);
-				const notifyEdgeTransition = (
-					notificationType: NotificationType,
-					prev: boolean[],
-					curr: boolean[],
-					label: string,
-				) => {
-					if (!pushNotificationRef.current || !pushNotificationWhenRef.current[notificationType]) {
-						return;
-					}
-					for (let i = 0; i < curr.length && i < prev.length; i++) {
-						if (prev[i] || !curr[i]) continue;
-						const suffix = infoArray.length >= 2
-							? ' ' + (infoArray[i].user_description ?? 'Central')
-							: '';
-						const message = `${displayName}${suffix} has ${label} battery.`;
-						fireAndForget(
-							sendNotification(message),
-							`Failed to send ${label} battery notification for ${device.id}`,
-						);
-						logger.info(`${displayName} has ${label} battery.`);
-					}
-				};
-
-				notifyEdgeTransition(
-					NotificationType.LowBattery,
-					isLowBatteryPrev,
-					mapIsLowBattery(infoArray, lowThreshold),
-					'low',
-				);
-				notifyEdgeTransition(
-					NotificationType.HighBattery,
-					isHighBatteryPrev,
-					mapIsHighBattery(infoArray, highThreshold),
-					'high',
-				);
+				notifyBatteryEdgeTransitions({
+					deviceDisplayName: getRegisteredDeviceDisplayName(device),
+					deviceId: device.id,
+					prevBatteryInfos: device.batteryInfos,
+					newBatteryInfos: infoArray,
+					lowBatteryThreshold: lowBatteryThresholdRef.current,
+					highBatteryThreshold: highBatteryThresholdRef.current,
+					pushNotification: pushNotificationRef.current,
+					pushNotificationWhen: pushNotificationWhenRef.current,
+				});
 
 				return;
 			} catch {

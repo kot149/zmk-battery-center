@@ -26,6 +26,7 @@ import { useConfigContext } from "@/context/ConfigContext";
 import Settings from "@/components/Settings";
 import { sendNotification } from "./utils/notification";
 import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
+import { notifyBatteryEdgeTransitions } from "./utils/batteryEdgeNotification";
 import { fireAndForget, withTimeout } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
@@ -270,7 +271,6 @@ function App() {
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
 			const payload = event.payload;
 			const batteryLevel = payload.battery_info.battery_level;
-			// Record battery history for notification-mode updates
 			if (batteryLevel !== null) {
 				const device = registeredDevicesRef.current.find(d => d.id === payload.id);
 				if (device) {
@@ -289,9 +289,20 @@ function App() {
 				if (device.id !== payload.id) {
 					return device;
 				}
+				const newBatteryInfos = upsertBatteryInfo(device.batteryInfos, payload.battery_info);
+				notifyBatteryEdgeTransitions({
+					deviceDisplayName: getRegisteredDeviceDisplayName(device),
+					deviceId: device.id,
+					prevBatteryInfos: device.batteryInfos,
+					newBatteryInfos,
+					lowBatteryThreshold: config.lowBatteryThreshold,
+					highBatteryThreshold: config.highBatteryThreshold,
+					pushNotification: config.pushNotification,
+					pushNotificationWhen: config.pushNotificationWhen,
+				});
 				return expandIfConnected({
 					...device,
-					batteryInfos: upsertBatteryInfo(device.batteryInfos, payload.battery_info),
+					batteryInfos: newBatteryInfos,
 					isDisconnected: false,
 				}, autoCollapseDisconnectedDevicesRef.current);
 			}));
@@ -303,7 +314,7 @@ function App() {
 				"Failed to clean up battery info listener",
 			);
 		};
-	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, config.lowBatteryThreshold, config.highBatteryThreshold, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
 
 	const previousAutoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
 	useEffect(() => {
