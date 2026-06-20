@@ -23,7 +23,17 @@ const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Warn;
 pub fn run() {
     #[cfg(target_os = "linux")]
     {
-        std::env::set_var("GDK_BACKEND", "x11");
+        // Force GTK to use the X11 backend only under a Wayland session, where
+        // absolute window coordinates cannot be queried for the manual window
+        // positioning feature. Native X11 sessions already provide coordinates,
+        // and forcing X11 on a Wayland-only system (no XWayland) prevents the
+        // GTK window from starting at all. Must run before any GTK init.
+        if std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+        {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
     }
 
     tauri::Builder::default()
