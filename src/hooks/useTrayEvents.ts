@@ -42,6 +42,33 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
         let unlistenTrayMenuToggleManual: (() => void) | null = null;
         let unlistenTrayMenuAbout: (() => void) | null = null;
 
+        const showWindowAtConfiguredPosition = async (manualOverride?: boolean) => {
+            const manual = manualOverride ?? configRef.current.manualWindowPositioning;
+            showWindow();
+            if (!manual) {
+                moveWindowToTrayCenter();
+            } else {
+                await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
+            }
+        };
+
+        const openAboutWindow = async () => {
+            let aboutWindow = await WebviewWindow.getByLabel('about');
+            if (!aboutWindow) {
+                aboutWindow = new WebviewWindow('about', {
+                    url: 'about.html',
+                    title: 'zmk-battery-center - About',
+                    width: 600,
+                    height: 500,
+                    center: true,
+                    resizable: true,
+                    decorations: true,
+                });
+            }
+            await aboutWindow.show();
+            await aboutWindow.setFocus();
+        };
+
         const setupTray = async () => {
             const isLinux = platform() === 'linux';
             const tray = isLinux ? null : await TrayIcon.getById('tray_icon');
@@ -68,12 +95,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                 if (isVisible) {
                     hideWindow();
                 } else {
-                    showWindow();
-                    if (!configRef.current.manualWindowPositioning) {
-                        moveWindowToTrayCenter();
-                    } else {
-                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
-                    }
+                    await showWindowAtConfiguredPosition();
                     setWindowFocus();
                 }
             });
@@ -85,12 +107,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                         id: 'show',
                         text: 'Show',
                         action: async () => {
-                            showWindow();
-                            if (!configRef.current.manualWindowPositioning) {
-                                moveWindowToTrayCenter();
-                            } else {
-                                await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
-                            }
+                            await showWindowAtConfiguredPosition();
                         }
                     },
                     {
@@ -103,12 +120,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                 action: async () => {
                                     await stopAllBatteryMonitors();
                                     location.reload();
-                                    showWindow();
-                                    if (!configRef.current.manualWindowPositioning) {
-                                        moveWindowToTrayCenter();
-                                    } else {
-                                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
-                                    }
+                                    await showWindowAtConfiguredPosition();
                                 },
                             },
                             {
@@ -121,12 +133,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                                     if (!thisMenu) return;
 
                                     const isChecked = await thisMenu.isChecked();
-                                    showWindow();
-                                    if (!isChecked) {
-                                        moveWindowToTrayCenter();
-                                    } else {
-                                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
-                                    }
+                                    await showWindowAtConfiguredPosition(isChecked);
 
                                     onManualWindowPositioningChangeRef.current(isChecked);
                                 },
@@ -136,22 +143,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                     {
                         id: 'about',
                         text: 'About',
-                        action: async () => {
-                            let aboutWindow = await WebviewWindow.getByLabel('about');
-                            if (!aboutWindow) {
-                                aboutWindow = new WebviewWindow('about', {
-                                    url: 'about.html',
-                                    title: 'zmk-battery-center - About',
-                                    width: 600,
-                                    height: 500,
-                                    center: true,
-                                    resizable: true,
-                                    decorations: true,
-                                });
-                            }
-                            await aboutWindow.show();
-                            await aboutWindow.setFocus();
-                        }
+                        action: openAboutWindow,
                     },
                     {
                         id: 'quit',
@@ -175,42 +167,17 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                 unlistenTrayMenuRefresh = await listen('tray_menu_refresh', async () => {
                     await stopAllBatteryMonitors();
                     location.reload();
-                    showWindow();
-                    if (!configRef.current.manualWindowPositioning) {
-                        moveWindowToTrayCenter();
-                    } else {
-                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
-                    }
+                    await showWindowAtConfiguredPosition();
                 });
 
                 unlistenTrayMenuToggleManual = await listen('tray_menu_toggle_manual_positioning', async () => {
                     const isChecked = !configRef.current.manualWindowPositioning;
-                    showWindow();
-                    if (!isChecked) {
-                        moveWindowToTrayCenter();
-                    } else {
-                        await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
-                    }
+                    await showWindowAtConfiguredPosition(isChecked);
                     onManualWindowPositioningChangeRef.current(isChecked);
                     await invoke('update_manual_positioning', { enabled: isChecked });
                 });
 
-                unlistenTrayMenuAbout = await listen('tray_menu_about', async () => {
-                    let aboutWindow = await WebviewWindow.getByLabel('about');
-                    if (!aboutWindow) {
-                        aboutWindow = new WebviewWindow('about', {
-                            url: 'about.html',
-                            title: 'zmk-battery-center - About',
-                            width: 600,
-                            height: 500,
-                            center: true,
-                            resizable: true,
-                            decorations: true,
-                        });
-                    }
-                    await aboutWindow.show();
-                    await aboutWindow.setFocus();
-                });
+                unlistenTrayMenuAbout = await listen('tray_menu_about', openAboutWindow);
             }
         };
 
