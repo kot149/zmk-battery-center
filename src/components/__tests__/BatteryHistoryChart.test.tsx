@@ -503,7 +503,7 @@ describe("Tooltip value resolution", () => {
 		{ timestamp: 300, Left: 60, Right: 50 },
 	];
 
-	function resolveValue(recordedData: ChartRow[], labelTimestamp: number, allKeys: string[]) {
+	function resolveValue(recordedData: ChartRow[], labelTimestamp: number, _allKeys: string[]) {
 		const atOrBefore = findRowIndexAtOrBefore(recordedData, labelTimestamp);
 		const row = atOrBefore >= 0 && recordedData[atOrBefore].timestamp === labelTimestamp
 			? recordedData[atOrBefore] : undefined;
