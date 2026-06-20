@@ -129,6 +129,8 @@ pub async fn update_manual_positioning(
             guard.clone()
         };
         if let Some(handle) = handle_opt {
+            // Empty closure: TrayState is re-read inside menu(); calling update()
+            // is what triggers ksni to rebuild the menu with the new state.
             let _ = handle.update(|_| {}).await;
         }
     }
@@ -139,7 +141,13 @@ pub async fn update_manual_positioning(
 fn init_linux_tray(app_handle: AppHandle) {
     use tauri::image::Image;
 
-    let tauri_image = Image::from_bytes(include_bytes!("../icons/32x32.png")).unwrap();
+    let tauri_image = match Image::from_bytes(include_bytes!("../icons/32x32.png")) {
+        Ok(img) => img,
+        Err(e) => {
+            log::error!("init_linux_tray: failed to decode embedded tray icon: {e}");
+            return;
+        }
+    };
     let width = tauri_image.width();
     let height = tauri_image.height();
     let rgba_bytes = tauri_image.rgba();
@@ -160,10 +168,22 @@ fn init_linux_tray(app_handle: AppHandle) {
         icon: ksni_icon,
     };
 
-    let handle = tauri::async_runtime::block_on(tray.spawn()).unwrap();
-
-    let state = app_handle.state::<TrayState>();
-    *state.tray_handle.lock().unwrap() = Some(handle);
+    // Spawn the D-Bus StatusNotifierItem on the async runtime so we don't
+    // block Tauri's setup hook; if D-Bus is unavailable (headless, no user
+    // session, missing SNI host) we log and continue without a tray rather
+    // than crashing the app.
+    let app_handle_for_task = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        match tray.spawn().await {
+            Ok(handle) => {
+                let state = app_handle_for_task.state::<TrayState>();
+                *state.tray_handle.lock().unwrap() = Some(handle);
+            }
+            Err(e) => {
+                log::error!("init_linux_tray: failed to spawn D-Bus tray: {e}");
+            }
+        }
+    });
 }
 
 pub fn init_tray(app_handle: AppHandle) {
