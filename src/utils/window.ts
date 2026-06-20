@@ -8,6 +8,13 @@ import { platform } from '@tauri-apps/plugin-os';
 const appWindow = getCurrentWebviewWindow();
 const currentPlatform = platform();
 
+// GTK client-side decorations draw an invisible shadow margin around the
+// window. The reported window size does not include this margin, so content
+// near the edge (e.g. the settings button on the right) gets clipped unless
+// we add the margin back when resizing.
+const LINUX_GTK_SHADOW_WIDTH = 16;
+const LINUX_GTK_SHADOW_HEIGHT = 8;
+
 // These will be managed by useWindowEvents hook
 let isTrayPositionSet = false;
 let isWindowMovingByPlugin = false;
@@ -37,8 +44,8 @@ export async function resizeWindow(x: number, y: number) {
     let height = y * scaleFactor;
 
     if (currentPlatform === 'linux') {
-        width += 16;
-        height += 8;
+        width += LINUX_GTK_SHADOW_WIDTH;
+        height += LINUX_GTK_SHADOW_HEIGHT;
     }
 
     logger.info(`scaled size: ${width}x${height}`);
