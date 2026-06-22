@@ -41,6 +41,7 @@ This requires admin privileges. If you don't have admin privileges, manually ins
 
 ```sh
 brew tap kot149/tap
+brew trust --cask kot149/tap/zmk-battery-center
 brew install --cask kot149/tap/zmk-battery-center
 ```
 
