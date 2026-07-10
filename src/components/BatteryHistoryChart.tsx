@@ -346,7 +346,15 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		setIsLoading(true);
 		setError(null);
 		try {
-			const records = await readBatteryHistory(device.name, device.id);
+			// Fetch only the visible range plus the smoothing margin, so edge
+			// points still have earlier context to smooth against.
+			let sinceForFetch: string | undefined;
+			if (rangeMs > 0) {
+				sinceForFetch = new Date(Date.now() - rangeMs - smoothingWindow).toISOString();
+			} else if (rangeMs === CUSTOM_RANGE_MS && customRange) {
+				sinceForFetch = new Date(customRange.start.getTime() - smoothingWindow).toISOString();
+			}
+			const records = await readBatteryHistory(device.name, device.id, sinceForFetch);
 			const map = new Map<string, BatteryHistoryRecord[]>();
 			for (const r of records) {
 				if (r.battery_level === 0) continue; // Ignore 0%
@@ -362,19 +370,35 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		} finally {
 			setIsLoading(false);
 		}
-	}, [device.name, device.id]);
+	}, [device.name, device.id, rangeMs, customRange, smoothingWindow]);
 
 	useEffect(() => {
 		load();
 	}, [load]);
 
-	// Auto-reload when new battery history is recorded for this device
+	// Apply new readings incrementally; fall back to a full reload for
+	// events that don't carry the appended records.
 	useEffect(() => {
-		const unlistenPromise = listen<{ deviceId: string }>("battery-history-updated", (event) => {
-			if (event.payload.deviceId === device.id) {
-				load();
-			}
-		});
+		const unlistenPromise = listen<{ deviceId: string; records?: BatteryHistoryRecord[] }>(
+			"battery-history-updated",
+			(event) => {
+				if (event.payload.deviceId !== device.id) return;
+				const records = event.payload.records;
+				if (Array.isArray(records) && records.length > 0) {
+					setGrouped(prev => {
+						const next = new Map(prev);
+						for (const r of records) {
+							if (r.battery_level === 0) continue; // match load()'s 0% skip
+							const key = r.user_description || "Central";
+							next.set(key, [...(next.get(key) ?? []), r]);
+						}
+						return next;
+					});
+				} else {
+					load();
+				}
+			},
+		);
 		return () => {
 			unlistenPromise.then(unlisten => unlisten());
 		};

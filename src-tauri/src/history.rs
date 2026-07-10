@@ -117,7 +117,7 @@ fn prune_battery_history_at_dir(
         return Ok(());
     }
 
-    let records = read_battery_history_from_dir(dir, device_name, ble_id)?;
+    let records = read_battery_history_from_dir(dir, device_name, ble_id, None)?;
     let surviving: Vec<&BatteryHistoryRecord> = records
         .iter()
         .filter(|r| r.timestamp.as_str() >= cutoff_timestamp)
@@ -186,6 +186,7 @@ fn read_battery_history_from_dir(
     dir: &std::path::Path,
     device_name: &str,
     ble_id: &str,
+    since: Option<&str>,
 ) -> Result<Vec<BatteryHistoryRecord>, String> {
     let filename = safe_filename(device_name, ble_id);
     let path = dir.join(filename);
@@ -212,9 +213,16 @@ fn read_battery_history_from_dir(
         if rec.len() != 3 {
             continue;
         }
+        let timestamp = rec.get(0).unwrap_or("").to_string();
+        // RFC3339 UTC timestamps sort lexicographically (same as the prune filter).
+        if let Some(s) = since {
+            if timestamp.as_str() < s {
+                continue;
+            }
+        }
         let battery_level: i32 = rec.get(2).unwrap_or("").parse().unwrap_or(-1);
         out.push(BatteryHistoryRecord {
-            timestamp: rec.get(0).unwrap_or("").to_string(),
+            timestamp,
             user_description: rec.get(1).unwrap_or("").to_string(),
             battery_level,
         });
@@ -309,19 +317,20 @@ pub fn append_battery_history(
     )
 }
 
-/// Read all battery history
+/// Read battery history, optionally limited to records at or after `since` (RFC3339 UTC)
 #[tauri::command]
 pub fn read_battery_history(
     app: tauri::AppHandle,
     device_name: String,
     ble_id: String,
+    since: Option<String>,
 ) -> Result<Vec<BatteryHistoryRecord>, String> {
     let _guard = HISTORY_FILE_LOCK
         .lock()
         .unwrap_or_else(|p| p.into_inner());
 
     let dir = history_dir(&app);
-    read_battery_history_from_dir(&dir, &device_name, &ble_id)
+    read_battery_history_from_dir(&dir, &device_name, &ble_id, since.as_deref())
 }
 
 #[cfg(test)]
@@ -366,10 +375,37 @@ mod tests {
         );
         fs::write(&path, csv).expect("write csv");
 
-        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1").expect("read");
+        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].battery_level, 90);
         assert_eq!(records[1].battery_level, 75);
+    }
+
+    #[test]
+    fn read_battery_history_since_filters_older_rows() {
+        let dir = tempdir().expect("create temp dir");
+        let path = dir.path().join(safe_filename("Keyboard", "dev-1"));
+        let csv = concat!(
+            "timestamp,user_description,battery_level\n",
+            "2026-01-01T00:00:00Z,office,90\n",
+            "2026-06-01T00:00:00Z,office,80\n",
+            "2026-07-01T00:00:00Z,office,70\n",
+        );
+        fs::write(&path, csv).expect("write csv");
+
+        let filtered = read_battery_history_from_dir(
+            dir.path(),
+            "Keyboard",
+            "dev-1",
+            Some("2026-05-01T00:00:00Z"),
+        )
+        .expect("read");
+        assert_eq!(filtered.len(), 2);
+        assert_eq!(filtered[0].timestamp, "2026-06-01T00:00:00Z");
+        assert_eq!(filtered[1].timestamp, "2026-07-01T00:00:00Z");
+
+        let all = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
+        assert_eq!(all.len(), 3);
     }
 
     #[test]
@@ -385,7 +421,7 @@ mod tests {
             55,
         )
         .expect("append");
-        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1").expect("read");
+        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].user_description, desc);
         assert_eq!(records[0].battery_level, 55);
@@ -401,7 +437,7 @@ mod tests {
     #[test]
     fn read_battery_history_from_dir_returns_empty_when_file_missing() {
         let dir = tempdir().expect("create temp dir");
-        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1")
+        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None)
             .expect("read should succeed");
         assert!(records.is_empty());
     }
@@ -429,7 +465,7 @@ mod tests {
         )
         .expect("append should succeed");
 
-        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1")
+        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None)
             .expect("read should succeed");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].user_description, "Central");
@@ -517,7 +553,7 @@ mod tests {
         prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-06-01T00:00:00Z")
             .expect("prune");
 
-        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1").expect("read");
+        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1", None).expect("read");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].timestamp, "2026-01-01T00:00:00Z");
         assert_eq!(records[0].user_description, "new");
@@ -568,7 +604,7 @@ mod tests {
         prune_battery_history_at_dir(dir.path(), "Kb", "d1", "2025-06-01T00:00:00Z")
             .expect("prune");
 
-        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1").expect("read");
+        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1", None).expect("read");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].user_description, desc);
         assert_eq!(records[0].battery_level, 55);
@@ -588,7 +624,7 @@ mod tests {
         append_battery_history_at_dir(dir.path(), "Kb", "d1", "2026-06-01T00:00:00Z", "new", 70)
             .expect("append");
 
-        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1").expect("read");
+        let records = read_battery_history_from_dir(dir.path(), "Kb", "d1", None).expect("read");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].timestamp, "2026-01-01T00:00:00Z");
         assert_eq!(records[0].user_description, "keep");

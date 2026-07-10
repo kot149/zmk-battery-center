@@ -41,8 +41,21 @@ describe("batteryHistory utils", () => {
 		expect(invoke).toHaveBeenCalledWith("read_battery_history", {
 			deviceName: "Keyboard",
 			bleId: "dev-1",
+			since: null,
 		});
 		expect(result).toEqual(mockedHistory);
+	});
+
+	it("readBatteryHistory passes the since filter through", async () => {
+		mockedInvoke.mockResolvedValue([]);
+
+		await readBatteryHistory("Keyboard", "dev-1", "2026-05-01T00:00:00.000Z");
+
+		expect(invoke).toHaveBeenCalledWith("read_battery_history", {
+			deviceName: "Keyboard",
+			bleId: "dev-1",
+			since: "2026-05-01T00:00:00.000Z",
+		});
 	});
 
 	it("appendBatteryHistory propagates invoke errors", async () => {

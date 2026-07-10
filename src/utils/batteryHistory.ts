@@ -14,8 +14,8 @@ export async function appendBatteryHistory(
 	bleId: string,
 	userDescription: string,
 	batteryLevel: number,
+	timestamp: string = new Date().toISOString(),
 ): Promise<void> {
-	const timestamp = new Date().toISOString();
 	await invoke("append_battery_history", {
 		deviceName,
 		bleId,
@@ -30,27 +30,36 @@ export function recordBatteryReadings(
 	device: { name: string; id: string },
 	infos: BatteryInfo[],
 ): void {
-	const appendable = infos.filter(info => info.battery_level !== null);
-	if (appendable.length === 0) return;
+	const records: BatteryHistoryRecord[] = infos
+		.filter(info => info.battery_level !== null)
+		.map(info => ({
+			timestamp: new Date().toISOString(),
+			user_description: info.user_description ?? 'Central',
+			battery_level: info.battery_level as number,
+		}));
+	if (records.length === 0) return;
 	fireAndForget((async () => {
-		for (const info of appendable) {
+		for (const record of records) {
 			await appendBatteryHistory(
 				device.name,
 				device.id,
-				info.user_description ?? 'Central',
-				info.battery_level as number,
+				record.user_description,
+				record.battery_level,
+				record.timestamp,
 			);
 		}
-		await emit('battery-history-updated', { deviceId: device.id });
+		await emit('battery-history-updated', { deviceId: device.id, records });
 	})(), `Failed to update battery history for ${device.id}`);
 }
 
 export async function readBatteryHistory(
 	deviceName: string,
 	bleId: string,
+	since?: string,
 ): Promise<BatteryHistoryRecord[]> {
 	return invoke<BatteryHistoryRecord[]>("read_battery_history", {
 		deviceName,
 		bleId,
+		since: since ?? null,
 	});
 }

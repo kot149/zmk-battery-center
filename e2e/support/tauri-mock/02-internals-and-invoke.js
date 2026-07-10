@@ -231,7 +231,8 @@
         }
 
         const key = historyKey(args.deviceName, args.bleId);
-        return clone(state.historyByKey[key] ?? []);
+        const list = state.historyByKey[key] ?? [];
+        return clone(args.since ? list.filter((r) => r.timestamp >= args.since) : list);
       }
 
       if (cmd === "get_windows_text_scale_factor") {

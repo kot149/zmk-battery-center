@@ -135,7 +135,41 @@ describe("BatteryHistoryChart", () => {
 		});
 	});
 
-	it("reloads when battery-history-updated event is received for the same device", async () => {
+	it("applies records-bearing events incrementally without re-reading history", async () => {
+		mockReadBatteryHistory.mockResolvedValue([]);
+
+		renderChart();
+
+		await waitFor(() => {
+			expect(screen.getByText("No history recorded yet")).toBeTruthy();
+		});
+		const handler = mockListen.mock.calls.find((call) => call[0] === "battery-history-updated")?.[1] as
+			| ((event: { payload: { deviceId: string; records?: unknown[] } }) => void)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		await act(async () => {
+			handler?.({
+				payload: {
+					deviceId: "kbd-1",
+					records: [
+						{
+							timestamp: new Date().toISOString(),
+							user_description: "Central",
+							battery_level: 80,
+						},
+					],
+				},
+			});
+		});
+
+		await waitFor(() => {
+			expect(screen.getByTestId("line-chart")).toBeTruthy();
+		});
+		expect(mockReadBatteryHistory).toHaveBeenCalledTimes(1);
+	});
+
+	it("falls back to a full reload when the event carries no records", async () => {
 		mockReadBatteryHistory
 			.mockResolvedValueOnce([])
 			.mockResolvedValueOnce([
