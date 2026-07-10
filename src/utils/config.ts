@@ -52,7 +52,7 @@ export const defaultConfig: Config = {
 	pushNotification: false,
 	pushNotificationWhen: {
 		[NotificationType.LowBattery]: true,
-		[NotificationType.HighBattery]: false,
+		[NotificationType.HighBattery]: true,
 		[NotificationType.Connected]: true,
 		[NotificationType.Disconnected]: true,
 	},
