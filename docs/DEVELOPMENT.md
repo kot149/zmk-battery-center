@@ -232,13 +232,16 @@ Core scenarios:
 
 ### CI Execution Plan
 
-- On every PR
-  - `bun lint`
-  - frontend unit tests
-  - `cargo test` for Rust unit tests
-  - Layer 1 mocked E2E smoke tests
-- Nightly (or manual dispatch)
-  - Layer 2 desktop integration E2E on Windows/macOS matrix
+Implemented in `.github/workflows/ci.yml` (currently manual `workflow_dispatch` only; PR/push triggers will be enabled once the pipeline is validated):
+
+- `frontend` job: `bun run lint`, typecheck via `bun run build:ui`, frontend unit tests
+- `rust` job: `bun run build:ui` (required by `tauri::generate_context!`), then `cargo test`
+- `e2e` job: Layer 1 mocked Playwright E2E (`bun run e2e`)
+- `audit` job: `cargo audit` (non-blocking, `continue-on-error`)
+
+Planned, not implemented:
+
+- Nightly (or manual dispatch): Layer 2 desktop integration E2E on Windows/macOS matrix
 
 ### Initial Minimal Suite (recommended starting point)
 
