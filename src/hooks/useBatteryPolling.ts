@@ -45,6 +45,9 @@ export function useBatteryPolling({
 	const lowBatteryThresholdRef = useRef(lowBatteryThreshold);
 	const highBatteryThresholdRef = useRef(highBatteryThreshold);
 	const autoCollapseDisconnectedDevicesRef = useRef(autoCollapseDisconnectedDevices);
+	// Shared by the interval cycle and the manual reload: concurrent
+	// get_battery_info calls for one device can tear each other down.
+	const isCycleInFlightRef = useRef(false);
 	useEffect(() => {
 		pushNotificationRef.current = pushNotification;
 		pushNotificationWhenRef.current = pushNotificationWhen;
@@ -124,14 +127,13 @@ export function useBatteryPolling({
 		}
 
 		let isUnmounted = false;
-		let isPollInFlight = false;
 
 		const runPollCycle = () => {
-			if (isUnmounted || isPollInFlight) return;
-			isPollInFlight = true;
+			if (isUnmounted || isCycleInFlightRef.current) return;
+			isCycleInFlightRef.current = true;
 			fireAndForget(
 				Promise.all(registeredDevicesRef.current.map(updateBatteryInfo))
-					.finally(() => { isPollInFlight = false; }),
+					.finally(() => { isCycleInFlightRef.current = false; }),
 				"Polling cycle failed",
 			);
 		};
@@ -146,5 +148,18 @@ export function useBatteryPolling({
 		};
 	}, [isPollingMode, isConfigLoaded, isDeviceLoaded, fetchInterval, updateBatteryInfo, registeredDevicesRef]);
 
-	return { updateBatteryInfo, autoCollapseDisconnectedDevicesRef };
+	const reloadAll = useCallback(async () => {
+		if (isCycleInFlightRef.current) {
+			return false; // a cycle is already refreshing every device
+		}
+		isCycleInFlightRef.current = true;
+		try {
+			await Promise.all(registeredDevicesRef.current.map(updateBatteryInfo));
+		} finally {
+			isCycleInFlightRef.current = false;
+		}
+		return true;
+	}, [registeredDevicesRef, updateBatteryInfo]);
+
+	return { updateBatteryInfo, reloadAll, autoCollapseDisconnectedDevicesRef };
 }

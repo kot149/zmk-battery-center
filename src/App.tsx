@@ -192,7 +192,7 @@ function App() {
 		}
 	};
 
-	const { updateBatteryInfo, autoCollapseDisconnectedDevicesRef } = useBatteryPolling({
+	const { reloadAll, autoCollapseDisconnectedDevicesRef } = useBatteryPolling({
 		isPollingMode,
 		isConfigLoaded,
 		isDeviceLoaded,
@@ -243,14 +243,11 @@ function App() {
 	}, [isNotificationMonitorMode, commitRegisteredDevices, activeNotificationMonitorsRef]);
 
 	const handleReload = async () => {
-		if (!isPollingMode) {
-			return;
-		}
-		if (!isDeviceLoaded) {
+		if (!isPollingMode || !isDeviceLoaded) {
 			return;
 		}
 		setState(State.fetchingBatteryInfo);
-		await Promise.all(deviceList.map(updateBatteryInfo));
+		await reloadAll();
 		setState(State.main);
 	};
 

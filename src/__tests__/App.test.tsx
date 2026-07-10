@@ -858,6 +858,101 @@ describe("App", () => {
 			expect(getBatteryInfo).toHaveBeenCalledTimes(2);
 		});
 
+		it("ignores a manual reload while a poll cycle is in flight", async () => {
+			const fetchInterval = 5_000;
+			mockedConfig = { ...defaultConfig, fetchInterval };
+
+			let resolvePoll!: (value: { battery_level: number; user_description: string }[]) => void;
+			vi.mocked(getBatteryInfo).mockImplementation(
+				() => new Promise((resolve) => { resolvePoll = resolve; }),
+			);
+
+			await act(async () => {
+				render(<App />);
+			});
+
+			await act(async () => {
+				resolveDeviceStoreGets([
+					{
+						id: "kbd-1",
+						name: "MockBoard One",
+						isDisconnected: false,
+						isCollapsed: false,
+						batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+					},
+				]);
+			});
+
+			// Initial poll cycle is in flight
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+			});
+
+			// The click must not issue fresh fetches while the cycle holds the guard
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				resolvePoll([{ battery_level: 90, user_description: "Central" }]);
+			});
+
+			// UI is back on the main screen with the reload button available
+			expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+		});
+
+		it("skips a poll cycle while a manual reload is in flight", async () => {
+			const fetchInterval = 5_000;
+			mockedConfig = { ...defaultConfig, fetchInterval };
+
+			let resolvePoll!: (value: { battery_level: number; user_description: string }[]) => void;
+			vi.mocked(getBatteryInfo).mockImplementation(
+				() => new Promise((resolve) => { resolvePoll = resolve; }),
+			);
+
+			await act(async () => {
+				render(<App />);
+			});
+
+			await act(async () => {
+				resolveDeviceStoreGets([
+					{
+						id: "kbd-1",
+						name: "MockBoard One",
+						isDisconnected: false,
+						isCollapsed: false,
+						batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+					},
+				]);
+			});
+
+			// Let the initial poll cycle finish so the reload owns the guard
+			await act(async () => {
+				resolvePoll([{ battery_level: 90, user_description: "Central" }]);
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(1);
+
+			await act(async () => {
+				fireEvent.click(screen.getByRole("button", { name: "Reload" }));
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(2);
+
+			// Interval fires while the reload is still pending: no extra fetch
+			await act(async () => {
+				vi.advanceTimersByTime(fetchInterval);
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(2);
+
+			await act(async () => {
+				resolvePoll([{ battery_level: 91, user_description: "Central" }]);
+			});
+
+			await act(async () => {
+				vi.advanceTimersByTime(fetchInterval);
+			});
+			expect(getBatteryInfo).toHaveBeenCalledTimes(3);
+		});
+
 		it("does not cause unhandled rejection when getBatteryInfo and sendNotification both reject", async () => {
 			const fetchInterval = 5_000;
 			mockedConfig = {
