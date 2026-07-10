@@ -1,5 +1,5 @@
 use csv::{ReaderBuilder, WriterBuilder};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -7,10 +7,27 @@ use std::sync::{LazyLock, Mutex};
 
 static HISTORY_FILE_LOCK: Mutex<()> = Mutex::new(());
 
-static PRUNED_FILES: LazyLock<Mutex<HashSet<PathBuf>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+static PRUNED_FILES: LazyLock<Mutex<HashMap<PathBuf, u64>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 const HISTORY_RETENTION_DAYS: u64 = 365;
+
+/// Decide whether a prune should run for `path`, and record today's epoch day if so.
+/// `today_epoch_day` = seconds-since-epoch / 86400. Returns true at most once per
+/// path per UTC day.
+fn should_prune_today(
+    last_pruned: &mut HashMap<PathBuf, u64>,
+    path: &std::path::Path,
+    today_epoch_day: u64,
+) -> bool {
+    match last_pruned.get(path) {
+        Some(&day) if day >= today_epoch_day => false,
+        _ => {
+            last_pruned.insert(path.to_path_buf(), today_epoch_day);
+            true
+        }
+    }
+}
 
 #[cfg(debug_assertions)]
 const DATA_DIR_ENV: &str = "ZMK_BATTERY_CENTER_DATA_DIR";
@@ -297,13 +314,17 @@ pub fn append_battery_history(
     let filename = safe_filename(&device_name, &ble_id);
     let path = dir.join(&filename);
     {
+        let today_epoch_day = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_secs()
+            / 86400;
         let mut pruned = PRUNED_FILES
             .lock()
             .unwrap_or_else(|p| p.into_inner());
-        if !pruned.contains(&path) {
+        if should_prune_today(&mut pruned, &path, today_epoch_day) {
             let cutoff = cutoff_timestamp_n_days_ago(HISTORY_RETENTION_DAYS)?;
             prune_battery_history_at_dir(&dir, &device_name, &ble_id, &cutoff)?;
-            pruned.insert(path);
         }
     }
 
@@ -630,6 +651,40 @@ mod tests {
         assert_eq!(records[0].user_description, "keep");
         assert_eq!(records[1].timestamp, "2026-06-01T00:00:00Z");
         assert_eq!(records[1].user_description, "new");
+    }
+
+    #[test]
+    fn should_prune_today_first_sighting() {
+        let mut last_pruned = HashMap::new();
+        let path = PathBuf::from("a.csv");
+        assert!(should_prune_today(&mut last_pruned, &path, 100));
+        assert_eq!(last_pruned.get(&path), Some(&100));
+    }
+
+    #[test]
+    fn should_prune_today_same_day_skips() {
+        let mut last_pruned = HashMap::new();
+        let path = PathBuf::from("a.csv");
+        assert!(should_prune_today(&mut last_pruned, &path, 100));
+        assert!(!should_prune_today(&mut last_pruned, &path, 100));
+    }
+
+    #[test]
+    fn should_prune_today_next_day_reprunes() {
+        let mut last_pruned = HashMap::new();
+        let path = PathBuf::from("a.csv");
+        assert!(should_prune_today(&mut last_pruned, &path, 100));
+        assert!(should_prune_today(&mut last_pruned, &path, 101));
+        assert_eq!(last_pruned.get(&path), Some(&101));
+    }
+
+    #[test]
+    fn should_prune_today_two_paths_independent() {
+        let mut last_pruned = HashMap::new();
+        let path_a = PathBuf::from("a.csv");
+        let path_b = PathBuf::from("b.csv");
+        assert!(should_prune_today(&mut last_pruned, &path_a, 100));
+        assert!(should_prune_today(&mut last_pruned, &path_b, 100));
     }
 
     #[test]
