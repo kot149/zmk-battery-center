@@ -32,7 +32,7 @@ import { platform } from "@tauri-apps/plugin-os";
 import { useWindowEvents } from "@/hooks/useWindowEvents";
 import { useTrayEvents } from "@/hooks/useTrayEvents";
 import { emit, listen } from '@tauri-apps/api/event';
-import { appendBatteryHistory } from '@/utils/batteryHistory';
+import { recordBatteryReadings } from '@/utils/batteryHistory';
 import {
 	upsertBatteryInfo,
 	getRegisteredDeviceDisplayName,
@@ -275,42 +275,31 @@ function App() {
 		}
 		const unlistenPromise = listen<BatteryInfoNotificationEvent>("battery-info-notification", event => {
 			const payload = event.payload;
-			const batteryLevel = payload.battery_info.battery_level;
-			if (batteryLevel !== null) {
-				const device = registeredDevicesRef.current.find(d => d.id === payload.id);
-				if (device) {
-					fireAndForget((async () => {
-						await appendBatteryHistory(
-							device.name,
-							device.id,
-							payload.battery_info.user_description ?? 'Central',
-							batteryLevel,
-						);
-						await emit('battery-history-updated', { deviceId: payload.id });
-					})(), `Failed to update battery history for ${payload.id}`);
-				}
-			}
-			commitRegisteredDevices(prev => prev.map(device => {
-				if (device.id !== payload.id) {
-					return device;
-				}
-				const newBatteryInfos = upsertBatteryInfo(device.batteryInfos, payload.battery_info);
-				notifyBatteryEdgeTransitions({
-					deviceDisplayName: getRegisteredDeviceDisplayName(device),
-					deviceId: device.id,
-					prevBatteryInfos: device.batteryInfos,
-					newBatteryInfos,
-					lowBatteryThreshold: config.lowBatteryThreshold,
-					highBatteryThreshold: config.highBatteryThreshold,
-					pushNotification: config.pushNotification,
-					pushNotificationWhen: config.pushNotificationWhen,
-				});
-				return expandIfConnected({
-					...device,
-					batteryInfos: newBatteryInfos,
-					isDisconnected: false,
-				}, autoCollapseDisconnectedDevicesRef.current);
-			}));
+			const device = registeredDevicesRef.current.find(d => d.id === payload.id);
+			if (!device) return;
+
+			// Side effects stay outside the state updater: React may invoke
+			// updater recipes more than once (StrictMode, concurrent replays).
+			recordBatteryReadings(device, [payload.battery_info]);
+
+			const newBatteryInfos = upsertBatteryInfo(device.batteryInfos, payload.battery_info);
+			notifyBatteryEdgeTransitions({
+				deviceDisplayName: getRegisteredDeviceDisplayName(device),
+				deviceId: device.id,
+				prevBatteryInfos: device.batteryInfos,
+				newBatteryInfos,
+				lowBatteryThreshold: config.lowBatteryThreshold,
+				highBatteryThreshold: config.highBatteryThreshold,
+				pushNotification: config.pushNotification,
+				pushNotificationWhen: config.pushNotificationWhen,
+			});
+
+			commitRegisteredDevices(prev => prev.map(d => d.id !== payload.id
+				? d
+				: expandIfConnected(
+					{ ...d, batteryInfos: upsertBatteryInfo(d.batteryInfos, payload.battery_info), isDisconnected: false },
+					autoCollapseDisconnectedDevicesRef.current,
+				)));
 		});
 
 		return () => {

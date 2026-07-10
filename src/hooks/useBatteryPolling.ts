@@ -2,8 +2,7 @@ import { useEffect, useCallback, useRef } from "react";
 import { getBatteryInfo } from "@/utils/ble";
 import { logger } from "@/utils/log";
 import { fireAndForget, sleep } from "@/utils/common";
-import { emit } from "@tauri-apps/api/event";
-import { appendBatteryHistory } from "@/utils/batteryHistory";
+import { recordBatteryReadings } from "@/utils/batteryHistory";
 import { sendNotification } from "@/utils/notification";
 import { NotificationType } from "@/utils/config";
 import { notifyBatteryEdgeTransitions } from "@/utils/batteryEdgeNotification";
@@ -73,20 +72,7 @@ export function useBatteryPolling({
 					);
 				}));
 
-				for (const info of infoArray) {
-					const batteryLevel = info.battery_level;
-					if (batteryLevel !== null) {
-						fireAndForget((async () => {
-							await appendBatteryHistory(
-								device.name,
-								device.id,
-								info.user_description ?? 'Central',
-								batteryLevel,
-							);
-							await emit('battery-history-updated', { deviceId: device.id });
-						})(), `Failed to update battery history for ${device.id}`);
-					}
-				}
+				recordBatteryReadings(device, infoArray);
 
 				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
 					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);

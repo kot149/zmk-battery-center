@@ -90,6 +90,7 @@ vi.mock("@/utils/notification", () => ({
 
 vi.mock("@/utils/batteryHistory", () => ({
 	appendBatteryHistory: vi.fn(async () => undefined),
+	recordBatteryReadings: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/plugin-os", () => ({
