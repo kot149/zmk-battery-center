@@ -27,15 +27,19 @@ export function useNotificationMonitors({
 	commitRegisteredDevices,
 }: UseNotificationMonitorsOptions) {
 	const activeNotificationMonitorsRef = useRef<Set<string>>(new Set());
+	const syncGenerationRef = useRef(0);
+	const syncChainRef = useRef<Promise<void>>(Promise.resolve());
 
 	useEffect(() => {
 		if (!isConfigLoaded || !isDeviceLoaded) {
 			return;
 		}
 
-		let isCancelled = false;
+		const generation = ++syncGenerationRef.current;
+		const isStale = () => syncGenerationRef.current !== generation;
 
 		const syncNotificationMonitors = async () => {
+			if (isStale()) return; // superseded while queued behind the previous run
 			const active = activeNotificationMonitorsRef.current;
 			// Derive the desired set from the stable key so that this effect
 			// does NOT re-run when battery levels or connection status change.
@@ -46,6 +50,7 @@ export function useNotificationMonitors({
 
 			const idsToStop = [...active].filter(id => !desired.has(id));
 			for (const id of idsToStop) {
+				if (isStale()) break;
 				try {
 					await stopBatteryNotificationMonitor(id);
 				} catch (e) {
@@ -61,14 +66,13 @@ export function useNotificationMonitors({
 
 			const monitorsToStart = [...desired].filter(id => !active.has(id));
 			for (const id of monitorsToStart) {
-				if (isCancelled) break;
+				if (isStale()) break;
 				try {
 					const info = await startBatteryNotificationMonitor(id);
-					if (isCancelled) {
-						await stopBatteryNotificationMonitor(id);
-						continue;
-					}
+					// The monitor IS running now; `active` must say so even if this
+					// run was superseded — the next run reconciles from true state.
 					active.add(id);
+					if (isStale()) return;
 					const infoArray = Array.isArray(info) ? info : [info];
 					// Empty array means the device was not connected at startup and a
 					// connection watcher was launched. Keep isDisconnected:true until
@@ -104,10 +108,14 @@ export function useNotificationMonitors({
 			}
 		};
 
-		fireAndForget(syncNotificationMonitors(), "Failed to synchronize battery notification monitors");
+		syncChainRef.current = syncChainRef.current
+			.then(syncNotificationMonitors)
+			.catch(e => logger.warn(`Failed to synchronize battery notification monitors: ${String(e)}`));
 
 		return () => {
-			isCancelled = true;
+			// Bump the generation so an in-flight run stops mutating state.
+			// (A newer effect run bumps it anyway; this covers unmount.)
+			syncGenerationRef.current++; // eslint-disable-line react-hooks/exhaustive-deps -- plain counter ref, not a DOM node
 		};
 	}, [
 		registeredDeviceIdsKey,
