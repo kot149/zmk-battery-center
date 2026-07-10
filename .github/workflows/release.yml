@@ -177,3 +177,20 @@ jobs:
           artifact-name: tauri-artifacts-linux-arm64
           upload-artifact: 'false'
           release: 'true'
+
+  publish-checksums:
+    needs: [release-macos-aarch64, release-macos-x64, release-windows, release-linux-x64, release-linux-arm64]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets and publish SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          mkdir assets && cd assets
+          gh release download "$TAG" --pattern '*'
+          sha256sum * > SHA256SUMS.txt
+          gh release upload "$TAG" SHA256SUMS.txt --clobber

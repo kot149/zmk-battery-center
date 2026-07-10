@@ -4,7 +4,8 @@ set -e
 REPO="kot149/zmk-battery-center"
 APP_NAME="zmk-battery-center.app"
 DEST_PATH="/Applications"
-TMP_DIR="/tmp"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TMP_DIR}"' EXIT
 
 echo "Starting zmk-battery-center installation..."
 
@@ -39,6 +40,25 @@ ARCHIVE_TMP_PATH="${TMP_DIR}/${ARCHIVE_FILENAME}"
 echo "Downloading: ${DOWNLOAD_URL}"
 curl -L -o "${ARCHIVE_TMP_PATH}" "${DOWNLOAD_URL}"
 
+# Verify archive integrity when the release publishes checksums
+CHECKSUMS_URL="https://github.com/${REPO}/releases/download/v${LATEST_VERSION}/SHA256SUMS.txt"
+CHECKSUMS_PATH="${TMP_DIR}/SHA256SUMS.txt"
+if curl -fsSL -o "${CHECKSUMS_PATH}" "${CHECKSUMS_URL}"; then
+    EXPECTED_HASH=$(grep " ${ARCHIVE_FILENAME}\$" "${CHECKSUMS_PATH}" | awk '{print $1}')
+    if [ -z "${EXPECTED_HASH}" ]; then
+        echo "Error: ${ARCHIVE_FILENAME} not found in SHA256SUMS.txt." >&2
+        exit 1
+    fi
+    ACTUAL_HASH=$(shasum -a 256 "${ARCHIVE_TMP_PATH}" | awk '{print $1}')
+    if [ "${EXPECTED_HASH}" != "${ACTUAL_HASH}" ]; then
+        echo "Error: checksum mismatch for ${ARCHIVE_FILENAME}. Aborting." >&2
+        exit 1
+    fi
+    echo "Checksum verified."
+else
+    echo "Warning: SHA256SUMS.txt not available for this release; skipping integrity check."
+fi
+
 # Extract the archive and install the application
 echo "Extracting archive..."
 tar -xzf "${ARCHIVE_TMP_PATH}" -C "${TMP_DIR}"
@@ -56,11 +76,8 @@ if [ -d "${EXTRACTED_APP_PATH}" ]; then
     sudo mv "${EXTRACTED_APP_PATH}" "${DEST_PATH}/"
     echo "Installation complete."
 else
-    echo "Error: Failed to extract ${APP_NAME} from the archive."
+    echo "Error: Failed to extract ${APP_NAME} from the archive." >&2
+    exit 1
 fi
-
-# Clean up
-echo "Cleaning up..."
-rm -f "${ARCHIVE_TMP_PATH}"
 
 echo "✅ Installation completed successfully."
