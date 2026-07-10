@@ -7,6 +7,7 @@ import {
 	stopAllBatteryMonitors,
 } from "@/utils/ble";
 import type { BatteryInfo } from "@/utils/ble";
+import type { RegisteredDevice } from "@/utils/appHelpers";
 
 vi.mock("@/utils/ble", () => ({
 	startBatteryNotificationMonitor: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock("@/utils/ble", () => ({
 type HookProps = {
 	key: string;
 	mode: boolean;
-	commit: (recipe: (current: never[]) => never[]) => void;
+	commit: (recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => void;
 };
 
 const CONNECTED_INFO: BatteryInfo[] = [{ battery_level: 50, user_description: "Central" }];
