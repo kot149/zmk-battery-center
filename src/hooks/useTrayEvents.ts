@@ -36,11 +36,17 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
     useEffect(() => {
         if (!isConfigLoaded) return;
 
-        let unlistenTrayEvent: (() => void) | null = null;
-        let unlistenTrayLeftClick: (() => void) | null = null;
-        let unlistenTrayMenuRefresh: (() => void) | null = null;
-        let unlistenTrayMenuToggleManual: (() => void) | null = null;
-        let unlistenTrayMenuAbout: (() => void) | null = null;
+        let cancelled = false;
+        const unlistens: Array<() => void> = [];
+        // Listeners registered after cleanup (StrictMode first mount, fast
+        // unmount) are unlistened immediately instead of leaking.
+        const track = (unlisten: () => void) => {
+            if (cancelled) {
+                unlisten();
+            } else {
+                unlistens.push(unlisten);
+            }
+        };
 
         const showWindowAtConfiguredPosition = async (manualOverride?: boolean) => {
             const manual = manualOverride ?? configRef.current.manualWindowPositioning;
@@ -72,6 +78,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
         const setupTray = async () => {
             const isLinux = platform() === 'linux';
             const tray = isLinux ? null : await TrayIcon.getById('tray_icon');
+            if (cancelled) return;
             if (!isLinux && !tray) {
                 logger.error('Tray icon not found');
                 return;
@@ -80,17 +87,17 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
             // Set tray position flag on first tray event
             let isTrayPositionSet = false;
             if (tray) {
-                unlistenTrayEvent = await listen<TrayIconEvent>('tray_event', () => {
+                track(await listen<TrayIconEvent>('tray_event', () => {
                     if (!isTrayPositionSet) {
                         isTrayPositionSet = true;
                         setTrayPositionSet(true);
                         logger.info('Tray position set');
                     }
-                });
+                }));
             }
 
             // Handle tray left click
-            unlistenTrayLeftClick = await listen('tray_left_click', async () => {
+            track(await listen('tray_left_click', async () => {
                 const isVisible = await isWindowVisible();
                 if (isVisible) {
                     hideWindow();
@@ -98,7 +105,7 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                     await showWindowAtConfiguredPosition();
                     setWindowFocus();
                 }
-            });
+            }));
 
             // Create tray menu
             const menu = await Menu.new({
@@ -161,34 +168,32 @@ export function useTrayEvents({ config, isConfigLoaded, onManualWindowPositionin
                     await tray.setShowMenuOnLeftClick(false);
                 }
             } else {
+                if (cancelled) return;
                 // Initialize Rust state
                 await invoke('update_manual_positioning', { enabled: configRef.current.manualWindowPositioning });
 
-                unlistenTrayMenuRefresh = await listen('tray_menu_refresh', async () => {
+                track(await listen('tray_menu_refresh', async () => {
                     await stopAllBatteryMonitors();
                     location.reload();
                     await showWindowAtConfiguredPosition();
-                });
+                }));
 
-                unlistenTrayMenuToggleManual = await listen('tray_menu_toggle_manual_positioning', async () => {
+                track(await listen('tray_menu_toggle_manual_positioning', async () => {
                     const isChecked = !configRef.current.manualWindowPositioning;
                     await showWindowAtConfiguredPosition(isChecked);
                     onManualWindowPositioningChangeRef.current(isChecked);
                     await invoke('update_manual_positioning', { enabled: isChecked });
-                });
+                }));
 
-                unlistenTrayMenuAbout = await listen('tray_menu_about', openAboutWindow);
+                track(await listen('tray_menu_about', openAboutWindow));
             }
         };
 
         setupTray();
 
         return () => {
-            if (unlistenTrayEvent) unlistenTrayEvent();
-            if (unlistenTrayLeftClick) unlistenTrayLeftClick();
-            if (unlistenTrayMenuRefresh) unlistenTrayMenuRefresh();
-            if (unlistenTrayMenuToggleManual) unlistenTrayMenuToggleManual();
-            if (unlistenTrayMenuAbout) unlistenTrayMenuAbout();
+            cancelled = true;
+            for (const unlisten of unlistens.splice(0)) unlisten();
         };
     }, [isConfigLoaded]);
 }

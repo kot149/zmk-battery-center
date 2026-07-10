@@ -34,8 +34,17 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
     // Handle window events
     useEffect(() => {
         const window = getCurrentWebviewWindow();
-        let unlistenOnMoved: (() => void) | null = null;
-        let unlistenOnFocusChanged: (() => void) | null = null;
+        let cancelled = false;
+        const unlistens: Array<() => void> = [];
+        // Listeners registered after cleanup (StrictMode first mount, fast
+        // unmount) are unlistened immediately instead of leaking.
+        const track = (unlisten: () => void) => {
+            if (cancelled) {
+                unlisten();
+            } else {
+                unlistens.push(unlisten);
+            }
+        };
 
         const saveWindowPosition = async (position: { x: number; y: number }) => {
             const isVisible = await window.isVisible();
@@ -59,7 +68,7 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
         };
 
         const setupListeners = async () => {
-            unlistenOnMoved = await window.onMoved(async ({ payload: position }) => {
+            track(await window.onMoved(async ({ payload: position }) => {
                 logger.debug(`Window onMoved event received: x=${position.x}, y=${position.y}`);
                 if (!isWindowMovingRef.current) {
                     logger.debug("Window move start");
@@ -78,9 +87,9 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
                         await saveWindowPosition(position);
                     }
                 }, 200);
-            });
+            }));
 
-            unlistenOnFocusChanged = await window.onFocusChanged(({ payload: isFocused }) => {
+            track(await window.onFocusChanged(({ payload: isFocused }) => {
                 isWindowFocusedRef.current = isFocused;
                 if (isFocused) {
                     logger.debug("Window focused");
@@ -100,14 +109,14 @@ export function useWindowEvents({ config, isConfigLoaded, onWindowPositionChange
                         }
                     }, 200);
                 }
-            });
+            }));
         };
 
         setupListeners();
 
         return () => {
-            if (unlistenOnMoved) unlistenOnMoved();
-            if (unlistenOnFocusChanged) unlistenOnFocusChanged();
+            cancelled = true;
+            for (const unlisten of unlistens.splice(0)) unlisten();
             if (moveTimeoutRef.current) clearTimeout(moveTimeoutRef.current);
             if (focusTimeoutRef.current) clearTimeout(focusTimeoutRef.current);
         };
