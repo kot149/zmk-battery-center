@@ -32,17 +32,20 @@ runs:
     - name: Setup Bun
       uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       with:
-        bun-version: latest
+        bun-version: "1.3.14"
 
     - name: install Rust stable (with extra targets)
       if: ${{ inputs.rust-extra-targets != '' }}
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
       with:
+        toolchain: stable
         targets: ${{ inputs.rust-extra-targets }}
 
     - name: install Rust stable
       if: ${{ inputs.rust-extra-targets == '' }}
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
+      with:
+        toolchain: stable
 
     - name: install dependencies (ubuntu x64 only)
       if: ${{ inputs.ubuntu-deps == 'x64' }}
@@ -79,7 +82,7 @@ runs:
     - name: Install cargo-about
       shell: bash
       # cargo-about 0.9+ gates the binary behind the `cli` feature
-      run: cargo install cargo-about --features cli
+      run: cargo install cargo-about --version 0.9.1 --locked --features cli
 
     - name: Generate licenses
       shell: bash
