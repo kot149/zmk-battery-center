@@ -96,6 +96,13 @@ fn bytes_to_hex(data: &[u8]) -> String {
         .join(" ")
 }
 
+/// Strip leading spreadsheet-formula trigger characters (=, +, -, @, tab, CR)
+/// from device-supplied text. The value ends up in CSV files users may open in
+/// spreadsheet apps; a leading trigger would be interpreted as a formula.
+fn sanitize_device_text(s: &str) -> String {
+    s.trim_start_matches(['=', '+', '-', '@', '\t', '\r']).to_string()
+}
+
 async fn get_adapter() -> Result<Adapter, String> {
     log::debug!("BLE I/O: requesting default adapter");
     let adapter = Adapter::default()
@@ -208,7 +215,10 @@ async fn get_battery_characteristic_contexts(
                     format_device_id_for_store(target_device)
                 );
                 if let Ok(desc_str) = String::from_utf8(desc_value.clone()) {
-                    user_description = Some(desc_str);
+                    let sanitized = sanitize_device_text(&desc_str);
+                    if !sanitized.is_empty() {
+                        user_description = Some(sanitized);
+                    }
                 }
             }
 
@@ -925,6 +935,30 @@ mod tests {
     fn bytes_to_hex_formats_uppercase_space_separated() {
         assert_eq!(bytes_to_hex(&[0x00, 0xAB, 0x05]), "00 AB 05");
         assert_eq!(bytes_to_hex(&[]), "");
+    }
+
+    #[test]
+    fn sanitize_device_text_passes_normal_names() {
+        assert_eq!(sanitize_device_text("Central"), "Central");
+        assert_eq!(sanitize_device_text("Peripheral"), "Peripheral");
+        assert_eq!(sanitize_device_text("Left half"), "Left half");
+    }
+
+    #[test]
+    fn sanitize_device_text_strips_leading_triggers() {
+        assert_eq!(sanitize_device_text("=X"), "X");
+        assert_eq!(sanitize_device_text("+X"), "X");
+        assert_eq!(sanitize_device_text("-X"), "X");
+        assert_eq!(sanitize_device_text("@X"), "X");
+        assert_eq!(sanitize_device_text("\tX"), "X");
+        assert_eq!(sanitize_device_text("=+-@X"), "X");
+        assert_eq!(sanitize_device_text("=cmd()"), "cmd()");
+    }
+
+    #[test]
+    fn sanitize_device_text_preserves_interior_chars() {
+        assert_eq!(sanitize_device_text("Left-half"), "Left-half");
+        assert_eq!(sanitize_device_text("A=B"), "A=B");
     }
 
     #[tokio::test(start_paused = true)]
