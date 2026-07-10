@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode, useState, type Dispatch, type SetStateAction } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { getBatteryInfo, startBatteryNotificationMonitor } from "@/utils/ble";
-import { defaultConfig, FETCH_INTERVAL_AUTO } from "@/utils/config";
+import { defaultConfig, FETCH_INTERVAL_AUTO, NotificationType } from "@/utils/config";
 import { sendNotification } from "@/utils/notification";
 
 const { mockMoveWindowToTrayCenter, mockResizeWindowToContent } = vi.hoisted(() => ({
@@ -863,7 +863,11 @@ describe("App", () => {
 				...defaultConfig,
 				fetchInterval,
 				pushNotification: true,
-				pushNotificationWhen: { Disconnected: true, LowBattery: true },
+				pushNotificationWhen: {
+					...defaultConfig.pushNotificationWhen,
+					[NotificationType.Disconnected]: true,
+					[NotificationType.LowBattery]: true,
+				},
 			};
 
 			vi.mocked(getBatteryInfo).mockRejectedValue(new Error("BLE error"));

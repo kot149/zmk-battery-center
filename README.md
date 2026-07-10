@@ -17,7 +17,7 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
 [macOS only] Display battery level on the system tray (inspired by [ZMK Battery Bar](https://github.com/itouuuuuuuuu/zmk-battery-bar))
 - (Options)
   - Push notifications when
-    - Keyboard battery level is low
+    - Keyboard battery level reaches / drops below a certain threshold
     - Keyboard is connected/disconnected
   - Auto start at login
   - Switch between light and dark themes
@@ -41,6 +41,7 @@ This requires admin privileges. If you don't have admin privileges, manually ins
 
 ```sh
 brew tap kot149/tap
+brew trust --cask kot149/tap/zmk-battery-center
 brew install --cask kot149/tap/zmk-battery-center
 ```
 

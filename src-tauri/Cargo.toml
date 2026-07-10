@@ -1,6 +1,6 @@
 [package]
 name = "zmk-battery-center"
-version = "0.9.0"
+version = "0.10.0"
 description = "A tray app to monitor battery status of ZMK keyboards"
 authors = ["kot149"]
 license = "MIT"
@@ -90,5 +90,5 @@ incremental = true # Compile your binary in smaller steps.
 codegen-units = 1 # Allows LLVM to perform better optimization.
 lto = true # Enables link-time-optimizations.
 opt-level = "s" # Prioritizes small binary size. Use `3` if you prefer speed.
-panic = "abort" # Higher performance by disabling panic handlers.
+panic = "unwind" # Let Tauri's IPC dispatch catch panics instead of aborting the whole process.
 strip = true # Ensures debug symbols are removed.
