@@ -60,6 +60,7 @@ export default [
 			"react-hooks/exhaustive-deps": "error",
 			"react-hooks/refs": "off",
 			"react-hooks/set-state-in-effect": "off",
+			"react-hooks/purity": "off",
 			"react/react-in-jsx-scope": "off",
 			"react/prop-types": "off",
 			"@typescript-eslint/no-unused-vars": [

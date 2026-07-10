@@ -66,7 +66,7 @@ runs:
       run: bun install --frozen-lockfile
 
     - name: Restore bun cache
-      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           node_modules
@@ -75,7 +75,7 @@ runs:
           ${{ runner.os }}-bun-
 
     - name: Rust cache
-      uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
         workspaces: './src-tauri -> target'
 
@@ -90,7 +90,7 @@ runs:
 
     - name: Build Tauri (artifacts only)
       if: ${{ inputs.release != 'true' }}
-      uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+      uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
       id: tauri
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -99,7 +99,7 @@ runs:
 
     - name: Build and release Tauri
       if: ${{ inputs.release == 'true' }}
-      uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+      uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
       id: tauri_rel
       env:
         GITHUB_TOKEN: ${{ github.token }}
@@ -140,7 +140,7 @@ runs:
 
     - name: Upload Tauri Artifacts
       if: ${{ inputs.upload-artifact == 'true' && env.ACT != 'true' }}
-      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: ${{ inputs.artifact-name }}
         path: |
