@@ -49,12 +49,14 @@ struct BatteryCharacteristicContext {
 struct MonitorConnectionState {
     connected_workers: HashSet<usize>,
     is_connected: bool,
+    ever_connected: bool,
 }
 
 impl MonitorConnectionState {
     fn apply_worker_connection(&mut self, worker_id: usize, connected: bool) -> Option<bool> {
         if connected {
             self.connected_workers.insert(worker_id);
+            self.ever_connected = true;
         } else {
             self.connected_workers.remove(&worker_id);
         }
@@ -643,6 +645,23 @@ async fn battery_connection_watcher(
             let _ = h.await;
         }
 
+        let never_connected = {
+            let state = monitor_connection_state.lock().await;
+            !state.ever_connected
+        };
+        if never_connected {
+            log::warn!(
+                "BLE I/O: no notification worker connected this session, reporting disconnected device_id={device_id}"
+            );
+            let _ = app.emit(
+                BATTERY_MONITOR_STATUS_EVENT,
+                BatteryMonitorStatusEvent {
+                    id: device_id.clone(),
+                    connected: false,
+                },
+            );
+        }
+
         log::debug!("BLE I/O: connection watcher all workers finished, restarting device_id={device_id}");
 
         if *stop_rx.borrow() {
@@ -883,6 +902,23 @@ mod tests {
         state.apply_worker_connection(0, true);
         state.apply_worker_connection(0, false);
         assert_eq!(state.apply_worker_connection(0, true), Some(true));
+    }
+
+    #[test]
+    fn ever_connected_starts_false_and_latches_on_connect() {
+        let mut state = MonitorConnectionState::default();
+        assert!(!state.ever_connected);
+        state.apply_worker_connection(0, true);
+        assert!(state.ever_connected);
+        state.apply_worker_connection(0, false);
+        assert!(state.ever_connected);
+    }
+
+    #[test]
+    fn ever_connected_stays_false_when_only_disconnects_applied() {
+        let mut state = MonitorConnectionState::default();
+        state.apply_worker_connection(0, false);
+        assert!(!state.ever_connected);
     }
 
     #[test]
