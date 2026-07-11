@@ -32,13 +32,28 @@ else
     exit 1
 fi
 
-# Download the archive file
-ARCHIVE_FILENAME="zmk-battery-center_${ARCH_SUFFIX}.app.tar.gz"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${LATEST_VERSION}/${ARCHIVE_FILENAME}"
-ARCHIVE_TMP_PATH="${TMP_DIR}/${ARCHIVE_FILENAME}"
+# Download the archive file.
+# Releases built with tauri-action v1+ include the version in the filename;
+# older releases do not, so fall back to the unversioned name.
+ARCHIVE_FILENAME=""
+ARCHIVE_TMP_PATH=""
+for candidate in \
+    "zmk-battery-center_${LATEST_VERSION}_${ARCH_SUFFIX}.app.tar.gz" \
+    "zmk-battery-center_${ARCH_SUFFIX}.app.tar.gz"; do
+    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/v${LATEST_VERSION}/${candidate}"
+    echo "Downloading: ${DOWNLOAD_URL}"
+    if curl -fL -o "${TMP_DIR}/${candidate}" "${DOWNLOAD_URL}"; then
+        ARCHIVE_FILENAME="${candidate}"
+        ARCHIVE_TMP_PATH="${TMP_DIR}/${candidate}"
+        break
+    fi
+    echo "Not found, trying next filename..."
+done
 
-echo "Downloading: ${DOWNLOAD_URL}"
-curl -L -o "${ARCHIVE_TMP_PATH}" "${DOWNLOAD_URL}"
+if [ -z "${ARCHIVE_FILENAME}" ]; then
+    echo "Error: Could not download the app archive for v${LATEST_VERSION} (${ARCH_SUFFIX})." >&2nt
+    exit 1
+fi
 
 # Verify archive integrity when the release publishes checksums
 CHECKSUMS_URL="https://github.com/${REPO}/releases/download/v${LATEST_VERSION}/SHA256SUMS.txt"
