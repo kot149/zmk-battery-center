@@ -22,9 +22,6 @@ accepted = [
 ignore-build-dependencies = true
 ignore-dev-dependencies = true
 
-# clearlydefined.ioからの取得を無効化（GPL-2.0のdeprecated identifier問題を回避）
-no-clearly-defined = true
-
 # dlopen2 doesn't have a license field in Cargo.toml but uses MIT
 [dlopen2]
 accepted = ["MIT"]
