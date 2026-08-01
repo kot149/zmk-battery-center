@@ -285,6 +285,7 @@ function App() {
 				deviceId: device.id,
 				prevBatteryInfos: device.batteryInfos,
 				newBatteryInfos,
+				batteryPartLabels: device.batteryPartLabels,
 				lowBatteryThreshold: config.lowBatteryThreshold,
 				highBatteryThreshold: config.highBatteryThreshold,
 				pushNotification: config.pushNotification,

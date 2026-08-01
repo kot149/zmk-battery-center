@@ -86,6 +86,7 @@ export function useBatteryPolling({
 					deviceId: device.id,
 					prevBatteryInfos: device.batteryInfos,
 					newBatteryInfos: infoArray,
+					batteryPartLabels: device.batteryPartLabels,
 					lowBatteryThreshold: lowBatteryThresholdRef.current,
 					highBatteryThreshold: highBatteryThresholdRef.current,
 					pushNotification: pushNotificationRef.current,

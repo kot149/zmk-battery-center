@@ -3,6 +3,10 @@ import { fireAndForget } from "@/utils/common";
 import { logger } from "@/utils/log";
 import { NotificationType } from "@/utils/config";
 import { mapIsLowBattery, mapIsHighBattery } from "@/utils/appHelpers";
+import {
+	defaultBatteryPartDisplayName,
+	getBatteryPartDisplayName,
+} from "@/utils/batteryLabels";
 import type { BatteryInfo } from "@/utils/ble";
 
 interface NotifyBatteryEdgeTransitionsParams {
@@ -10,6 +14,7 @@ interface NotifyBatteryEdgeTransitionsParams {
 	deviceId: string;
 	prevBatteryInfos: BatteryInfo[];
 	newBatteryInfos: BatteryInfo[];
+	batteryPartLabels?: Record<string, string>;
 	lowBatteryThreshold: number;
 	highBatteryThreshold: number;
 	pushNotification: boolean;
@@ -21,6 +26,7 @@ export function notifyBatteryEdgeTransitions({
 	deviceId,
 	prevBatteryInfos,
 	newBatteryInfos,
+	batteryPartLabels,
 	lowBatteryThreshold,
 	highBatteryThreshold,
 	pushNotification,
@@ -38,8 +44,11 @@ export function notifyBatteryEdgeTransitions({
 		}
 		for (let i = 0; i < curr.length && i < prev.length; i++) {
 			if (prev[i] || !curr[i]) continue;
-			const suffix = newBatteryInfos.length >= 2
-				? ' ' + (newBatteryInfos[i].user_description ?? 'Central')
+			const part = newBatteryInfos[i];
+			const partDisplayName = getBatteryPartDisplayName(batteryPartLabels, part.user_description);
+			const hasCustomPartLabel = partDisplayName !== defaultBatteryPartDisplayName(part.user_description);
+			const suffix = newBatteryInfos.length >= 2 || hasCustomPartLabel
+				? ' ' + partDisplayName
 				: '';
 			const message = `${deviceDisplayName}${suffix} battery ${verb} ${threshold}%.`;
 			fireAndForget(
