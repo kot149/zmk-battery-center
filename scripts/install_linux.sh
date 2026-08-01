@@ -116,7 +116,7 @@ install_appimage() {
   mkdir -p "${bin_dir}"
   mv "${out}" "${dest}"
   chmod +x "${dest}"
-  echo "Installed AppImage to ${dest}"
+  echo "Installed AppImage to: ${dest}"
   echo "Run: ${dest}"
 }
 
@@ -130,7 +130,13 @@ install_deb() {
   verify_checksum "${out}" "${DEB_FILENAME}"
   echo "Installing .deb (requires sudo)..."
   sudo apt-get install -y "${out}"
-  echo "Installed Debian package. Look for ${APP_NAME} in your app menu, or run: ${APP_NAME}"
+  local executable_path
+  executable_path="$(command -v "${APP_NAME}" 2>/dev/null || true)"
+  if [[ -n "${executable_path}" ]]; then
+    echo "Installed Debian package. Executable: ${executable_path}"
+  else
+    echo "Installed Debian package. Launch ${APP_NAME} from your app menu."
+  fi
 }
 
 install_rpm() {
@@ -150,7 +156,13 @@ install_rpm() {
     echo "Error: No supported RPM installer found (dnf, yum, zypper, or rpm)." >&2
     exit 1
   fi
-  echo "Installed RPM package. Look for ${APP_NAME} in your app menu, or run: ${APP_NAME}"
+  local executable_path
+  executable_path="$(command -v "${APP_NAME}" 2>/dev/null || true)"
+  if [[ -n "${executable_path}" ]]; then
+    echo "Installed RPM package. Executable: ${executable_path}"
+  else
+    echo "Installed RPM package. Launch ${APP_NAME} from your app menu."
+  fi
 }
 
 case "${FORMAT}" in

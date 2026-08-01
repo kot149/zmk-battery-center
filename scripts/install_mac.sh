@@ -89,7 +89,9 @@ if [ -d "${EXTRACTED_APP_PATH}" ]; then
     fi
     # Move the new version into the Applications folder
     sudo mv "${EXTRACTED_APP_PATH}" "${DEST_PATH}/"
+    INSTALLED_APP_PATH="${DEST_PATH}/${APP_NAME}"
     echo "Installation complete."
+    echo "Installed to: ${INSTALLED_APP_PATH}"
 else
     echo "Error: Failed to extract ${APP_NAME} from the archive." >&2
     exit 1

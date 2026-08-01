@@ -42,9 +42,26 @@ try {
 
     # Execute the silent installation as admin
     Write-Host "Installing $outFile..."
-    Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet" -Wait -Verb RunAs
+    $installProcess = Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet" -Wait -PassThru -Verb RunAs
+    if ($installProcess.ExitCode -notin @(0, 3010)) {
+        throw "MSI installation failed with exit code $($installProcess.ExitCode)."
+    }
+
+    $installedLocation = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+    ) |
+        ForEach-Object { Get-ItemProperty -Path $_ -ErrorAction SilentlyContinue } |
+        Where-Object { $_.DisplayName -like "zmk-battery-center*" -and $_.InstallLocation } |
+        Select-Object -First 1 -ExpandProperty InstallLocation
 
     Write-Host "✅ Installation completed successfully."
+    if ($installedLocation) {
+        Write-Host "Installed to: $installedLocation"
+    } else {
+        Write-Host "The app is available from the Start menu."
+    }
 
 } catch {
     Write-Error "❌ An error occurred during installation: $($_.Exception.Message)"
@@ -54,4 +71,5 @@ try {
         Write-Host "Cleaning up..."
         Remove-Item -LiteralPath $tmpDir -Recurse -Force
     }
+    Write-Host "Done."
 }
