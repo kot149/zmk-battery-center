@@ -82,9 +82,35 @@ release_url() {
   echo "https://github.com/${REPO}/releases/download/${LATEST_TAG}/${filename}"
 }
 
+verify_checksum() {
+  local file_path="$1"
+  local filename="$2"
+  local checksums_path="${TMP_DIR}/SHA256SUMS.txt"
+  if [[ ! -f "${checksums_path}" ]]; then
+    if ! curl -fsSL -o "${checksums_path}" "$(release_url "SHA256SUMS.txt")"; then
+      echo "Warning: SHA256SUMS.txt not available for this release; skipping integrity check." >&2
+      return 0
+    fi
+  fi
+  local expected_hash
+  expected_hash="$(grep " ${filename}\$" "${checksums_path}" | awk '{print $1}')"
+  if [[ -z "${expected_hash}" ]]; then
+    echo "Error: ${filename} not found in SHA256SUMS.txt." >&2
+    exit 1
+  fi
+  local actual_hash
+  actual_hash="$(sha256sum "${file_path}" | awk '{print $1}')"
+  if [[ "${expected_hash}" != "${actual_hash}" ]]; then
+    echo "Error: checksum mismatch for ${filename}. Aborting." >&2
+    exit 1
+  fi
+  echo "Checksum verified."
+}
+
 install_appimage() {
   local out="${TMP_DIR}/${APPIMAGE_FILENAME}"
   download "$(release_url "${APPIMAGE_FILENAME}")" "${out}"
+  verify_checksum "${out}" "${APPIMAGE_FILENAME}"
   local bin_dir="${HOME}/.local/bin"
   local dest="${bin_dir}/${APP_NAME}.AppImage"
   mkdir -p "${bin_dir}"
@@ -101,6 +127,7 @@ install_deb() {
   fi
   local out="${TMP_DIR}/${DEB_FILENAME}"
   download "$(release_url "${DEB_FILENAME}")" "${out}"
+  verify_checksum "${out}" "${DEB_FILENAME}"
   echo "Installing .deb (requires sudo)..."
   sudo apt-get install -y "${out}"
   echo "Installed Debian package. Look for ${APP_NAME} in your app menu, or run: ${APP_NAME}"
@@ -109,6 +136,7 @@ install_deb() {
 install_rpm() {
   local out="${TMP_DIR}/${RPM_FILENAME}"
   download "$(release_url "${RPM_FILENAME}")" "${out}"
+  verify_checksum "${out}" "${RPM_FILENAME}"
   echo "Installing .rpm (requires sudo)..."
   if command -v dnf >/dev/null 2>&1; then
     sudo dnf install -y "${out}"

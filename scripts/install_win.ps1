@@ -1,5 +1,6 @@
 # Stop on error
 $ErrorActionPreference = "Stop"
+$tmpDir = $null
 
 try {
     # Get the URL of the latest MSI file
@@ -14,22 +15,43 @@ try {
 
     $url = $asset.browser_download_url
 
-    # Download the file to a temporary file
-    $outFile = Join-Path $env:TEMP "zmk-battery-center.msi"
+    # Download the file to a private temporary directory
+    $tmpDir = Join-Path $env:TEMP ("zmk-battery-center-" + [System.Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $tmpDir | Out-Null
+    $outFile = Join-Path $tmpDir "zmk-battery-center.msi"
     Write-Host "Downloading from $url..."
     Invoke-WebRequest -Uri $url -OutFile $outFile
+
+    $sumsAsset = $latestRelease.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' }
+    if ($sumsAsset) {
+        $sumsFile = Join-Path $tmpDir "SHA256SUMS.txt"
+        Invoke-WebRequest -Uri $sumsAsset.browser_download_url -OutFile $sumsFile
+        $expectedLine = Get-Content $sumsFile | Where-Object { $_ -match [regex]::Escape($asset.name) + '$' }
+        if (-not $expectedLine) {
+            throw "$($asset.name) not found in SHA256SUMS.txt."
+        }
+        $expectedHash = ($expectedLine -split '\s+')[0].ToLowerInvariant()
+        $actualHash = (Get-FileHash -Algorithm SHA256 -Path $outFile).Hash.ToLowerInvariant()
+        if ($expectedHash -ne $actualHash) {
+            throw "Checksum mismatch for $($asset.name). Aborting."
+        }
+        Write-Host "Checksum verified."
+    } else {
+        Write-Warning "SHA256SUMS.txt not available for this release; skipping integrity check."
+    }
 
     # Execute the silent installation as admin
     Write-Host "Installing $outFile..."
     Start-Process msiexec.exe -ArgumentList "/i `"$outFile`" /quiet" -Wait -Verb RunAs
-
-    # Delete the temporary file
-    Write-Host "Cleaning up..."
-    Remove-Item $outFile
 
     Write-Host "✅ Installation completed successfully."
 
 } catch {
     Write-Error "❌ An error occurred during installation: $($_.Exception.Message)"
     exit 1
+} finally {
+    if ($tmpDir -and (Test-Path -LiteralPath $tmpDir)) {
+        Write-Host "Cleaning up..."
+        Remove-Item -LiteralPath $tmpDir -Recurse -Force
+    }
 }
