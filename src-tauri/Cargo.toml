@@ -28,8 +28,6 @@ tauri-plugin-positioner = { version = "2.0.0", features = ["tray-icon"] }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 bluest = "0.6.9"
 futures-util = "0.3.32"
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = "1.23.4"
 tauri-plugin-store = "2"
 tauri-plugin-notification = "2"
