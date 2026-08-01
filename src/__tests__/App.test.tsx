@@ -362,6 +362,90 @@ describe("App", () => {
 		expect(screen.queryByLabelText("Disconnected")).toBeNull();
 		expect(screen.getByText("87%")).toBeTruthy();
 	});
+	it("battery info listener is not re-registered when notification config changes", async () => {
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([]);
+		});
+
+		await waitFor(() => {
+			expect(mockListen).toHaveBeenCalledWith("battery-info-notification", expect.any(Function));
+		});
+
+		const batteryInfoListenCount = () => mockListen.mock.calls.filter(
+			([event]) => event === "battery-info-notification",
+		).length;
+		const initialListenCount = batteryInfoListenCount();
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				pushNotification: true,
+			}));
+		});
+
+		await waitFor(() => {
+			expect(batteryInfoListenCount()).toBe(initialListenCount);
+		});
+	});
+
+	it("battery info events use latest thresholds without re-registration", async () => {
+		mockedConfig = {
+			...defaultConfig,
+			pushNotification: true,
+		};
+		render(<App />);
+
+		await waitFor(() => {
+			expect(mockStore.get).toHaveBeenCalledWith("devices");
+		});
+
+		await act(async () => {
+			resolveDeviceStoreGets([
+				{
+					id: "kbd-1",
+					name: "MockBoard One",
+					isDisconnected: false,
+					isCollapsed: false,
+					batteryInfos: [{ battery_level: 30, user_description: "Central" }],
+				},
+			]);
+		});
+
+		await waitFor(() => {
+			expect(batteryInfoNotificationHandler).toBeDefined();
+		});
+
+		const batteryInfoListenCount = () => mockListen.mock.calls.filter(
+			([event]) => event === "battery-info-notification",
+		).length;
+		const initialListenCount = batteryInfoListenCount();
+		vi.mocked(sendNotification).mockClear();
+
+		await act(async () => {
+			setMockedConfigInApp?.((config) => ({
+				...config,
+				lowBatteryThreshold: 40,
+			}));
+		});
+
+		await act(async () => {
+			batteryInfoNotificationHandler?.({
+				payload: {
+					id: "kbd-1",
+					battery_info: { battery_level: 35, user_description: "Central" },
+				},
+			});
+		});
+
+		expect(sendNotification).toHaveBeenCalledWith("MockBoard One battery dropped below 40%.");
+		expect(batteryInfoListenCount()).toBe(initialListenCount);
+	});
 
 	it("uses the latest auto collapse setting for manual reload after rerender", async () => {
 		render(<App />);

@@ -74,6 +74,19 @@ function App() {
 	const [error, setError] = useState("");
 	const { config, isConfigLoaded } = useConfigContext();
 
+	const pushNotificationRef = useRef(config.pushNotification);
+	const pushNotificationWhenRef = useRef(config.pushNotificationWhen);
+	const lowBatteryThresholdRef = useRef(config.lowBatteryThreshold);
+	const ignoreZeroPercentRef = useRef(config.ignoreZeroPercent);
+	const highBatteryThresholdRef = useRef(config.highBatteryThreshold);
+	useEffect(() => {
+		pushNotificationRef.current = config.pushNotification;
+		pushNotificationWhenRef.current = config.pushNotificationWhen;
+		lowBatteryThresholdRef.current = config.lowBatteryThreshold;
+		ignoreZeroPercentRef.current = config.ignoreZeroPercent;
+		highBatteryThresholdRef.current = config.highBatteryThreshold;
+	}, [config.pushNotification, config.pushNotificationWhen, config.lowBatteryThreshold, config.ignoreZeroPercent, config.highBatteryThreshold]);
+
 	const [state, setState] = useState<State>(State.main);
 	const [panelLayoutRevision, setPanelLayoutRevision] = useState(0);
 	const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
@@ -287,11 +300,11 @@ function App() {
 				prevBatteryInfos: device.batteryInfos,
 				newBatteryInfos,
 				batteryPartLabels: device.batteryPartLabels,
-				lowBatteryThreshold: config.lowBatteryThreshold,
-				ignoreZeroPercent: config.ignoreZeroPercent,
-				highBatteryThreshold: config.highBatteryThreshold,
-				pushNotification: config.pushNotification,
-				pushNotificationWhen: config.pushNotificationWhen,
+				lowBatteryThreshold: lowBatteryThresholdRef.current,
+				ignoreZeroPercent: ignoreZeroPercentRef.current,
+				highBatteryThreshold: highBatteryThresholdRef.current,
+				pushNotification: pushNotificationRef.current,
+				pushNotificationWhen: pushNotificationWhenRef.current,
 			});
 
 			commitRegisteredDevices(prev => prev.map(d => d.id !== payload.id
@@ -308,7 +321,7 @@ function App() {
 				"Failed to clean up battery info listener",
 			);
 		};
-	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, config.lowBatteryThreshold, config.ignoreZeroPercent, config.highBatteryThreshold, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
+	}, [isDeviceLoaded, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
 
 	const previousAutoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
 	useEffect(() => {
