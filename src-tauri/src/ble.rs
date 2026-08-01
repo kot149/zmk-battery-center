@@ -328,6 +328,54 @@ async fn update_monitor_connection_state(
     }
 }
 
+enum NotificationOutcome {
+    Emit(BatteryInfo),
+    Stop,
+}
+
+fn classify_notification_item(
+    item: Option<Result<Vec<u8>, bluest::Error>>,
+    user_description: &Option<String>,
+) -> NotificationOutcome {
+    match item {
+        Some(Ok(data)) => NotificationOutcome::Emit(BatteryInfo {
+            battery_level: data.first().copied(),
+            user_description: user_description.clone(),
+        }),
+        Some(Err(_)) | None => NotificationOutcome::Stop,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ConnectionWaitOutcome {
+    Proceed,
+    RetryOuter,
+}
+
+fn classify_connection_wait_event(
+    event: Option<bluest::ConnectionEvent>,
+) -> ConnectionWaitOutcome {
+    match event {
+        Some(bluest::ConnectionEvent::Connected) => ConnectionWaitOutcome::Proceed,
+        Some(bluest::ConnectionEvent::Disconnected) | None => ConnectionWaitOutcome::RetryOuter,
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum WorkerConnectionOutcome {
+    Continue,
+    Stop,
+}
+
+fn classify_worker_connection_event(
+    event: Option<bluest::ConnectionEvent>,
+) -> WorkerConnectionOutcome {
+    match event {
+        Some(bluest::ConnectionEvent::Connected) => WorkerConnectionOutcome::Continue,
+        Some(bluest::ConnectionEvent::Disconnected) | None => WorkerConnectionOutcome::Stop,
+    }
+}
+
 async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
     let BatteryNotificationWorkerArgs {
         app,
@@ -390,23 +438,15 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                 }
             }
             value = stream.next() => {
-                match value {
+                match &value {
                     Some(Ok(data)) => {
                         log::debug!(
                             "BLE I/O: notify event device_id={} description={} bytes={} parsed={:?}",
                             device_id,
                             context.user_description.as_deref().unwrap_or("Central"),
-                            bytes_to_hex(&data),
+                            bytes_to_hex(data),
                             data.first().copied()
                         );
-                        let payload = BatteryInfoNotificationEvent {
-                            id: device_id.clone(),
-                            battery_info: BatteryInfo {
-                                battery_level: data.first().copied(),
-                                user_description: context.user_description.clone(),
-                            },
-                        };
-                        let _ = app.emit(BATTERY_INFO_NOTIFICATION_EVENT, payload);
                     }
                     Some(Err(e)) => {
                         log::warn!(
@@ -415,7 +455,6 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                             context.user_description.as_deref().unwrap_or("Central"),
                             e
                         );
-                        break;
                     }
                     None => {
                         log::warn!(
@@ -423,8 +462,18 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                             device_id,
                             context.user_description.as_deref().unwrap_or("Central")
                         );
-                        break;
                     }
+                }
+
+                match classify_notification_item(value, &context.user_description) {
+                    NotificationOutcome::Emit(battery_info) => {
+                        let payload = BatteryInfoNotificationEvent {
+                            id: device_id.clone(),
+                            battery_info,
+                        };
+                        let _ = app.emit(BATTERY_INFO_NOTIFICATION_EVENT, payload);
+                    }
+                    NotificationOutcome::Stop => break,
                 }
             }
             // Detect disconnection
@@ -434,13 +483,16 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                     None => std::future::pending().await,
                 }
             } => {
-                if matches!(conn_event, Some(bluest::ConnectionEvent::Disconnected) | None) {
-                    log::warn!(
-                        "BLE I/O: device disconnected (connection event) device_id={} description={}",
-                        device_id,
-                        context.user_description.as_deref().unwrap_or("Central")
-                    );
-                    break;
+                match classify_worker_connection_event(conn_event) {
+                    WorkerConnectionOutcome::Continue => {}
+                    WorkerConnectionOutcome::Stop => {
+                        log::warn!(
+                            "BLE I/O: device disconnected (connection event) device_id={} description={}",
+                            device_id,
+                            context.user_description.as_deref().unwrap_or("Central")
+                        );
+                        break;
+                    }
                 }
             }
         }
@@ -541,21 +593,21 @@ async fn battery_connection_watcher(
                         }
                     }
                     event = conn_events.next() => {
-                        match event {
+                        match &event {
                             Some(bluest::ConnectionEvent::Connected) => {
                                 log::debug!("BLE I/O: connection watcher got ConnectionEvent::Connected device_id={device_id}");
-                                break;
                             }
                             Some(bluest::ConnectionEvent::Disconnected) => {
                                 log::debug!("BLE I/O: connection watcher got Disconnected while waiting device_id={device_id}");
-                                if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
-                                    disconnect_device(&adapter, &target_device).await;
-                                    return;
-                                }
-                                continue 'outer;
                             }
                             None => {
                                 log::warn!("BLE I/O: connection watcher connection events stream ended device_id={device_id}");
+                            }
+                        }
+
+                        match classify_connection_wait_event(event) {
+                            ConnectionWaitOutcome::Proceed => break,
+                            ConnectionWaitOutcome::RetryOuter => {
                                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
                                     disconnect_device(&adapter, &target_device).await;
                                     return;
@@ -961,15 +1013,109 @@ mod tests {
         assert_eq!(sanitize_device_text("A=B"), "A=B");
     }
 
+    #[test]
+    fn notification_with_data_emits_first_byte() {
+        let user_description = Some("Central".to_string());
+        let outcome =
+            classify_notification_item(Some(Ok(vec![87, 1, 2])), &user_description);
+
+        match outcome {
+            NotificationOutcome::Emit(info) => {
+                assert_eq!(info.battery_level, Some(87));
+                assert_eq!(info.user_description, user_description);
+            }
+            NotificationOutcome::Stop => panic!("notification data should emit battery info"),
+        }
+    }
+
+    #[test]
+    fn notification_with_empty_data_emits_none_level() {
+        let user_description = Some("Peripheral".to_string());
+        let outcome = classify_notification_item(Some(Ok(vec![])), &user_description);
+
+        match outcome {
+            NotificationOutcome::Emit(info) => {
+                assert_eq!(info.battery_level, None);
+                assert_eq!(info.user_description, user_description);
+            }
+            NotificationOutcome::Stop => panic!("empty notification data should emit battery info"),
+        }
+    }
+
+    #[test]
+    fn notification_error_stops_worker() {
+        let outcome = classify_notification_item(
+            Some(Err(bluest::error::ErrorKind::Other.into())),
+            &None,
+        );
+
+        assert!(matches!(outcome, NotificationOutcome::Stop));
+    }
+
+    #[test]
+    fn notification_stream_end_stops_worker() {
+        let outcome = classify_notification_item(None, &None);
+
+        assert!(matches!(outcome, NotificationOutcome::Stop));
+    }
+
+    #[test]
+    fn connection_wait_connected_proceeds() {
+        assert_eq!(
+            classify_connection_wait_event(Some(bluest::ConnectionEvent::Connected)),
+            ConnectionWaitOutcome::Proceed
+        );
+    }
+
+    #[test]
+    fn connection_wait_disconnected_retries() {
+        assert_eq!(
+            classify_connection_wait_event(Some(bluest::ConnectionEvent::Disconnected)),
+            ConnectionWaitOutcome::RetryOuter
+        );
+    }
+
+    #[test]
+    fn connection_wait_stream_end_retries() {
+        assert_eq!(
+            classify_connection_wait_event(None),
+            ConnectionWaitOutcome::RetryOuter
+        );
+    }
+
+    #[test]
+    fn connection_worker_connected_continues() {
+        assert_eq!(
+            classify_worker_connection_event(Some(bluest::ConnectionEvent::Connected)),
+            WorkerConnectionOutcome::Continue
+        );
+    }
+
+    #[test]
+    fn connection_worker_disconnected_stops() {
+        assert_eq!(
+            classify_worker_connection_event(Some(bluest::ConnectionEvent::Disconnected)),
+            WorkerConnectionOutcome::Stop
+        );
+    }
+
+    #[test]
+    fn connection_worker_stream_end_stops() {
+        assert_eq!(
+            classify_worker_connection_event(None),
+            WorkerConnectionOutcome::Stop
+        );
+    }
+
     #[tokio::test(start_paused = true)]
-    async fn wait_returns_false_after_duration_elapses() {
+    async fn wait_for_retry_elapses_returns_false() {
         let (_tx, mut rx) = watch::channel(false);
         let result = wait_for_retry_or_stop(&mut rx, Duration::from_secs(5)).await;
         assert!(!result);
     }
 
     #[tokio::test(start_paused = true)]
-    async fn wait_returns_true_when_stop_signal_sent() {
+    async fn wait_for_retry_stop_signal_returns_true() {
         let (tx, mut rx) = watch::channel(false);
         let handle = tokio::spawn(async move {
             wait_for_retry_or_stop(&mut rx, Duration::from_secs(60)).await
@@ -979,12 +1125,24 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn wait_returns_true_when_sender_dropped() {
+    async fn wait_for_retry_sender_dropped_returns_true() {
         let (tx, mut rx) = watch::channel(false);
         let handle = tokio::spawn(async move {
             wait_for_retry_or_stop(&mut rx, Duration::from_secs(60)).await
         });
         drop(tx);
         assert!(handle.await.unwrap());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn wait_for_retry_false_signal_returns_false_immediately() {
+        let (tx, mut rx) = watch::channel(false);
+        let handle = tokio::spawn(async move {
+            wait_for_retry_or_stop(&mut rx, Duration::from_secs(60)).await
+        });
+        tx.send(false).unwrap();
+        tokio::task::yield_now().await;
+        assert!(handle.is_finished());
+        assert!(!handle.await.unwrap());
     }
 }
