@@ -23,6 +23,7 @@ interface UseBatteryPollingOptions {
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
 	lowBatteryThreshold: number;
+	ignoreZeroPercent: boolean;
 	highBatteryThreshold: number;
 	autoCollapseDisconnectedDevices: boolean;
 }
@@ -37,12 +38,14 @@ export function useBatteryPolling({
 	pushNotification,
 	pushNotificationWhen,
 	lowBatteryThreshold,
+	ignoreZeroPercent,
 	highBatteryThreshold,
 	autoCollapseDisconnectedDevices,
 }: UseBatteryPollingOptions) {
 	const pushNotificationRef = useRef(pushNotification);
 	const pushNotificationWhenRef = useRef(pushNotificationWhen);
 	const lowBatteryThresholdRef = useRef(lowBatteryThreshold);
+	const ignoreZeroPercentRef = useRef(ignoreZeroPercent);
 	const highBatteryThresholdRef = useRef(highBatteryThreshold);
 	const autoCollapseDisconnectedDevicesRef = useRef(autoCollapseDisconnectedDevices);
 	// Shared by the interval cycle and the manual reload: concurrent
@@ -52,9 +55,10 @@ export function useBatteryPolling({
 		pushNotificationRef.current = pushNotification;
 		pushNotificationWhenRef.current = pushNotificationWhen;
 		lowBatteryThresholdRef.current = lowBatteryThreshold;
+		ignoreZeroPercentRef.current = ignoreZeroPercent;
 		highBatteryThresholdRef.current = highBatteryThreshold;
 		autoCollapseDisconnectedDevicesRef.current = autoCollapseDisconnectedDevices;
-	}, [pushNotification, pushNotificationWhen, lowBatteryThreshold, highBatteryThreshold, autoCollapseDisconnectedDevices]);
+	}, [pushNotification, pushNotificationWhen, lowBatteryThreshold, ignoreZeroPercent, highBatteryThreshold, autoCollapseDisconnectedDevices]);
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
@@ -88,6 +92,7 @@ export function useBatteryPolling({
 					newBatteryInfos: infoArray,
 					batteryPartLabels: device.batteryPartLabels,
 					lowBatteryThreshold: lowBatteryThresholdRef.current,
+					ignoreZeroPercent: ignoreZeroPercentRef.current,
 					highBatteryThreshold: highBatteryThresholdRef.current,
 					pushNotification: pushNotificationRef.current,
 					pushNotificationWhen: pushNotificationWhenRef.current,

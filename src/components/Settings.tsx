@@ -330,6 +330,16 @@ const Settings: React.FC<SettingsScreenProps> = ({
 									disabled={!config.pushNotification}
 								/>
 							</li>
+							<li className="ml-4 flex items-center justify-between gap-3">
+								<div>
+									<Dot /> Ignore 0%
+								</div>
+								<Switch
+									checked={config.ignoreZeroPercent}
+									onCheckedChange={checked => setConfig(c => ({ ...c, ignoreZeroPercent: checked }))}
+									disabled={!config.pushNotification || !config.pushNotificationWhen[NotificationType.LowBattery]}
+								/>
+							</li>
 							<li className="flex items-center justify-between gap-3">
 								<div className="flex items-center gap-1">
 									<Dot /> when battery level ≥

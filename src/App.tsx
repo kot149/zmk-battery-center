@@ -202,6 +202,7 @@ function App() {
 		pushNotification: config.pushNotification,
 		pushNotificationWhen: config.pushNotificationWhen,
 		lowBatteryThreshold: config.lowBatteryThreshold,
+		ignoreZeroPercent: config.ignoreZeroPercent,
 		highBatteryThreshold: config.highBatteryThreshold,
 		autoCollapseDisconnectedDevices: config.autoCollapseDisconnectedDevices,
 	});
@@ -287,6 +288,7 @@ function App() {
 				newBatteryInfos,
 				batteryPartLabels: device.batteryPartLabels,
 				lowBatteryThreshold: config.lowBatteryThreshold,
+				ignoreZeroPercent: config.ignoreZeroPercent,
 				highBatteryThreshold: config.highBatteryThreshold,
 				pushNotification: config.pushNotification,
 				pushNotificationWhen: config.pushNotificationWhen,
@@ -306,7 +308,7 @@ function App() {
 				"Failed to clean up battery info listener",
 			);
 		};
-	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, config.lowBatteryThreshold, config.highBatteryThreshold, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
+	}, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, config.pushNotification, config.pushNotificationWhen, config.lowBatteryThreshold, config.ignoreZeroPercent, config.highBatteryThreshold, commitRegisteredDevices, autoCollapseDisconnectedDevicesRef, registeredDevicesRef]);
 
 	const previousAutoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
 	useEffect(() => {

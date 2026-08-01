@@ -32,6 +32,7 @@ export type Config = {
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
 	lowBatteryThreshold: number;
+	ignoreZeroPercent: boolean;
 	highBatteryThreshold: number;
 	manualWindowPositioning: boolean;
 	windowPosition: {
@@ -57,6 +58,7 @@ export const defaultConfig: Config = {
 		[NotificationType.Disconnected]: true,
 	},
 	lowBatteryThreshold: 20,
+	ignoreZeroPercent: true,
 	highBatteryThreshold: 80,
 	manualWindowPositioning: false,
 	windowPosition: {

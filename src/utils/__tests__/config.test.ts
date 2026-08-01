@@ -129,6 +129,16 @@ describe("config utils", () => {
 		expect(loaded).toEqual(defaultConfig);
 	});
 
+	it("defaults 0% low battery notifications to disabled and preserves the saved option", async () => {
+		mockStore.get.mockResolvedValue({ ignoreZeroPercent: false });
+
+		const { loadSavedConfig, defaultConfig } = await import("../config");
+		const loaded = await loadSavedConfig();
+
+		expect(defaultConfig.ignoreZeroPercent).toBe(true);
+		expect(loaded.ignoreZeroPercent).toBe(false);
+	});
+
 	it("setConfig propagates store write errors", async () => {
 		const error = new Error("store write failed");
 		mockStore.set.mockRejectedValue(error);

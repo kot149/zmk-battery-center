@@ -19,6 +19,7 @@ interface NotifyBatteryEdgeTransitionsParams {
 	highBatteryThreshold: number;
 	pushNotification: boolean;
 	pushNotificationWhen: Record<NotificationType, boolean>;
+	ignoreZeroPercent?: boolean;
 }
 
 export function notifyBatteryEdgeTransitions({
@@ -31,6 +32,7 @@ export function notifyBatteryEdgeTransitions({
 	highBatteryThreshold,
 	pushNotification,
 	pushNotificationWhen,
+	ignoreZeroPercent = true,
 }: NotifyBatteryEdgeTransitionsParams) {
 	const notify = (
 		notificationType: NotificationType,
@@ -58,11 +60,15 @@ export function notifyBatteryEdgeTransitions({
 			logger.info(message);
 		}
 	};
+	const mapLowBatteryNotificationState = (batteryInfos: BatteryInfo[]) =>
+		mapIsLowBattery(batteryInfos, lowBatteryThreshold).map((isLow, index) =>
+			isLow && (!ignoreZeroPercent || batteryInfos[index].battery_level !== 0),
+		);
 
 	notify(
 		NotificationType.LowBattery,
-		mapIsLowBattery(prevBatteryInfos, lowBatteryThreshold),
-		mapIsLowBattery(newBatteryInfos, lowBatteryThreshold),
+		mapLowBatteryNotificationState(prevBatteryInfos),
+		mapLowBatteryNotificationState(newBatteryInfos),
 		'dropped below',
 		lowBatteryThreshold,
 	);

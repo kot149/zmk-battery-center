@@ -115,4 +115,59 @@ describe("battery edge notifications", () => {
 
 		expect(mockSendNotification).toHaveBeenCalledWith("My Keyboard battery dropped below 20%.");
 	});
+
+	it("does not notify when the battery reaches 0% by default", () => {
+		notifyBatteryEdgeTransitions({
+			deviceDisplayName: "My Keyboard",
+			deviceId: "keyboard-1",
+			prevBatteryInfos: [{ battery_level: 50, user_description: null }],
+			newBatteryInfos: [{ battery_level: 0, user_description: null }],
+			lowBatteryThreshold: 20,
+			highBatteryThreshold: 80,
+			pushNotification: true,
+			pushNotificationWhen: {
+				...notificationTypes,
+				[NotificationType.LowBattery]: true,
+			},
+		});
+
+		expect(mockSendNotification).not.toHaveBeenCalled();
+	});
+
+	it("notifies when the battery reaches 0% if it is not ignored", () => {
+		notifyBatteryEdgeTransitions({
+			deviceDisplayName: "My Keyboard",
+			deviceId: "keyboard-1",
+			prevBatteryInfos: [{ battery_level: 50, user_description: null }],
+			newBatteryInfos: [{ battery_level: 0, user_description: null }],
+			lowBatteryThreshold: 20,
+			highBatteryThreshold: 80,
+			pushNotification: true,
+			pushNotificationWhen: {
+				...notificationTypes,
+				[NotificationType.LowBattery]: true,
+			},
+			ignoreZeroPercent: false,
+		});
+
+		expect(mockSendNotification).toHaveBeenCalledWith("My Keyboard battery dropped below 20%.");
+	});
+
+	it("notifies when a non-zero low battery level follows an ignored 0% reading", () => {
+		notifyBatteryEdgeTransitions({
+			deviceDisplayName: "My Keyboard",
+			deviceId: "keyboard-1",
+			prevBatteryInfos: [{ battery_level: 0, user_description: null }],
+			newBatteryInfos: [{ battery_level: 15, user_description: null }],
+			lowBatteryThreshold: 20,
+			highBatteryThreshold: 80,
+			pushNotification: true,
+			pushNotificationWhen: {
+				...notificationTypes,
+				[NotificationType.LowBattery]: true,
+			},
+		});
+
+		expect(mockSendNotification).toHaveBeenCalledWith("My Keyboard battery dropped below 20%.");
+	});
 });
