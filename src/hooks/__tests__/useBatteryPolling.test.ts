@@ -152,6 +152,17 @@ describe("useBatteryPolling", () => {
 		expect(sendNotification).not.toHaveBeenCalled();
 	});
 
+	it("keeps a reconnected device connected when its notification fails", async () => {
+		const device = createDevice({ isDisconnected: true });
+		vi.mocked(sendNotification).mockRejectedValue(new Error("notification failed"));
+		const view = renderPolling({ device, isPollingMode: false });
+
+		await act(async () => {
+			await view.result.current.updateBatteryInfo(device);
+		});
+
+		expect(view.getDevices()[0]).toMatchObject({ isDisconnected: false });
+	});
 	it("sends a disconnected notification only on connected-to-disconnected transition", async () => {
 		const device = createDevice();
 		vi.mocked(getBatteryInfo).mockRejectedValue(new Error("BLE error"));

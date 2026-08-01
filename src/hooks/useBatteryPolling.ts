@@ -82,7 +82,10 @@ export function useBatteryPolling({
 				recordBatteryReadings(device, infoArray);
 
 				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
-					await sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`);
+					fireAndForget(
+						sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`),
+						`Failed to send connected notification for ${device.id}`,
+					);
 				}
 
 				notifyBatteryEdgeTransitions({
