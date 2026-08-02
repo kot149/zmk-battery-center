@@ -5809,7 +5809,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
 name = "zmk-battery-center"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "bluest",
  "csv",
