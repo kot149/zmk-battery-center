@@ -33,9 +33,9 @@ tauri-plugin-store = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-log = "2"
 log = "^0.4"
-ansi_term = "0.12.1"
 tauri-plugin-os = "2"
 csv = "1"
+owo-colors = "4.3.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
