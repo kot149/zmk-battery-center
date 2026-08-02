@@ -197,9 +197,11 @@ async function main(): Promise<void> {
 	}
 
 	try {
-		await updatePackageJson(versionNumber);
-		await updateTauriConfig(versionNumber);
-		await updateCargoToml(versionNumber);
+		await Promise.all([
+			updatePackageJson(versionNumber),
+			updateTauriConfig(versionNumber),
+			updateCargoToml(versionNumber),
+		]);
 		await updateCargoLock(versionNumber);
 
 		if (!skipGit) {
