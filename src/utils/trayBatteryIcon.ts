@@ -15,6 +15,8 @@ export type TrayBatteryIconPayload = {
 	disconnected: boolean;
 };
 
+// Labels sent to src-tauri/src/tray_native_macos.rs are pre-derived single-character glyphs.
+// TypeScript owns semantic rules; Rust's one_char only defends against malformed payloads.
 function labelForInfo(info: BatteryInfo | undefined, fallback: "Central" | "Peripheral"): string {
 	if (!info?.user_description) {
 		return fallback === "Central" ? "C" : "P";

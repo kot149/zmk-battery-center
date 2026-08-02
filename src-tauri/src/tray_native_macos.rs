@@ -53,12 +53,49 @@ impl DrawState {
     }
 }
 
+// src/utils/trayBatteryIcon.ts authoritatively pre-derives single-character payload glyphs.
+// This only coerces malformed payloads defensively and must not add semantic label rules.
 fn one_char(s: &Option<String>, d: char) -> char {
     s.as_ref()
         .and_then(|x| x.chars().next())
         .filter(|c| !c.is_whitespace())
         .map(|c| c.to_ascii_uppercase())
         .unwrap_or(d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::one_char;
+
+    #[test]
+    fn none_uses_default() {
+        assert_eq!(one_char(&None, 'C'), 'C');
+    }
+
+    #[test]
+    fn uppercase_character_passes_through() {
+        assert_eq!(one_char(&Some("C".to_string()), 'P'), 'C');
+    }
+
+    #[test]
+    fn lowercase_character_is_uppercased() {
+        assert_eq!(one_char(&Some("c".to_string()), 'P'), 'C');
+    }
+
+    #[test]
+    fn whitespace_only_uses_default() {
+        assert_eq!(one_char(&Some(" ".to_string()), 'P'), 'P');
+    }
+
+    #[test]
+    fn empty_string_uses_default() {
+        assert_eq!(one_char(&Some(String::new()), 'P'), 'P');
+    }
+
+    #[test]
+    fn multi_character_ts_contract_violation_uses_first_character() {
+        assert_eq!(one_char(&Some("left".to_string()), 'P'), 'L');
+    }
 }
 
 #[derive(Default)]

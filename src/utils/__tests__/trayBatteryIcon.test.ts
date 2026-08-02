@@ -98,6 +98,36 @@ describe("trayBatteryPayloadFromPrimaryDevice", () => {
 		expect(payload.peripheralLabel).toBe("B");
 	});
 
+	it("emits uppercase single-character glyphs for every label source", () => {
+		const cases = [
+			{ registeredDevice: device(), expectedLabels: ["C", null] },
+			{ registeredDevice: device({ batteryInfos: [info(90, "central")] }), expectedLabels: ["C", null] },
+			{ registeredDevice: device({ batteryInfos: [info(90, "peripheral")] }), expectedLabels: ["P", null] },
+			{ registeredDevice: device({ batteryInfos: [info(90, "Left half")] }), expectedLabels: ["L", null] },
+			{ registeredDevice: device({ batteryInfos: [info(90, "x")] }), expectedLabels: ["X", null] },
+			{
+				registeredDevice: device({
+					batteryInfos: [info(90, "Central")],
+					batteryPartLabels: { Central: "dongle" },
+				}),
+				expectedLabels: ["D", null],
+			},
+		];
+
+		for (const { registeredDevice, expectedLabels } of cases) {
+			const payload = trayBatteryPayloadFromPrimaryDevice([registeredDevice]);
+			const labels = [payload.centralLabel, payload.peripheralLabel];
+			expect(labels).toEqual(expectedLabels);
+
+			for (const label of labels) {
+				if (label !== null) {
+					expect(label).toHaveLength(1);
+					expect(label).toBe(label.toUpperCase());
+				}
+			}
+		}
+	});
+
 	it("keeps a null battery level as a null percent", () => {
 		const payload = trayBatteryPayloadFromPrimaryDevice([
 			device({ batteryInfos: [info(null, "Central"), info(72, "Peripheral")] }),
