@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
 	ResponsiveContainer,
 	LineChart,
@@ -9,27 +9,26 @@ import {
 	Legend,
 	ReferenceLine,
 } from "recharts";
-import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
 import type { RegisteredDevice } from "@/utils/appHelpers";
-import { XMarkIcon, AdjustmentsHorizontalIcon } from "@heroicons/react/24/outline";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { logger } from "@/utils/log";
-import TopRightButtons from "@/components/TopRightButtons";
-import { listen } from "@tauri-apps/api/event";
 import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
 import { useConfigContext } from "@/context/ConfigContext";
 import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 
 // ── Types ──────────────────────────────────────────────
+import {
+	formatTooltipLabel,
+	formatXTick,
+	findRowIndexAtOrBefore,
+	getXAxisConfig,
+	MS_IN_DAY,
+} from "@/utils/batteryChartMath";
+import { useBatteryChartData } from "@/hooks/useBatteryChartData";
+import ChartSettingsPanel from "@/components/ChartSettingsPanel";
+
 interface BatteryHistoryChartProps {
 	device: RegisteredDevice;
 	onClose: () => void;
 }
-
-type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
-
-// Unified row that Recharts consumes (timestamp + one key per part)
-export type ChartRow = { timestamp: number } & Record<string, number | undefined>;
 
 // ── Constants ──────────────────────────────────────────
 
@@ -46,235 +45,9 @@ const RANGE_PRESETS = [
 
 const CUSTOM_RANGE_MS = -1;
 
-// ── Smoothing (time-based Gaussian-weighted moving average) ────────
-/**
- * windowSizeMs: half-window in milliseconds. Points within this time radius
- * are included; Gaussian sigma = windowSizeMs / 2.
- */
-function smooth(records: BatteryHistoryRecord[], windowSizeMs: number): BatteryHistoryRecord[] {
-	if (records.length <= 1) return records;
-	const sigma = windowSizeMs / 2.0;
-	const sigmaSq2 = 2 * sigma * sigma;
-	// Pre-parse timestamps once
-	const timestamps = records.map(r => new Date(r.timestamp).getTime());
-	const result: BatteryHistoryRecord[] = [];
-	for (let i = 0; i < records.length; i++) {
-		const ti = timestamps[i];
-		let sum = 0;
-		let wsum = 0;
-		// Walk backwards while within window
-		for (let j = i; j >= 0; j--) {
-			const dt = ti - timestamps[j];
-			if (dt > windowSizeMs) break;
-			const w = Math.exp(-(dt * dt) / sigmaSq2);
-			sum += records[j].battery_level * w;
-			wsum += w;
-		}
-		// Walk forwards while within window
-		for (let j = i + 1; j < records.length; j++) {
-			const dt = timestamps[j] - ti;
-			if (dt > windowSizeMs) break;
-			const w = Math.exp(-(dt * dt) / sigmaSq2);
-			sum += records[j].battery_level * w;
-			wsum += w;
-		}
-		result.push({ ...records[i], battery_level: Math.round(sum / wsum) });
-	}
-	return result;
-}
-
-// ── Helpers ────────────────────────────────────────────
-const MS_IN_DAY = 24 * 60 * 60 * 1000;
-
-export function formatXTick(ts: number, rangeMs: number): string {
-	const d = new Date(ts);
-	if (rangeMs > 0 && rangeMs <= 2 * MS_IN_DAY) {
-		// Short range → show time only
-		return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-	}
-	// Longer range → show date
-	return d.toLocaleDateString([], { month: "numeric", day: "numeric" });
-}
-
-export function findRowIndexAtOrBefore(rows: ChartRow[], target: number): number {
-	let lo = 0, hi = rows.length - 1, ans = -1;
-	while (lo <= hi) {
-		const mid = (lo + hi) >> 1;
-		if (rows[mid].timestamp <= target) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
-	}
-	return ans;
-}
-
-function formatTooltipLabel(ts: number): string {
-	const d = new Date(ts);
-	return d.toLocaleString([], {
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-	});
-}
-
-const NICE_STEPS = [
-	5 * 60 * 1000,
-	10 * 60 * 1000,
-	15 * 60 * 1000,
-	30 * 60 * 1000,
-	1 * 60 * 60 * 1000,
-	2 * 60 * 60 * 1000,
-	3 * 60 * 60 * 1000,
-	6 * 60 * 60 * 1000,
-	12 * 60 * 60 * 1000,
-	1 * 24 * 60 * 60 * 1000,
-	36 * 60 * 60 * 1000,
-	2 * 24 * 60 * 60 * 1000,
-	3 * 24 * 60 * 60 * 1000,
-	7 * 24 * 60 * 60 * 1000,
-	14 * 24 * 60 * 60 * 1000,
-	30 * 24 * 60 * 60 * 1000,
-];
-
-export const MIN_X_AXIS_TICKS = 5;
-export const MAX_X_AXIS_TICKS = 7;
-
-function getTicksForStep(min: number, max: number, step: number): number[] {
-	const ticks = [];
-	const d = new Date(min);
-
-	if (step >= 24 * 60 * 60 * 1000) {
-		d.setHours(0, 0, 0, 0);
-	} else if (step >= 60 * 60 * 1000) {
-		d.setMinutes(0, 0, 0);
-		const hoursStep = step / (60 * 60 * 1000);
-		if (hoursStep > 1) {
-			d.setHours(Math.floor(d.getHours() / hoursStep) * hoursStep);
-		}
-	} else if (step >= 60 * 1000) {
-		d.setSeconds(0, 0);
-		const minutesStep = step / (60 * 1000);
-		if (minutesStep > 1) {
-			d.setMinutes(Math.floor(d.getMinutes() / minutesStep) * minutesStep);
-		}
-	} else {
-		d.setMilliseconds(0);
-	}
-
-	let current = d.getTime();
-	while (current < min) current += step;
-	while (current <= max) {
-		ticks.push(current);
-		current += step;
-	}
-
-	return ticks;
-}
-
-export function getNiceTicks(
-	min: number,
-	max: number,
-	maxTicks = MAX_X_AXIS_TICKS,
-	minTicks = MIN_X_AXIS_TICKS,
-): number[] {
-	if (min >= max) return [min];
-	const duration = max - min;
-	const targetTickCount = Math.round((minTicks + maxTicks) / 2);
-	const approxStep = duration / Math.max(targetTickCount - 1, 1);
-	const candidates = NICE_STEPS.map((step) => ({
-		step,
-		ticks: getTicksForStep(min, max, step),
-	}));
-
-	const validCandidates = candidates.filter(
-		(candidate) => candidate.ticks.length >= minTicks && candidate.ticks.length <= maxTicks,
-	);
-
-	if (validCandidates.length > 0) {
-		return validCandidates.reduce((best, candidate) => {
-			return Math.abs(candidate.step - approxStep) < Math.abs(best.step - approxStep)
-				? candidate
-				: best;
-		}).ticks;
-	}
-
-	const fallback = candidates.reduce((best, candidate) => {
-		const bestDistance = Math.abs(best.ticks.length - targetTickCount);
-		const candidateDistance = Math.abs(candidate.ticks.length - targetTickCount);
-		if (candidateDistance !== bestDistance) {
-			return candidateDistance < bestDistance ? candidate : best;
-		}
-		return Math.abs(candidate.step - approxStep) < Math.abs(best.step - approxStep)
-			? candidate
-			: best;
-	});
-
-	return fallback.ticks;
-}
-
-type XAxisDomain = [number, number] | [string, string];
-
-export function getXAxisConfig({
-	rangeMs,
-	now,
-	recordedData,
-	customRange,
-	maxTicks = MAX_X_AXIS_TICKS,
-}: {
-	rangeMs: number;
-	now: number;
-	recordedData: ChartRow[];
-	customRange: DateRange | null;
-	maxTicks?: number;
-}): { xDomain: XAxisDomain; xTicks: number[] } {
-	let min: number;
-	let max: number;
-	let xDomain: XAxisDomain;
-
-	if (rangeMs === -1 && customRange) {
-		min = customRange.start.getTime();
-		max = customRange.end.getTime();
-		xDomain = [min, max];
-	} else if (rangeMs > 0) {
-		min = now - rangeMs;
-		max = now;
-		xDomain = [min, max];
-	} else if (recordedData.length >= 2) {
-		min = recordedData[0].timestamp;
-		max = recordedData[recordedData.length - 1].timestamp;
-		xDomain = ["dataMin", "dataMax"];
-	} else if (recordedData.length === 1) {
-		min = recordedData[0].timestamp - (MS_IN_DAY / 2);
-		max = recordedData[0].timestamp + (MS_IN_DAY / 2);
-		xDomain = [min, max];
-	} else {
-		min = now - MS_IN_DAY;
-		max = now;
-		xDomain = [min, max];
-	}
-
-	return {
-		xDomain,
-		xTicks: getNiceTicks(min, max, maxTicks),
-	};
-}
-
-// ── Smoothing options (window radius in ms) ───────────
-const SMOOTHING_OPTIONS = [
-	{ label: "Off",    value: 0 },
-	{ label: "5 min",  value: 5 * 60 * 1000 },
-	{ label: "15 min", value: 15 * 60 * 1000 },
-	{ label: "30 min", value: 30 * 60 * 1000 },
-	{ label: "60 min", value: 60 * 60 * 1000 },
-	{ label: "180 min", value: 180 * 60 * 1000 },
-] as const;
-
 // ── Component ──────────────────────────────────────────
 const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClose }) => {
 	const { config, setConfig } = useConfigContext();
-	const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
-	const [isLoading, setIsLoading] = useState(true);
-	const [error, setError] = useState<string | null>(null);
 	const [rangeMs, setRangeMsState] = useState(() => config.chartRangeMs);
 	const [customRange, setCustomRangeState] = useState<DateRange | null>(() => {
 		const saved = config.chartCustomRange;
@@ -283,46 +56,6 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 	});
 	const [showDatePicker, setShowDatePicker] = useState(false);
 	const [smoothingWindow, setSmoothingWindowState] = useState(() => config.chartSmoothingWindowSize);
-	const [showSettings, setShowSettings] = useState(false);
-	const settingsPanelRef = useRef<HTMLDivElement>(null);
-	const settingsButtonRef = useRef<HTMLDivElement>(null);
-
-	// Lock clicks briefly after closing a Select to prevent the collapse click from reaching the panel
-	const isClickLocked = useRef(false);
-
-	// Close settings panel when clicking outside
-	useEffect(() => {
-		if (!showSettings) return;
-		const handler = (e: MouseEvent) => {
-			if (isClickLocked.current) return;
-			const target = e.target as Element;
-			// Ignore clicks inside Radix UI portals (Select dropdown, etc.)
-			if (target.closest?.("[data-radix-popper-content-wrapper]")) return;
-			if (settingsPanelRef.current?.contains(target)) return;
-			if (settingsButtonRef.current?.contains(target)) return;
-			setShowSettings(false);
-		};
-		// Use setTimeout to ensure the lock prevents immediate event bubbling
-		const id = setTimeout(() => {
-			document.addEventListener("mousedown", handler);
-		}, 0);
-		return () => {
-			clearTimeout(id);
-			document.removeEventListener("mousedown", handler);
-		};
-	}, [showSettings]);
-
-	const handleSelectOpenChange = useCallback((open: boolean) => {
-		if (open) {
-			isClickLocked.current = true;
-		} else {
-			// Keep locked for a tiny bit longer to absorb the dismiss click
-			setTimeout(() => {
-				isClickLocked.current = false;
-			}, 100);
-		}
-	}, []);
-
 	const setRangeMs = useCallback((ms: number) => {
 		setRangeMsState(ms);
 		setConfig(prev => ({ ...prev, chartRangeMs: ms }));
@@ -341,119 +74,17 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 		setConfig(prev => ({ ...prev, chartSmoothingWindowSize: w }));
 	}, [setConfig]);
 
-	// ── Data loading ───────────────────────────────────
-	const load = useCallback(async () => {
-		setIsLoading(true);
-		setError(null);
-		try {
-			// Fetch only the visible range plus the smoothing margin, so edge
-			// points still have earlier context to smooth against.
-			let sinceForFetch: string | undefined;
-			if (rangeMs > 0) {
-				sinceForFetch = new Date(Date.now() - rangeMs - smoothingWindow).toISOString();
-			} else if (rangeMs === CUSTOM_RANGE_MS && customRange) {
-				sinceForFetch = new Date(customRange.start.getTime() - smoothingWindow).toISOString();
-			}
-			const records = await readBatteryHistory(device.name, device.id, sinceForFetch);
-			const map = new Map<string, BatteryHistoryRecord[]>();
-			for (const r of records) {
-				if (r.battery_level === 0) continue; // Ignore 0%
-				const key = r.user_description || "Central";
-				if (!map.has(key)) map.set(key, []);
-				map.get(key)!.push(r);
-			}
-			setGrouped(map);
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e);
-			setError(msg);
-			logger.warn(`Failed to load battery history: ${msg}`);
-		} finally {
-			setIsLoading(false);
-		}
-	}, [device.name, device.id, rangeMs, customRange, smoothingWindow]);
-
-	useEffect(() => {
-		load();
-	}, [load]);
-
-	// Apply new readings incrementally; fall back to a full reload for
-	// events that don't carry the appended records.
-	useEffect(() => {
-		const unlistenPromise = listen<{ deviceId: string; records?: BatteryHistoryRecord[] }>(
-			"battery-history-updated",
-			(event) => {
-				if (event.payload.deviceId !== device.id) return;
-				const records = event.payload.records;
-				if (Array.isArray(records) && records.length > 0) {
-					setGrouped(prev => {
-						const next = new Map(prev);
-						for (const r of records) {
-							if (r.battery_level === 0) continue; // match load()'s 0% skip
-							const key = r.user_description || "Central";
-							next.set(key, [...(next.get(key) ?? []), r]);
-						}
-						return next;
-					});
-				} else {
-					load();
-				}
-			},
-		);
-		return () => {
-			unlistenPromise.then(unlisten => unlisten());
-		};
-	}, [device.id, load]);
-
-	// ── Derived data ───────────────────────────────────
-	const allKeys = useMemo(() => [...grouped.keys()], [grouped]);
+	const { recordedData, allKeys, isLoading, error, hasHistory } = useBatteryChartData({
+		device,
+		rangeMs,
+		customRange,
+		smoothingWindow,
+	});
 
 	const displayNameForKey = useCallback(
 		(key: string) => device.batteryPartLabels?.[key] ?? key,
 		[device.batteryPartLabels],
 	);
-
-	const smoothedByKey = useMemo<Map<string, BatteryHistoryRecord[]>>(() => {
-		const out = new Map<string, BatteryHistoryRecord[]>();
-		for (const key of allKeys) {
-			const raw = grouped.get(key) ?? [];
-			out.set(key, smoothingWindow > 0 ? smooth(raw, smoothingWindow) : raw);
-		}
-		return out;
-	}, [grouped, allKeys, smoothingWindow]);
-
-	const recordedData = useMemo<ChartRow[]>(() => {
-		const now = Date.now();
-		let cutoff: number;
-		let ceiling: number | undefined;
-
-		if (rangeMs === -1 && customRange) {
-			cutoff = customRange.start.getTime();
-			ceiling = customRange.end.getTime();
-		} else if (rangeMs > 0) {
-			cutoff = now - rangeMs;
-			ceiling = undefined;
-		} else {
-			cutoff = 0;
-			ceiling = undefined;
-		}
-
-		const tsMap = new Map<number, ChartRow>();
-
-		for (const key of allKeys) {
-			const smoothed = smoothedByKey.get(key) ?? [];
-			for (const r of smoothed) {
-				const ts = new Date(r.timestamp).getTime();
-				if (ts < cutoff) continue;
-				if (ceiling != null && ts > ceiling) continue;
-				if (!tsMap.has(ts)) {
-					tsMap.set(ts, { timestamp: ts });
-				}
-				tsMap.get(ts)![key] = Math.max(0, Math.min(100, r.battery_level));
-			}
-		}
-
-		return [...tsMap.values()].sort((a, b) => a.timestamp - b.timestamp);
-	}, [smoothedByKey, allKeys, rangeMs, customRange]);
 
 	const now = useMemo(() => Date.now(), [recordedData]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -494,88 +125,16 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 				</div>
 			</div>
 
-			{/* Top-Right Buttons */}
-			<div ref={settingsButtonRef} className="absolute top-2 right-2 z-50">
-				<TopRightButtons
-					buttons={[
-						{
-							icon: <AdjustmentsHorizontalIcon className="size-5" />,
-							onClick: () => setShowSettings((s) => !s),
-							ariaLabel: "Chart settings",
-						},
-						{
-							icon: <XMarkIcon className="size-5" />,
-							onClick: onClose,
-							ariaLabel: "Close",
-						}
-					]}
-				/>
-			</div>
-
-			{/* Settings panel – shown to the left of the buttons (88px = 2×w-10 + right-2) */}
-			{showSettings && (
-				<div
-					ref={settingsPanelRef}
-					className="absolute top-2 right-[88px] z-50 flex flex-col gap-2 rounded-lg border border-border bg-popover p-3 shadow-lg"
-				>
-					{/* Range row */}
-					<div className="flex items-center gap-2">
-						<span className="text-sm text-muted-foreground w-20 text-right">Range:</span>
-						<Select
-							value={String(rangeMs)}
-							onOpenChange={handleSelectOpenChange}
-							onValueChange={(v) => {
-								const ms = Number(v);
-								setRangeMs(ms);
-								if (ms === CUSTOM_RANGE_MS) {
-									setShowDatePicker(true);
-								}
-							}}
-						>
-							<SelectTrigger size="sm" className="min-w-20">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{RANGE_PRESETS.map((preset) => (
-									<SelectItem
-										key={preset.label}
-										value={String(preset.ms)}
-										onPointerUp={() => {
-											// onValueChange won't fire when re-selecting the same value,
-											// so handle re-selecting Custom here
-											if (preset.ms === CUSTOM_RANGE_MS && rangeMs === CUSTOM_RANGE_MS) {
-												setShowDatePicker(true);
-											}
-										}}
-									>
-										{preset.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
-					{/* Smoothing row */}
-					<div className="flex items-center gap-2">
-						<span className="text-sm text-muted-foreground w-20 text-right">Smoothing:</span>
-						<Select
-							value={String(smoothingWindow)}
-							onOpenChange={handleSelectOpenChange}
-							onValueChange={(v) => setSmoothingWindow(Number(v))}
-						>
-							<SelectTrigger size="sm" className="min-w-20">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{SMOOTHING_OPTIONS.map((opt) => (
-									<SelectItem key={opt.label} value={String(opt.value)}>
-										{opt.label}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					</div>
-				</div>
-			)}
+			<ChartSettingsPanel
+				rangeMs={rangeMs}
+				setRangeMs={setRangeMs}
+				rangePresets={RANGE_PRESETS}
+				customRangeMs={CUSTOM_RANGE_MS}
+				onCustomRange={() => setShowDatePicker(true)}
+				smoothingWindow={smoothingWindow}
+				setSmoothingWindow={setSmoothingWindow}
+				onClose={onClose}
+			/>
 
 
 			{/* Chart area */}
@@ -590,7 +149,7 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
 					</div>
 				) : recordedData.length === 0 ? (
 					<div className="flex-1 flex items-center justify-center text-md text-muted-foreground">
-						{grouped.size === 0 ? "No history recorded yet" : "No history in this range"}
+						{!hasHistory ? "No history recorded yet" : "No history in this range"}
 					</div>
 				) : (
 					<ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>

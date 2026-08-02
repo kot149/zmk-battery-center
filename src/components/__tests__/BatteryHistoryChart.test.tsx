@@ -3,13 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { RegisteredDevice } from "@/utils/appHelpers";
-import BatteryHistoryChart, {
+import BatteryHistoryChart from "../BatteryHistoryChart";
+import {
 	findRowIndexAtOrBefore,
 	getXAxisConfig,
 	MIN_X_AXIS_TICKS,
 	MAX_X_AXIS_TICKS,
-	type ChartRow,
-} from "../BatteryHistoryChart";
+} from "@/utils/batteryChartMath";
+import type { ChartRow } from "@/utils/batteryChartMath";
 import { ConfigProvider } from "@/context/ConfigContext";
 import { ThemeProvider } from "@/context/theme-provider";
 
