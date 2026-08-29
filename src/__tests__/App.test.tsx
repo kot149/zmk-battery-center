@@ -203,6 +203,40 @@ describe("App", () => {
 		expect(screen.queryByLabelText("Disconnected")).toBeNull();
 	});
 
+	it("invalidates battery freshness when a connected device disconnects", async () => {
+		render(<App />);
+
+		await waitFor(() => expect(mockStore.get).toHaveBeenCalledWith("devices"));
+		await act(async () => {
+			resolveDeviceStoreGets([{
+				id: "kbd-1",
+				name: "MockBoard One",
+				isDisconnected: false,
+				isCollapsed: false,
+				batteryInfos: [{ battery_level: 87, user_description: "Central" }],
+			}]);
+		});
+		await waitFor(() => expect(batteryInfoNotificationHandler).toBeDefined());
+
+		await act(async () => {
+			batteryInfoNotificationHandler?.({
+				payload: {
+					id: "kbd-1",
+					battery_info: { battery_level: 87, user_description: "Central" },
+				},
+			});
+		});
+		await act(async () => {
+			monitorStatusHandler?.({ payload: { id: "kbd-1", connected: false } });
+		});
+
+		await waitFor(() => {
+			const writes = getStoreSetCalls().filter(([key]) => key === "devices");
+			const latest = writes[writes.length - 1]?.[1] as Array<{ batteryInfos: Array<{ last_read_succeeded?: boolean }> }> | undefined;
+			expect(latest?.[0]?.batteryInfos[0].last_read_succeeded).toBe(false);
+		});
+	});
+
 	it("collapses a device when it becomes disconnected and the option is enabled", async () => {
 		mockedConfig = {
 			...defaultConfig,

@@ -125,6 +125,8 @@ You can manually move the window to the correct position to address this issue.
 
 See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment setup, build commands, and running tests.
 
+See [docs/EXTERNAL_INTEGRATION.md](docs/EXTERNAL_INTEGRATION.md) for the external battery snapshot and refresh file API.
+
 ## References
 
 Implementation and discussion for split battery reporting over BLE GATT:

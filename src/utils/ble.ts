@@ -20,6 +20,8 @@ export type BleDeviceInfo = {
 export type BatteryInfo = {
 	battery_level: number | null;
 	user_description: string | null;
+	observed_at_unix_ms?: number | null;
+	last_read_succeeded?: boolean;
 };
 
 export type BatteryInfoNotificationEvent = {
@@ -71,4 +73,9 @@ export async function stopBatteryNotificationMonitor(id: string): Promise<void> 
  */
 export async function stopAllBatteryMonitors(): Promise<void> {
 	await invoke("stop_all_battery_monitors");
+}
+
+/** Read notification-mode battery characteristics without restarting the monitor. */
+export async function refreshBatteryNotificationMonitor(id: string): Promise<BatteryInfo[]> {
+	return await invoke("refresh_battery_notification_monitor", { id });
 }

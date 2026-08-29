@@ -34,6 +34,8 @@ import { useTrayEvents } from "@/hooks/useTrayEvents";
 import { emit, listen } from '@tauri-apps/api/event';
 import { recordBatteryReadings } from '@/utils/batteryHistory';
 import {
+	annotateBatteryInfosFromRead,
+	markBatteryInfosReadFailed,
 	upsertBatteryInfo,
 	getRegisteredDeviceDisplayName,
 	type RegisteredDevice,
@@ -42,6 +44,7 @@ import { syncTrayBatteryIcon } from "@/utils/trayBatteryIcon";
 import { useRegisteredDevices, collapseIfDisconnected, expandIfConnected } from "@/hooks/useRegisteredDevices";
 import { useNotificationMonitors } from "@/hooks/useNotificationMonitors";
 import { useBatteryPolling } from "@/hooks/useBatteryPolling";
+import { useExternalBatteryIntegration } from "@/hooks/useExternalBatteryIntegration";
 
 export type { RegisteredDevice };
 
@@ -67,6 +70,7 @@ function App() {
 		registeredDeviceIds,
 		registeredDeviceIdsKey,
 		commitRegisteredDevices,
+		getRegisteredDevicesSnapshot,
 		setRegisteredDevicesForPanel,
 	} = useRegisteredDevices();
 
@@ -186,15 +190,20 @@ function App() {
 				? await startBatteryNotificationMonitor(id)
 				: await getBatteryInfo(id);
 			const infoArray = Array.isArray(info) ? info : [info];
+			const now = Date.now();
+			const annotatedInfos = annotateBatteryInfosFromRead(infoArray, now);
 			if (isNotificationMonitorMode) {
 				activeNotificationMonitorsRef.current.add(id);
 			}
+			const isDisconnected = isNotificationMonitorMode && annotatedInfos.length === 0;
 			const newDevice: RegisteredDevice = {
 				id: device.id,
 				name: device.name,
-				batteryInfos: infoArray,
-				isDisconnected: isNotificationMonitorMode ? infoArray.length === 0 : false,
-				isCollapsed: isNotificationMonitorMode && infoArray.length === 0 && config.autoCollapseDisconnectedDevices,
+				batteryInfos: annotatedInfos,
+				isDisconnected,
+				isCollapsed: isDisconnected && config.autoCollapseDisconnectedDevices,
+				connectionStatusKnown: true,
+				connectionObservedAtUnixMs: now,
 			};
 			commitRegisteredDevices(prev => [...prev, newDevice]);
 			handleCloseModal();
@@ -205,7 +214,7 @@ function App() {
 		}
 	};
 
-	const { reloadAll, autoCollapseDisconnectedDevicesRef } = useBatteryPolling({
+	const { reloadAll, refreshAllForExternal, autoCollapseDisconnectedDevicesRef } = useBatteryPolling({
 		isPollingMode,
 		isConfigLoaded,
 		isDeviceLoaded,
@@ -220,13 +229,22 @@ function App() {
 		autoCollapseDisconnectedDevices: config.autoCollapseDisconnectedDevices,
 	});
 
-	const { activeNotificationMonitorsRef } = useNotificationMonitors({
+	const { activeNotificationMonitorsRef, refreshAllNotificationMonitors } = useNotificationMonitors({
 		isNotificationMonitorMode,
 		isConfigLoaded,
 		isDeviceLoaded,
 		registeredDeviceIdsKey,
 		autoCollapseDisconnectedDevicesRef,
 		commitRegisteredDevices,
+	});
+
+	useExternalBatteryIntegration({
+		isDeviceLoaded,
+		registeredDevices,
+		getRegisteredDevicesSnapshot,
+		isPollingMode,
+		refreshAllForExternal,
+		refreshAllNotificationMonitors,
 	});
 
 	const handleCloseModal = () => {
@@ -291,9 +309,11 @@ function App() {
 
 			// Side effects stay outside the state updater: React may invoke
 			// updater recipes more than once (StrictMode, concurrent replays).
-			recordBatteryReadings(device, [payload.battery_info]);
+			const now = Date.now();
+			const annotatedInfo = annotateBatteryInfosFromRead([payload.battery_info], now)[0];
+			recordBatteryReadings(device, [annotatedInfo]);
 
-			const newBatteryInfos = upsertBatteryInfo(device.batteryInfos, payload.battery_info);
+			const newBatteryInfos = upsertBatteryInfo(device.batteryInfos, annotatedInfo);
 			notifyBatteryEdgeTransitions({
 				deviceDisplayName: getRegisteredDeviceDisplayName(device),
 				deviceId: device.id,
@@ -310,7 +330,7 @@ function App() {
 			commitRegisteredDevices(prev => prev.map(d => d.id !== payload.id
 				? d
 				: expandIfConnected(
-					{ ...d, batteryInfos: upsertBatteryInfo(d.batteryInfos, payload.battery_info), isDisconnected: false },
+					{ ...d, batteryInfos: upsertBatteryInfo(d.batteryInfos, annotatedInfo), isDisconnected: false, connectionStatusKnown: true, connectionObservedAtUnixMs: now },
 					autoCollapseDisconnectedDevicesRef.current,
 				)));
 		});
@@ -348,6 +368,7 @@ function App() {
 		const unlistenPromise = listen<BatteryMonitorStatusEvent>("battery-monitor-status", event => {
 			const payload = event.payload;
 			let notificationMessage: string | null = null;
+			const now = Date.now();
 
 			commitRegisteredDevices(prev => prev.map(device => {
 				if (device.id !== payload.id) {
@@ -355,8 +376,12 @@ function App() {
 				}
 
 				const nextDisconnected = !payload.connected;
-				if (device.isDisconnected === nextDisconnected) {
-					return device;
+				const nextBatteryInfos = nextDisconnected
+					&& device.batteryInfos.some(info => info.last_read_succeeded === true)
+					? markBatteryInfosReadFailed(device.batteryInfos)
+					: device.batteryInfos;
+				if (device.isDisconnected === nextDisconnected && device.connectionStatusKnown === true) {
+					return { ...device, batteryInfos: nextBatteryInfos, connectionObservedAtUnixMs: now };
 				}
 
 				if (payload.connected) {
@@ -369,11 +394,11 @@ function App() {
 
 				return nextDisconnected
 					? collapseIfDisconnected(
-						{ ...device, isDisconnected: true },
+						{ ...device, batteryInfos: nextBatteryInfos, isDisconnected: true, connectionStatusKnown: true, connectionObservedAtUnixMs: now },
 						autoCollapseDisconnectedDevicesRef.current,
 					)
 					: expandIfConnected(
-						{ ...device, isDisconnected: false },
+						{ ...device, isDisconnected: false, connectionStatusKnown: true, connectionObservedAtUnixMs: now },
 						autoCollapseDisconnectedDevicesRef.current,
 					);
 			}));

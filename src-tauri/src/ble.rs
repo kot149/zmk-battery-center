@@ -905,6 +905,26 @@ pub async fn start_battery_notification_monitor(
 }
 
 #[tauri::command]
+pub async fn refresh_battery_notification_monitor(id: String) -> Result<Vec<BatteryInfo>, String> {
+    let monitor_active = {
+        let monitors = MONITORS.lock().await;
+        monitors.contains_key(&id)
+    };
+    if !monitor_active {
+        return Err("Notification monitor is not active".to_string());
+    }
+
+    log::debug!("BLE I/O: refresh notification monitor request device_id={id}");
+    let adapter = get_adapter().await?;
+    let target_device = get_target_device(&adapter, &id).await?;
+    let contexts = get_battery_characteristic_contexts(&target_device).await?;
+    if contexts.is_empty() {
+        return Err("Battery level characteristic not found".to_string());
+    }
+    Ok(read_battery_infos_best_effort(&contexts).await)
+}
+
+#[tauri::command]
 pub async fn stop_battery_notification_monitor(id: String) -> Result<(), String> {
     log::debug!("BLE I/O: stop notification monitor request device_id={id}");
     stop_battery_notification_monitor_internal(&id).await;

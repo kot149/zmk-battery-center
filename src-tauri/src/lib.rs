@@ -4,6 +4,7 @@ use tauri_plugin_autostart::MacosLauncher;
 
 mod ble;
 mod common;
+mod external_integration;
 mod history;
 mod licenses;
 mod storage;
@@ -71,6 +72,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_positioner::init())
+        .manage(external_integration::ExternalIntegrationState::default())
         .invoke_handler(tauri::generate_handler![
             common::exit_app,
             ble::list_battery_devices,
@@ -78,6 +80,10 @@ pub fn run() {
             ble::start_battery_notification_monitor,
             ble::stop_battery_notification_monitor,
             ble::stop_all_battery_monitors,
+            ble::refresh_battery_notification_monitor,
+            external_integration::publish_external_battery_snapshot,
+            external_integration::get_pending_external_battery_refresh,
+            external_integration::complete_external_battery_refresh,
             window::get_windows_text_scale_factor,
             licenses::get_licenses,
             storage::get_dev_store_path,
@@ -92,6 +98,20 @@ pub fn run() {
                 #[cfg(target_os = "linux")]
                 tray_handle: std::sync::Mutex::new(None),
             });
+
+            let external_state = app
+                .state::<external_integration::ExternalIntegrationState>()
+                .inner()
+                .clone();
+            if let Err(error) =
+                tauri::async_runtime::block_on(external_state.initialize(app.handle()))
+            {
+                log::warn!("Failed to restore external integration state: {error}");
+            }
+            tauri::async_runtime::spawn(external_integration::start_refresh_request_monitor(
+                app.handle().clone(),
+                external_state,
+            ));
 
             tray::init_tray(app.handle().clone());
 
