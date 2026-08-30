@@ -17,6 +17,7 @@
         "width": 300,
         "height": 300,
         "visible": false,
+        "visibleOnAllWorkspaces": true,
         "decorations": false,
         "skipTaskbar": true,
         "shadow": false,
