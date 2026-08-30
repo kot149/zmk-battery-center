@@ -20,6 +20,8 @@ export type BleDeviceInfo = {
 export type BatteryInfo = {
 	battery_level: number | null;
 	user_description: string | null;
+	observed_at_unix_ms?: number | null;
+	last_read_succeeded?: boolean;
 };
 
 export type BatteryInfoNotificationEvent = {

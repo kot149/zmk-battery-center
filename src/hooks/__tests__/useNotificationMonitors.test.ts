@@ -68,6 +68,34 @@ describe("useNotificationMonitors", () => {
 		});
 	}
 
+	it("invalidates cached battery freshness when the monitor starts disconnected", async () => {
+		let devices: RegisteredDevice[] = [{
+			id: "A",
+			name: "Keyboard",
+			batteryInfos: [{
+				battery_level: 50,
+				user_description: "Central",
+				last_read_succeeded: true,
+			}],
+			isDisconnected: false,
+			isCollapsed: false,
+		}];
+		const commit = vi.fn((recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => {
+			devices = recipe(devices);
+		});
+		renderMonitors({ key: "A", commit });
+
+		await resolveStart("A", []);
+
+		await waitFor(() => {
+			expect(devices[0]).toMatchObject({
+				isDisconnected: true,
+				connectionStatusKnown: true,
+				batteryInfos: [{ battery_level: 50, last_read_succeeded: false }],
+			});
+		});
+	});
+
 	it("queues a rerendered reconciliation behind the in-flight one", async () => {
 		const view = renderMonitors({ key: "A" });
 
