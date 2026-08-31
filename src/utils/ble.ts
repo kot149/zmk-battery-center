@@ -7,8 +7,8 @@ import { invoke } from "@tauri-apps/api/core";
  */
 /** @export */
 export type BleDeviceInfo = {
-	name: string;
-	id: string;
+  name: string;
+  id: string;
 };
 
 /**
@@ -18,20 +18,20 @@ export type BleDeviceInfo = {
  */
 /** @export */
 export type BatteryInfo = {
-	battery_level: number | null;
-	user_description: string | null;
-	observed_at_unix_ms?: number | null;
-	last_read_succeeded?: boolean;
+  battery_level: number | null;
+  user_description: string | null;
+  observed_at_unix_ms?: number | null;
+  last_read_succeeded?: boolean;
 };
 
 export type BatteryInfoNotificationEvent = {
-	id: string;
-	battery_info: BatteryInfo;
+  id: string;
+  battery_info: BatteryInfo;
 };
 
 export type BatteryMonitorStatusEvent = {
-	id: string;
-	connected: boolean;
+  id: string;
+  connected: boolean;
 };
 
 /**
@@ -39,7 +39,7 @@ export type BatteryMonitorStatusEvent = {
  * @returns {Promise<BleDeviceInfo[]>}
  */
 export async function listBatteryDevices(): Promise<BleDeviceInfo[]> {
-	return await invoke("list_battery_devices");
+  return await invoke("list_battery_devices");
 }
 
 /**
@@ -48,29 +48,27 @@ export async function listBatteryDevices(): Promise<BleDeviceInfo[]> {
  * @returns {Promise<BatteryInfo[]>}
  */
 export async function getBatteryInfo(id: string): Promise<BatteryInfo[]> {
-	return await invoke("get_battery_info", { id });
+  return await invoke("get_battery_info", { id });
 }
 
 /**
  * Start notification-based monitoring for a specified device.
  * Returns the latest battery info snapshot available at monitor start.
  */
-export async function startBatteryNotificationMonitor(
-	id: string
-): Promise<BatteryInfo[]> {
-	return await invoke("start_battery_notification_monitor", { id });
+export async function startBatteryNotificationMonitor(id: string): Promise<BatteryInfo[]> {
+  return await invoke("start_battery_notification_monitor", { id });
 }
 
 /**
  * Stop notification-based monitoring for a specified device.
  */
 export async function stopBatteryNotificationMonitor(id: string): Promise<void> {
-	await invoke("stop_battery_notification_monitor", { id });
+  await invoke("stop_battery_notification_monitor", { id });
 }
 
 /**
  * Stop all active notification monitors at once.
  */
 export async function stopAllBatteryMonitors(): Promise<void> {
-	await invoke("stop_all_battery_monitors");
+  await invoke("stop_all_battery_monitors");
 }

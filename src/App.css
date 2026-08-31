@@ -125,8 +125,7 @@ html {
 .app-scrollbar {
   scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 80%, var(--background))
-    transparent;
+  scrollbar-color: color-mix(in oklch, var(--muted-foreground) 80%, var(--background)) transparent;
 }
 
 .app-scrollbar::-webkit-scrollbar {
@@ -150,7 +149,6 @@ html {
 .app-scrollbar::-webkit-scrollbar-corner {
   background: transparent;
 }
-
 
 @layer base {
   * {

@@ -2,21 +2,21 @@
 # See: https://embarkstudios.github.io/cargo-about/cli/generate/config.html
 
 accepted = [
-    "MIT",
-    "MIT-0",
-    "Apache-2.0",
-    "Apache-2.0 WITH LLVM-exception",
-    "BSD-2-Clause",
-    "BSD-3-Clause",
-    "ISC",
-    "Zlib",
-    "CC0-1.0",
-    "0BSD",
-    "Unlicense",
-    "MPL-2.0",
-    "Unicode-3.0",
-    "BSL-1.0",
-    "LGPL-2.1-or-later",
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "CC0-1.0",
+  "0BSD",
+  "Unlicense",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "BSL-1.0",
+  "LGPL-2.1-or-later",
 ]
 
 ignore-build-dependencies = true

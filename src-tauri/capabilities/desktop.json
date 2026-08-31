@@ -1,17 +1,6 @@
 {
   "identifier": "desktop-capability",
-  "platforms": [
-    "macOS",
-    "windows",
-    "linux"
-  ],
-  "windows": [
-    "main",
-    "about"
-  ],
-  "permissions": [
-    "positioner:default",
-    "autostart:default",
-    "core:window:allow-set-position"
-  ]
+  "platforms": ["macOS", "windows", "linux"],
+  "windows": ["main", "about"],
+  "permissions": ["positioner:default", "autostart:default", "core:window:allow-set-position"]
 }

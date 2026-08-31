@@ -21,8 +21,8 @@ export const baseSeed: MockSeed = {
   platform: "windows",
   availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
   batteryById: {
-    "kbd-1": [{ battery_level: 87, user_description: "Central" }]
-  }
+    "kbd-1": [{ battery_level: 87, user_description: "Central" }],
+  },
 };
 
 export async function installTauriMock(page: Page, seed: MockSeed): Promise<void> {
@@ -48,7 +48,10 @@ export async function addFirstDevice(page: Page): Promise<void> {
 }
 
 export async function openDeviceMenu(page: Page, deviceName: string): Promise<void> {
-  await page.locator("div.group").filter({ has: page.getByText(deviceName) }).hover();
+  await page
+    .locator("div.group")
+    .filter({ has: page.getByText(deviceName) })
+    .hover();
   await page.getByRole("button", { name: "Open menu" }).click();
 }
 

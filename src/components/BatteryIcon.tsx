@@ -13,7 +13,6 @@ const getBatteryColor = (percentage: number) => {
 };
 
 const BatteryIcon: React.FC<BatteryIconProps> = ({ percentage, className = "", size = 28 }) => {
-
   // Battery frame
   const left = 2;
   const top = 4;
@@ -23,16 +22,16 @@ const BatteryIcon: React.FC<BatteryIconProps> = ({ percentage, className = "", s
   // Battery terminal
   const terminalWidth = size - frameWidth;
   const terminalHeight = frameHeight * 0.5;
-  const terminalLeft = left+frameWidth;
+  const terminalLeft = left + frameWidth;
   const terminalTop = top + (frameHeight - terminalHeight) / 2;
 
   // Battery fill width
   const maxFillWidth = frameWidth * 0.85;
   const padding = (frameWidth - maxFillWidth) / 2;
-  const fillWidth = Math.max(0, Math.min(maxFillWidth, maxFillWidth * percentage / 100));
+  const fillWidth = Math.max(0, Math.min(maxFillWidth, (maxFillWidth * percentage) / 100));
   const fillHeight = frameHeight - padding * 2;
-  const fillLeft = left+padding;
-  const fillTop = top+padding;
+  const fillLeft = left + padding;
+  const fillTop = top + padding;
   const color = getBatteryColor(percentage);
 
   return (
@@ -45,9 +44,23 @@ const BatteryIcon: React.FC<BatteryIconProps> = ({ percentage, className = "", s
       className={className}
     >
       {/* Battery frame */}
-      <rect x={left} y={top} width={frameWidth} height={frameHeight} rx="10%" className="stroke-card-foreground/60 stroke-2 fill-none" />
+      <rect
+        x={left}
+        y={top}
+        width={frameWidth}
+        height={frameHeight}
+        rx="10%"
+        className="stroke-card-foreground/60 stroke-2 fill-none"
+      />
       {/* Battery terminal */}
-      <rect x={terminalLeft} y={terminalTop} width={terminalWidth} height={terminalHeight} rx="10%" className="fill-card-foreground/60" />
+      <rect
+        x={terminalLeft}
+        y={terminalTop}
+        width={terminalWidth}
+        height={terminalHeight}
+        rx="10%"
+        className="fill-card-foreground/60"
+      />
       {/* Battery fill */}
       <rect x={fillLeft} y={fillTop} width={fillWidth} height={fillHeight} rx="10%" fill={color} />
     </svg>

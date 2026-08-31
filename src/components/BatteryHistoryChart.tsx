@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useMemo } from "react";
 import {
-	ResponsiveContainer,
-	LineChart,
-	Line,
-	XAxis,
-	YAxis,
-	Tooltip,
-	Legend,
-	ReferenceLine,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ReferenceLine,
 } from "recharts";
 import type { RegisteredDevice } from "@/utils/appHelpers";
 import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
@@ -16,316 +16,326 @@ import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 
 // ── Types ──────────────────────────────────────────────
 import {
-	formatTooltipLabel,
-	formatXTick,
-	findRowIndexAtOrBefore,
-	getXAxisConfig,
-	MS_IN_DAY,
+  formatTooltipLabel,
+  formatXTick,
+  findRowIndexAtOrBefore,
+  getXAxisConfig,
+  MS_IN_DAY,
 } from "@/utils/batteryChartMath";
 import { useBatteryChartData } from "@/hooks/useBatteryChartData";
 import ChartSettingsPanel from "@/components/ChartSettingsPanel";
 
 interface BatteryHistoryChartProps {
-	device: RegisteredDevice;
-	onClose: () => void;
+  device: RegisteredDevice;
+  onClose: () => void;
 }
 
 // ── Constants ──────────────────────────────────────────
 
 /** Range presets – value is duration in ms. ms=-1 means custom range. */
 const RANGE_PRESETS = [
-	{ label: "1 day", ms: 1 * 24 * 60 * 60 * 1000 },
-	{ label: "3 days", ms: 3 * 24 * 60 * 60 * 1000 },
-	{ label: "1 week", ms: 7 * 24 * 60 * 60 * 1000 },
-	{ label: "2 weeks", ms: 14 * 24 * 60 * 60 * 1000 },
-	{ label: "1 month", ms: 30 * 24 * 60 * 60 * 1000 },
-	{ label: "All", ms: 0 },
-	{ label: "Custom", ms: -1 },
+  { label: "1 day", ms: 1 * 24 * 60 * 60 * 1000 },
+  { label: "3 days", ms: 3 * 24 * 60 * 60 * 1000 },
+  { label: "1 week", ms: 7 * 24 * 60 * 60 * 1000 },
+  { label: "2 weeks", ms: 14 * 24 * 60 * 60 * 1000 },
+  { label: "1 month", ms: 30 * 24 * 60 * 60 * 1000 },
+  { label: "All", ms: 0 },
+  { label: "Custom", ms: -1 },
 ] as const;
 
 const CUSTOM_RANGE_MS = -1;
 
 // ── Component ──────────────────────────────────────────
 const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClose }) => {
-	const { config, setConfig } = useConfigContext();
-	const [rangeMs, setRangeMsState] = useState(() => config.chartRangeMs);
-	const [customRange, setCustomRangeState] = useState<DateRange | null>(() => {
-		const saved = config.chartCustomRange;
-		if (!saved) return null;
-		return { start: new Date(saved.start), end: new Date(saved.end) };
-	});
-	const [showDatePicker, setShowDatePicker] = useState(false);
-	const [smoothingWindow, setSmoothingWindowState] = useState(() => config.chartSmoothingWindowSize);
-	const setRangeMs = useCallback((ms: number) => {
-		setRangeMsState(ms);
-		setConfig(prev => ({ ...prev, chartRangeMs: ms }));
-	}, [setConfig]);
+  const { config, setConfig } = useConfigContext();
+  const [rangeMs, setRangeMsState] = useState(() => config.chartRangeMs);
+  const [customRange, setCustomRangeState] = useState<DateRange | null>(() => {
+    const saved = config.chartCustomRange;
+    if (!saved) return null;
+    return { start: new Date(saved.start), end: new Date(saved.end) };
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [smoothingWindow, setSmoothingWindowState] = useState(
+    () => config.chartSmoothingWindowSize,
+  );
+  const setRangeMs = useCallback(
+    (ms: number) => {
+      setRangeMsState(ms);
+      setConfig((prev) => ({ ...prev, chartRangeMs: ms }));
+    },
+    [setConfig],
+  );
 
-	const setCustomRange = useCallback((range: DateRange | null) => {
-		setCustomRangeState(range);
-		setConfig(prev => ({
-			...prev,
-			chartCustomRange: range ? { start: range.start.toISOString(), end: range.end.toISOString() } : null,
-		}));
-	}, [setConfig]);
+  const setCustomRange = useCallback(
+    (range: DateRange | null) => {
+      setCustomRangeState(range);
+      setConfig((prev) => ({
+        ...prev,
+        chartCustomRange: range
+          ? { start: range.start.toISOString(), end: range.end.toISOString() }
+          : null,
+      }));
+    },
+    [setConfig],
+  );
 
-	const setSmoothingWindow = useCallback((w: number) => {
-		setSmoothingWindowState(w);
-		setConfig(prev => ({ ...prev, chartSmoothingWindowSize: w }));
-	}, [setConfig]);
+  const setSmoothingWindow = useCallback(
+    (w: number) => {
+      setSmoothingWindowState(w);
+      setConfig((prev) => ({ ...prev, chartSmoothingWindowSize: w }));
+    },
+    [setConfig],
+  );
 
-	const { recordedData, allKeys, isLoading, error, hasHistory } = useBatteryChartData({
-		device,
-		rangeMs,
-		customRange,
-		smoothingWindow,
-	});
+  const { recordedData, allKeys, isLoading, error, hasHistory } = useBatteryChartData({
+    device,
+    rangeMs,
+    customRange,
+    smoothingWindow,
+  });
 
-	const displayNameForKey = useCallback(
-		(key: string) => device.batteryPartLabels?.[key] ?? key,
-		[device.batteryPartLabels],
-	);
+  const displayNameForKey = useCallback(
+    (key: string) => device.batteryPartLabels?.[key] ?? key,
+    [device.batteryPartLabels],
+  );
 
-	const now = useMemo(() => Date.now(), [recordedData]); // eslint-disable-line react-hooks/exhaustive-deps
+  const now = useMemo(() => Date.now(), [recordedData]); // oxlint-disable-line react/exhaustive-deps
 
-	const effectiveRange = useMemo<number>(() => {
-		if (rangeMs === -1 && customRange) {
-			return customRange.end.getTime() - customRange.start.getTime();
-		}
-		if (rangeMs > 0) return rangeMs;
-		if (recordedData.length < 2) return MS_IN_DAY;
-		return recordedData[recordedData.length - 1].timestamp - recordedData[0].timestamp;
-	}, [recordedData, rangeMs, customRange]);
+  const effectiveRange = useMemo<number>(() => {
+    if (rangeMs === -1 && customRange) {
+      return customRange.end.getTime() - customRange.start.getTime();
+    }
+    if (rangeMs > 0) return rangeMs;
+    if (recordedData.length < 2) return MS_IN_DAY;
+    return recordedData[recordedData.length - 1].timestamp - recordedData[0].timestamp;
+  }, [recordedData, rangeMs, customRange]);
 
-	/** X axis domain and explicit ticks */
-	const { xDomain, xTicks } = useMemo(() => {
-		return getXAxisConfig({
-			rangeMs,
-			now,
-			recordedData,
-			customRange,
-		});
-	}, [rangeMs, now, recordedData, customRange]);
+  /** X axis domain and explicit ticks */
+  const { xDomain, xTicks } = useMemo(() => {
+    return getXAxisConfig({
+      rangeMs,
+      now,
+      recordedData,
+      customRange,
+    });
+  }, [rangeMs, now, recordedData, customRange]);
 
-	// ── Render ─────────────────────────────────────────
-	return (
-		<div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
-			{/* Header */}
-			<div className="px-5">
-				<div className="flex flex-col pt-4 pb-0 min-w-0 mr-40">
-					<span
-						className="text-2xl font-semibold text-foreground truncate"
-						title={device.name}
-					>
-						{getRegisteredDeviceDisplayName(device)}
-					</span>
-					<span className="text-sm text-muted-foreground tracking-wide">
-						Battery History
-					</span>
-				</div>
-			</div>
+  // ── Render ─────────────────────────────────────────
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background rounded-[10px] overflow-hidden">
+      {/* Header */}
+      <div className="px-5">
+        <div className="flex flex-col pt-4 pb-0 min-w-0 mr-40">
+          <span className="text-2xl font-semibold text-foreground truncate" title={device.name}>
+            {getRegisteredDeviceDisplayName(device)}
+          </span>
+          <span className="text-sm text-muted-foreground tracking-wide">Battery History</span>
+        </div>
+      </div>
 
-			<ChartSettingsPanel
-				rangeMs={rangeMs}
-				setRangeMs={setRangeMs}
-				rangePresets={RANGE_PRESETS}
-				customRangeMs={CUSTOM_RANGE_MS}
-				onCustomRange={() => setShowDatePicker(true)}
-				smoothingWindow={smoothingWindow}
-				setSmoothingWindow={setSmoothingWindow}
-				onClose={onClose}
-			/>
+      <ChartSettingsPanel
+        rangeMs={rangeMs}
+        setRangeMs={setRangeMs}
+        rangePresets={RANGE_PRESETS}
+        customRangeMs={CUSTOM_RANGE_MS}
+        onCustomRange={() => setShowDatePicker(true)}
+        smoothingWindow={smoothingWindow}
+        setSmoothingWindow={setSmoothingWindow}
+        onClose={onClose}
+      />
 
+      {/* Chart area */}
+      <div className="flex-1 flex flex-col p-4 min-h-0">
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
+            Loading...
+          </div>
+        ) : error ? (
+          <div className="flex-1 flex items-center justify-center text-xs text-destructive">
+            {error}
+          </div>
+        ) : recordedData.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center text-md text-muted-foreground">
+            {!hasHistory ? "No history recorded yet" : "No history in this range"}
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
+            <LineChart data={recordedData} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+              {/* Internal grid lines (excluding top/right boundaries) */}
+              {[25, 50, 75].map((y) => (
+                <ReferenceLine key={y} y={y} stroke="currentColor" strokeOpacity={0.15} />
+              ))}
+              {xTicks.map((tick) => (
+                <ReferenceLine key={tick} x={tick} stroke="currentColor" strokeOpacity={0.15} />
+              ))}
+              <XAxis
+                dataKey="timestamp"
+                type="number"
+                domain={xDomain}
+                scale="time"
+                ticks={xTicks}
+                tickFormatter={(ts: number) => formatXTick(ts, effectiveRange)}
+                tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.9 }}
+                tickLine={false}
+                axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
+                minTickGap={20}
+                interval={0}
+              />
+              <YAxis
+                domain={[0, 100]}
+                ticks={[0, 25, 50, 75, 100]}
+                tickFormatter={(v: number) => `${v}%`}
+                tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.9 }}
+                tickLine={false}
+                axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
+                width={42}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active && (!payload || payload.length === 0)) return null;
+                  const labelTimestamp = typeof label === "number" ? label : Number(label);
+                  const atOrBefore = findRowIndexAtOrBefore(recordedData, labelTimestamp);
+                  const row =
+                    atOrBefore >= 0 && recordedData[atOrBefore].timestamp === labelTimestamp
+                      ? recordedData[atOrBefore]
+                      : undefined;
+                  const hasRecordedValueAtLabel =
+                    row != null && allKeys.some((key) => row[key] != null);
+                  if (!hasRecordedValueAtLabel) return null;
+                  const fallbackStartIndex = atOrBefore;
 
-			{/* Chart area */}
-			<div className="flex-1 flex flex-col p-4 min-h-0">
-				{isLoading ? (
-					<div className="flex-1 flex items-center justify-center text-xs text-muted-foreground">
-						Loading...
-					</div>
-				) : error ? (
-					<div className="flex-1 flex items-center justify-center text-xs text-destructive">
-						{error}
-					</div>
-				) : recordedData.length === 0 ? (
-					<div className="flex-1 flex items-center justify-center text-md text-muted-foreground">
-						{!hasHistory ? "No history recorded yet" : "No history in this range"}
-					</div>
-				) : (
-					<ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
-						<LineChart
-							data={recordedData}
-							margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
-						>
-							{/* Internal grid lines (excluding top/right boundaries) */}
-							{[25, 50, 75].map((y) => (
-								<ReferenceLine
-									key={y}
-									y={y}
-									stroke="currentColor"
-									strokeOpacity={0.15}
-								/>
-							))}
-							{xTicks.map((tick) => (
-								<ReferenceLine
-									key={tick}
-									x={tick}
-									stroke="currentColor"
-									strokeOpacity={0.15}
-								/>
-							))}
-							<XAxis
-								dataKey="timestamp"
-								type="number"
-								domain={xDomain}
-								scale="time"
-								ticks={xTicks}
-								tickFormatter={(ts: number) => formatXTick(ts, effectiveRange)}
-								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.9 }}
-								tickLine={false}
-								axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
-								minTickGap={20}
-								interval={0}
-							/>
-							<YAxis
-								domain={[0, 100]}
-								ticks={[0, 25, 50, 75, 100]}
-								tickFormatter={(v: number) => `${v}%`}
-								tick={{ fontSize: 11, fill: "currentColor", fillOpacity: 0.9 }}
-								tickLine={false}
-								axisLine={{ stroke: "currentColor", strokeOpacity: 0.5 }}
-								width={42}
-							/>
-							<Tooltip
-								content={({ active, payload, label }) => {
-									if (!active && (!payload || payload.length === 0)) return null;
-									const labelTimestamp = typeof label === "number" ? label : Number(label);
-									const atOrBefore = findRowIndexAtOrBefore(recordedData, labelTimestamp);
-									const row = atOrBefore >= 0 && recordedData[atOrBefore].timestamp === labelTimestamp
-										? recordedData[atOrBefore] : undefined;
-									const hasRecordedValueAtLabel = row != null && allKeys.some((key) => row[key] != null);
-									if (!hasRecordedValueAtLabel) return null;
-									const fallbackStartIndex = atOrBefore;
+                  // For each key, find the last known value if the current row doesn't have it
+                  const resolveValue = (key: string): number | undefined => {
+                    if (row?.[key] != null) return row[key] as number;
+                    // Walk backwards through chartData to find the most recent value
+                    for (let j = fallbackStartIndex; j >= 0; j--) {
+                      if (recordedData[j][key] != null) return recordedData[j][key] as number;
+                    }
+                    return undefined;
+                  };
 
-									// For each key, find the last known value if the current row doesn't have it
-									const resolveValue = (key: string): number | undefined => {
-										if (row?.[key] != null) return row[key] as number;
-										// Walk backwards through chartData to find the most recent value
-										for (let j = fallbackStartIndex; j >= 0; j--) {
-											if (recordedData[j][key] != null) return recordedData[j][key] as number;
-										}
-										return undefined;
-									};
+                  return (
+                    <div
+                      style={{
+                        backgroundColor: "var(--popover)",
+                        color: "var(--popover-foreground)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "0.5rem",
+                        padding: "8px 12px",
+                        fontSize: "0.8rem",
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                        {formatTooltipLabel(labelTimestamp)}
+                      </div>
+                      {allKeys.map((key, i) => {
+                        const val = resolveValue(key);
+                        const isInterpolated = row?.[key] == null && val != null;
+                        return (
+                          <div
+                            key={key}
+                            style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}
+                          >
+                            <span
+                              style={{
+                                display: "inline-block",
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                backgroundColor: `var(--chart-${(i % 5) + 1})`,
+                              }}
+                            />
+                            <span style={{ opacity: isInterpolated ? 0.5 : 1 }}>
+                              {displayNameForKey(key)}: {val != null ? `${val}%` : "—"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                }}
+              />
+              <Legend
+                content={(props) => {
+                  const { payload } = props;
+                  const count = payload?.length || 0;
+                  let layoutClass = "flex justify-center";
+                  let gridCols = undefined;
+                  if (count === 2 || count === 4) {
+                    layoutClass = "grid";
+                    gridCols = "auto auto";
+                  } else if (count >= 3) {
+                    layoutClass = "grid";
+                    gridCols = "auto auto auto";
+                  }
 
-									return (
-										<div
-											style={{
-												backgroundColor: "var(--popover)",
-												color: "var(--popover-foreground)",
-												border: "1px solid var(--border)",
-												borderRadius: "0.5rem",
-												padding: "8px 12px",
-												fontSize: "0.8rem",
-											}}
-										>
-											<div style={{ fontWeight: 600, marginBottom: 4 }}>
-												{formatTooltipLabel(labelTimestamp)}
-											</div>
-													{allKeys.map((key, i) => {
-												const val = resolveValue(key);
-												const isInterpolated = row?.[key] == null && val != null;
-												return (
-													<div key={key} style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-														<span
-															style={{
-																display: "inline-block",
-																width: 10,
-																height: 10,
-																borderRadius: "50%",
-																backgroundColor: `var(--chart-${(i % 5) + 1})`,
-															}}
-														/>
-														<span style={{ opacity: isInterpolated ? 0.5 : 1 }}>
-															{displayNameForKey(key)}: {val != null ? `${val}%` : "—"}
-														</span>
-													</div>
-												);
-											})}
-										</div>
-									);
-								}}
-							/>
-							<Legend
-								content={(props) => {
-									const { payload } = props;
-									const count = payload?.length || 0;
-									let layoutClass = "flex justify-center";
-									let gridCols = undefined;
-									if (count === 2 || count === 4) {
-										layoutClass = "grid";
-										gridCols = "auto auto";
-									} else if (count >= 3) {
-										layoutClass = "grid";
-										gridCols = "auto auto auto";
-									}
+                  return (
+                    <div
+                      className={`${layoutClass} gap-x-6 gap-y-2 pt-1 w-fit mx-auto`}
+                      style={{ fontSize: "0.8rem", gridTemplateColumns: gridCols }}
+                    >
+                      {payload?.map((entry, index) => (
+                        <div key={`item-${index}`} className="flex items-center gap-1.5">
+                          <div
+                            style={{
+                              minWidth: 20,
+                              height: 4,
+                              backgroundColor: entry.color,
+                              borderRadius: 2,
+                            }}
+                          />
+                          <span className="truncate" style={{ color: "var(--foreground)" }}>
+                            {entry.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }}
+              />
+              {allKeys.map((key, i) => (
+                <Line
+                  key={key}
+                  type="linear"
+                  dataKey={key}
+                  name={displayNameForKey(key)}
+                  stroke={`var(--chart-${(i % 5) + 1})`}
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{
+                    r: 5,
+                    stroke: "var(--foreground)",
+                    strokeWidth: 2,
+                    fill: `var(--chart-${(i % 5) + 1})`,
+                  }}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
-									return (
-										<div className={`${layoutClass} gap-x-6 gap-y-2 pt-1 w-fit mx-auto`} style={{ fontSize: "0.8rem", gridTemplateColumns: gridCols }}>
-											{payload?.map((entry, index) => (
-												<div key={`item-${index}`} className="flex items-center gap-1.5">
-													<div
-														style={{
-															minWidth: 20,
-															height: 4,
-															backgroundColor: entry.color,
-															borderRadius: 2,
-														}}
-													/>
-													<span className="truncate" style={{ color: "var(--foreground)" }}>{entry.value}</span>
-												</div>
-											))}
-										</div>
-									);
-								}}
-							/>
-							{allKeys.map((key, i) => (
-								<Line
-									key={key}
-									type="linear"
-									dataKey={key}
-									name={displayNameForKey(key)}
-									stroke={`var(--chart-${(i % 5) + 1})`}
-									strokeWidth={2.5}
-									dot={false}
-									activeDot={{ r: 5, stroke: "var(--foreground)", strokeWidth: 2, fill: `var(--chart-${(i % 5) + 1})` }}
-									connectNulls
-									isAnimationActive={false}
-								/>
-							))}
-						</LineChart>
-					</ResponsiveContainer>
-				)}
-			</div>
-
-			{/* Custom date range picker modal */}
-			{showDatePicker && (
-				<DateRangePicker
-					initialRange={customRange ?? undefined}
-					onApply={(range) => {
-						setCustomRange(range);
-						setShowDatePicker(false);
-					}}
-					onCancel={() => {
-						setShowDatePicker(false);
-						// Revert to previous preset if no custom range was set
-						if (!customRange) {
-							setRangeMs(0); // "All"
-						}
-					}}
-				/>
-			)}
-		</div>
-	);
+      {/* Custom date range picker modal */}
+      {showDatePicker && (
+        <DateRangePicker
+          initialRange={customRange ?? undefined}
+          onApply={(range) => {
+            setCustomRange(range);
+            setShowDatePicker(false);
+          }}
+          onCancel={() => {
+            setShowDatePicker(false);
+            // Revert to previous preset if no custom range was set
+            if (!customRange) {
+              setRangeMs(0); // "All"
+            }
+          }}
+        />
+      )}
+    </div>
+  );
 };
 
 export default BatteryHistoryChart;

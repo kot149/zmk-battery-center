@@ -1,7 +1,8 @@
 (function () {
-  const seed = typeof window.__E2E_TAURI_SEED__ === "object" && window.__E2E_TAURI_SEED__
-    ? window.__E2E_TAURI_SEED__
-    : {};
+  const seed =
+    typeof window.__E2E_TAURI_SEED__ === "object" && window.__E2E_TAURI_SEED__
+      ? window.__E2E_TAURI_SEED__
+      : {};
 
   const STORAGE_PREFIX = "__e2e_tauri_store__";
 
@@ -46,7 +47,7 @@
         configurable: true,
         get() {
           return "granted";
-        }
+        },
       });
     } catch {
       // no-op
@@ -61,7 +62,7 @@
     family: "windows",
     os_type: "windows",
     arch: "x86_64",
-    exe_extension: "exe"
+    exe_extension: "exe",
   };
 
   const state = {
@@ -70,15 +71,19 @@
     ridToPath: new Map(),
     monitors: new Set(),
     invocations: [],
-    devices: clone(seed.availableDevices ?? [
-      { id: "kbd-1", name: "MockBoard One" },
-      { id: "kbd-2", name: "MockBoard Two" }
-    ]),
-    batteryById: clone(seed.batteryById ?? {
-      "kbd-1": [{ battery_level: 87, user_description: "Central" }],
-      "kbd-2": [{ battery_level: 64, user_description: "Central" }]
-    }),
-    historyByKey: clone(seed.historyByKey ?? {})
+    devices: clone(
+      seed.availableDevices ?? [
+        { id: "kbd-1", name: "MockBoard One" },
+        { id: "kbd-2", name: "MockBoard Two" },
+      ],
+    ),
+    batteryById: clone(
+      seed.batteryById ?? {
+        "kbd-1": [{ battery_level: 87, user_description: "Central" }],
+        "kbd-2": [{ battery_level: 64, user_description: "Central" }],
+      },
+    ),
+    historyByKey: clone(seed.historyByKey ?? {}),
   };
 
   if (seed.config !== undefined) {
@@ -99,6 +104,6 @@
     readStoreData,
     writeStoreData,
     localStorageKey,
-    historyKey
+    historyKey,
   };
 })();

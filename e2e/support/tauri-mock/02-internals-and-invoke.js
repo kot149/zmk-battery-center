@@ -67,7 +67,7 @@
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = window.__TAURI_EVENT_PLUGIN_INTERNALS__ ?? {};
     window.__TAURI_INTERNALS__.metadata = {
       currentWindow: { label: "main" },
-      currentWebview: { windowLabel: "main", label: "main" }
+      currentWebview: { windowLabel: "main", label: "main" },
     };
 
     const callbacks = new Map();
@@ -133,7 +133,7 @@
           runCallback(handlerId, {
             event: args.event,
             id: state.nextEventId++,
-            payload: clone(args.payload)
+            payload: clone(args.payload),
           });
         }
         return null;
@@ -224,7 +224,7 @@
           list.push({
             timestamp: args.timestamp,
             user_description: args.userDescription,
-            battery_level: args.batteryLevel
+            battery_level: args.batteryLevel,
           });
           state.historyByKey[key] = list;
           return null;
@@ -275,14 +275,16 @@
 
     window.__e2eTauriMock = {
       emit: (eventName, payload) => invoke("plugin:event|emit", { event: eventName, payload }),
-      emitBatteryInfo: (id, batteryInfo) => invoke("plugin:event|emit", {
-        event: "battery-info-notification",
-        payload: { id, battery_info: batteryInfo }
-      }),
-      emitMonitorStatus: (id, connected) => invoke("plugin:event|emit", {
-        event: "battery-monitor-status",
-        payload: { id, connected }
-      }),
+      emitBatteryInfo: (id, batteryInfo) =>
+        invoke("plugin:event|emit", {
+          event: "battery-info-notification",
+          payload: { id, battery_info: batteryInfo },
+        }),
+      emitMonitorStatus: (id, connected) =>
+        invoke("plugin:event|emit", {
+          event: "battery-monitor-status",
+          payload: { id, connected },
+        }),
       setBatteryInfo: (id, infos) => {
         state.batteryById[id] = clone(infos);
       },
@@ -290,7 +292,7 @@
         state.historyByKey[historyKey(deviceName, bleId)] = clone(records);
       },
       getInvocations: () => clone(state.invocations),
-      readStore: (path) => clone(readStoreData(path))
+      readStore: (path) => clone(readStoreData(path)),
     };
   }
 

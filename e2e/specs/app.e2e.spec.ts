@@ -164,11 +164,11 @@ test.describe("legacy saved device payload", () => {
     },
   });
 
-test("is normalized on load", async ({ page }) => {
-  await expect(page.getByText("Legacy Keyboard")).toBeVisible();
-  await expect(page.getByTestId(batteryLevelTestId("legacy-id", "Left"))).toHaveText("73%");
-  await expect(page.getByLabel("Disconnected")).toBeVisible();
-});
+  test("is normalized on load", async ({ page }) => {
+    await expect(page.getByText("Legacy Keyboard")).toBeVisible();
+    await expect(page.getByTestId(batteryLevelTestId("legacy-id", "Left"))).toHaveText("73%");
+    await expect(page.getByLabel("Disconnected")).toBeVisible();
+  });
 });
 
 test("notification monitor status event updates disconnected badge", async ({ page }) => {
@@ -241,7 +241,9 @@ test.describe("polling mode refresh", () => {
   test("updates battery level on interval", async ({ page }) => {
     await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
     await page.evaluate(() => {
-      window.__e2eTauriMock.setBatteryInfo("kbd-1", [{ battery_level: 63, user_description: "Central" }]);
+      window.__e2eTauriMock.setBatteryInfo("kbd-1", [
+        { battery_level: 63, user_description: "Central" },
+      ]);
     });
     await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("63%");
   });
@@ -250,7 +252,10 @@ test.describe("polling mode refresh", () => {
 test("battery history event refreshes chart after new reading", async ({ page }) => {
   await addFirstDevice(page);
 
-  await page.locator("div.group").filter({ has: page.getByText("MockBoard One") }).hover();
+  await page
+    .locator("div.group")
+    .filter({ has: page.getByText("MockBoard One") })
+    .hover();
   await page.getByRole("button", { name: "Show battery history chart" }).click();
   await expect(page.getByText("No history recorded yet")).toBeVisible();
 

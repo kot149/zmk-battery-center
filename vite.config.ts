@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import tailwindcss from '@tailwindcss/vite'
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const host = process.env.TAURI_DEV_HOST;
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,15 +20,15 @@ export default defineConfig(async () => ({
 
   resolve: {
     alias: {
-      '@': path.resolve(dirname, 'src'),
+      "@": path.resolve(dirname, "src"),
     },
   },
 
   build: {
     rollupOptions: {
       input: {
-        main: path.resolve(dirname, 'index.html'),
-        about: path.resolve(dirname, 'about.html'),
+        main: path.resolve(dirname, "index.html"),
+        about: path.resolve(dirname, "about.html"),
       },
     },
   },

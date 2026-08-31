@@ -5,26 +5,26 @@ inputs:
   tauri-args:
     description: Extra args for tauri build (e.g. --target aarch64-apple-darwin)
     required: false
-    default: ''
+    default: ""
   rust-extra-targets:
     description: Comma-separated extra Rust targets (macOS cross-build); leave empty when not needed
     required: false
-    default: ''
+    default: ""
   ubuntu-deps:
     description: none, x64 (ubuntu-latest), or arm64 (ubuntu-24.04-arm)
     required: false
-    default: 'none'
+    default: "none"
   artifact-name:
     description: Name for actions/upload-artifact
     required: true
   upload-artifact:
     description: Whether to upload build artifacts
     required: false
-    default: 'true'
+    default: "true"
   release:
     description: If true, tauri-action uploads to a GitHub release
     required: false
-    default: 'false'
+    default: "false"
 
 runs:
   using: composite
@@ -77,7 +77,7 @@ runs:
     - name: Rust cache
       uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
-        workspaces: './src-tauri -> target'
+        workspaces: "./src-tauri -> target"
 
     - name: Install cargo-about
       shell: bash

@@ -113,12 +113,12 @@ jobs:
 
       - uses: ./.github/actions/tauri-platform-build
         with:
-          tauri-args: '--target aarch64-apple-darwin'
+          tauri-args: "--target aarch64-apple-darwin"
           rust-extra-targets: aarch64-apple-darwin
-          ubuntu-deps: 'none'
+          ubuntu-deps: "none"
           artifact-name: tauri-artifacts-macos-aarch64
-          upload-artifact: 'false'
-          release: 'true'
+          upload-artifact: "false"
+          release: "true"
 
   release-macos-x64:
     needs: [verify-versions, select-platforms]
@@ -129,12 +129,12 @@ jobs:
 
       - uses: ./.github/actions/tauri-platform-build
         with:
-          tauri-args: '--target x86_64-apple-darwin'
+          tauri-args: "--target x86_64-apple-darwin"
           rust-extra-targets: x86_64-apple-darwin
-          ubuntu-deps: 'none'
+          ubuntu-deps: "none"
           artifact-name: tauri-artifacts-macos-x64
-          upload-artifact: 'false'
-          release: 'true'
+          upload-artifact: "false"
+          release: "true"
 
   release-windows:
     needs: [verify-versions, select-platforms]
@@ -145,10 +145,10 @@ jobs:
 
       - uses: ./.github/actions/tauri-platform-build
         with:
-          ubuntu-deps: 'none'
+          ubuntu-deps: "none"
           artifact-name: tauri-artifacts-windows
-          upload-artifact: 'false'
-          release: 'true'
+          upload-artifact: "false"
+          release: "true"
 
   release-linux-x64:
     needs: [verify-versions, select-platforms]
@@ -159,11 +159,11 @@ jobs:
 
       - uses: ./.github/actions/tauri-platform-build
         with:
-          tauri-args: '--target x86_64-unknown-linux-gnu'
-          ubuntu-deps: 'x64'
+          tauri-args: "--target x86_64-unknown-linux-gnu"
+          ubuntu-deps: "x64"
           artifact-name: tauri-artifacts-linux-x64
-          upload-artifact: 'false'
-          release: 'true'
+          upload-artifact: "false"
+          release: "true"
 
   release-linux-arm64:
     needs: [verify-versions, select-platforms]
@@ -174,14 +174,21 @@ jobs:
 
       - uses: ./.github/actions/tauri-platform-build
         with:
-          tauri-args: '--target aarch64-unknown-linux-gnu'
-          ubuntu-deps: 'arm64'
+          tauri-args: "--target aarch64-unknown-linux-gnu"
+          ubuntu-deps: "arm64"
           artifact-name: tauri-artifacts-linux-arm64
-          upload-artifact: 'false'
-          release: 'true'
+          upload-artifact: "false"
+          release: "true"
 
   publish-checksums:
-    needs: [release-macos-aarch64, release-macos-x64, release-windows, release-linux-x64, release-linux-arm64]
+    needs:
+      [
+        release-macos-aarch64,
+        release-macos-x64,
+        release-windows,
+        release-linux-x64,
+        release-linux-arm64,
+      ]
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     steps:

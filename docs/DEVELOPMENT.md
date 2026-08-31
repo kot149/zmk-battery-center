@@ -4,33 +4,35 @@
 
 1. Install [Bun](https://bun.sh)
 1. Install [Rustup](https://www.rust-lang.org/ja/tools/install)
-2. Clone this repo
+1. Clone this repo
    ```sh
    git clone https://github.com/kot149/zmk-battery-center.git
    cd zmk-battery-center
    ```
 1. Install frontend dependencies
-     ```sh
-     bun install
-     ```
-2. Install Cargo tools
-     ```sh
-     cargo install cargo-about cargo-deny
-     ```
-2. Run in development mode
-     ```sh
-     bun tauri dev
-     ```
+   ```sh
+   bun install
+   ```
+1. Install Cargo tools
+   ```sh
+   cargo install cargo-about cargo-deny
+   ```
+1. Run in development mode
+
+   ```sh
+   bun tauri dev
+   ```
+
    In development mode, config and device list are saved to `.dev-data/` at the project root. Use the `ZMK_BATTERY_CENTER_DATA_DIR` environment variable to switch directories (e.g. for tests):
 
    ```sh
    bunx cross-env ZMK_BATTERY_CENTER_DATA_DIR=./.dev-data-test bun tauri dev
    ```
 
-3. Build for production
-     ```sh
-     bun tauri build
-     ```
+1. Build for production
+   ```sh
+   bun tauri build
+   ```
    - If build fails, try cleaning the build cache
      ```sh
      cd src-tauri
@@ -123,12 +125,14 @@ This section describes a practical test design for this project. It is intention
 #### Frontend (TypeScript/React)
 
 Recommended stack:
+
 - Test runner: `vitest`
 - Component tests: `@testing-library/react`
 - DOM environment: `jsdom`
 - Mocking Tauri APIs: module mocks for `@tauri-apps/api/*` and Tauri plugins
 
 Primary unit targets:
+
 - `src/App.tsx`
   - `upsertBatteryInfo`: insert vs update by `user_description`, keep previous value when new `battery_level` is `null`.
   - `mergeBatteryInfos`: preserve previous `battery_level` only when incoming value is `null`.
@@ -147,6 +151,7 @@ Primary unit targets:
   - `DateRangePicker` / `BatteryHistoryChart`: range changes and empty data rendering.
 
 Suggested assertions:
+
 - Use fake timers for polling/timeout behavior.
 - Verify listener cleanup (`unlisten`) on unmount.
 - Verify persistence calls happen only after initial config/device load flags are true.
@@ -154,10 +159,12 @@ Suggested assertions:
 #### Backend (Rust)
 
 Recommended stack:
+
 - Built-in Rust tests (`cargo test`)
 - `tempfile` crate for isolated filesystem tests
 
 Primary unit targets:
+
 - `src-tauri/src/history.rs`
   - `safe_filename`: sanitizes special characters and preserves allowed characters.
   - append/read round-trip for CSV records.
@@ -168,6 +175,7 @@ Primary unit targets:
   - fallback to `.dev-data` in debug builds.
 
 Recommended Rust refactor for easier testing:
+
 - Extract pure helpers from Tauri command functions (path resolution, CSV parse/format), then test helpers directly without requiring a full `AppHandle`.
 
 ### E2E Test Design
@@ -179,10 +187,12 @@ Use two E2E layers to balance reliability and realism.
 Purpose: validate user-visible behavior deterministically, without OS BLE/tray dependencies.
 
 Recommended stack:
+
 - `playwright`
 - Test fixture that mocks Tauri `invoke`, event `listen`, and plugin APIs in the renderer
 
 Core scenarios:
+
 1. First launch
    - shows "No devices registered"
    - Add Device modal opens and lists available devices from mocked backend
@@ -211,9 +221,11 @@ Core scenarios:
 Purpose: cover integration points that browser-only tests cannot validate.
 
 Recommended stack:
+
 - Tauri WebDriver-based flow (for example, `tauri-driver`) on Windows/macOS runners
 
 Core scenarios:
+
 1. App boot + single-instance behavior
 2. Tray menu opens and toggles manual window positioning
 3. Window positioning behavior around tray icon (platform-specific smoke checks)
@@ -234,7 +246,7 @@ Core scenarios:
 
 Implemented in `.github/workflows/ci.yml` (currently manual `workflow_dispatch` only; PR/push triggers will be enabled once the pipeline is validated):
 
-- `frontend` job: `bun run lint`, typecheck via `bun run build:ui`, frontend unit tests
+- `frontend` job: `bun run lint`, `bun run format:check`, typecheck via `bun run build:ui`, frontend unit tests
 - `rust` job: `bun run build:ui` (required by `tauri::generate_context!`), then `cargo test`
 - `e2e` job: Layer 1 mocked Playwright E2E (`bun run e2e`)
 - `audit` job: `cargo audit` (non-blocking, `continue-on-error`)
@@ -246,6 +258,7 @@ Planned, not implemented:
 ### Initial Minimal Suite (recommended starting point)
 
 If you want to introduce tests incrementally, start with these high-value cases:
+
 - Unit: `upsertBatteryInfo`, `mergeBatteryInfos`, `normalizeLoadedDevices`.
 - Unit: `history.rs` CSV round-trip + malformed-line handling.
 - E2E: first launch, add device, notification event update, persistence reload.

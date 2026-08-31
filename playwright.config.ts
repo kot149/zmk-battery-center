@@ -11,12 +11,12 @@ export default defineConfig({
   reporter: isCI ? "github" : "list",
   use: {
     baseURL: "http://127.0.0.1:1420",
-    trace: "on-first-retry"
+    trace: "on-first-retry",
   },
   webServer: {
     command: "bun dev:frontend --host 127.0.0.1 --port 1420",
     url: "http://127.0.0.1:1420",
     timeout: 120000,
-    reuseExistingServer: !isCI
-  }
+    reuseExistingServer: !isCI,
+  },
 });

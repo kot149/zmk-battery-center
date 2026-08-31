@@ -38,15 +38,7 @@
     "active": true,
     "license": "MIT",
     "licenseFile": "../LICENSE.md",
-    "targets": [
-      "dmg",
-      "app",
-      "msi",
-      "nsis",
-      "deb",
-      "rpm",
-      "appimage"
-    ],
+    "targets": ["dmg", "app", "msi", "nsis", "deb", "rpm", "appimage"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -54,10 +46,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": [
-      "icons/icon_template.png",
-      "../licenses/*.json"
-    ],
+    "resources": ["icons/icon_template.png", "../licenses/*.json"],
     "macOS": {
       "signingIdentity": "-"
     }

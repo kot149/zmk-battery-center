@@ -5,72 +5,72 @@ import { appendBatteryHistory, readBatteryHistory } from "../batteryHistory";
 const mockedInvoke = vi.mocked(invoke);
 
 describe("batteryHistory utils", () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-	});
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
-	it("appendBatteryHistory invokes command with expected payload", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-02-03T04:05:06.000Z"));
-		mockedInvoke.mockResolvedValue(undefined);
+  it("appendBatteryHistory invokes command with expected payload", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-03T04:05:06.000Z"));
+    mockedInvoke.mockResolvedValue(undefined);
 
-		await appendBatteryHistory("Keyboard", "dev-1", "Left", 77);
+    await appendBatteryHistory("Keyboard", "dev-1", "Left", 77);
 
-		expect(invoke).toHaveBeenCalledWith("append_battery_history", {
-			deviceName: "Keyboard",
-			bleId: "dev-1",
-			timestamp: "2026-02-03T04:05:06.000Z",
-			userDescription: "Left",
-			batteryLevel: 77,
-		});
-		vi.useRealTimers();
-	});
+    expect(invoke).toHaveBeenCalledWith("append_battery_history", {
+      deviceName: "Keyboard",
+      bleId: "dev-1",
+      timestamp: "2026-02-03T04:05:06.000Z",
+      userDescription: "Left",
+      batteryLevel: 77,
+    });
+    vi.useRealTimers();
+  });
 
-	it("readBatteryHistory invokes command with requested ids", async () => {
-		const mockedHistory = [
-			{
-				timestamp: "2026-01-01T00:00:00.000Z",
-				user_description: "Central",
-				battery_level: 90,
-			},
-		];
-		mockedInvoke.mockResolvedValue(mockedHistory);
+  it("readBatteryHistory invokes command with requested ids", async () => {
+    const mockedHistory = [
+      {
+        timestamp: "2026-01-01T00:00:00.000Z",
+        user_description: "Central",
+        battery_level: 90,
+      },
+    ];
+    mockedInvoke.mockResolvedValue(mockedHistory);
 
-		const result = await readBatteryHistory("Keyboard", "dev-1");
+    const result = await readBatteryHistory("Keyboard", "dev-1");
 
-		expect(invoke).toHaveBeenCalledWith("read_battery_history", {
-			deviceName: "Keyboard",
-			bleId: "dev-1",
-			since: null,
-		});
-		expect(result).toEqual(mockedHistory);
-	});
+    expect(invoke).toHaveBeenCalledWith("read_battery_history", {
+      deviceName: "Keyboard",
+      bleId: "dev-1",
+      since: null,
+    });
+    expect(result).toEqual(mockedHistory);
+  });
 
-	it("readBatteryHistory passes the since filter through", async () => {
-		mockedInvoke.mockResolvedValue([]);
+  it("readBatteryHistory passes the since filter through", async () => {
+    mockedInvoke.mockResolvedValue([]);
 
-		await readBatteryHistory("Keyboard", "dev-1", "2026-05-01T00:00:00.000Z");
+    await readBatteryHistory("Keyboard", "dev-1", "2026-05-01T00:00:00.000Z");
 
-		expect(invoke).toHaveBeenCalledWith("read_battery_history", {
-			deviceName: "Keyboard",
-			bleId: "dev-1",
-			since: "2026-05-01T00:00:00.000Z",
-		});
-	});
+    expect(invoke).toHaveBeenCalledWith("read_battery_history", {
+      deviceName: "Keyboard",
+      bleId: "dev-1",
+      since: "2026-05-01T00:00:00.000Z",
+    });
+  });
 
-	it("appendBatteryHistory propagates invoke errors", async () => {
-		const error = new Error("append failed");
-		mockedInvoke.mockRejectedValue(error);
+  it("appendBatteryHistory propagates invoke errors", async () => {
+    const error = new Error("append failed");
+    mockedInvoke.mockRejectedValue(error);
 
-		await expect(
-			appendBatteryHistory("Keyboard", "dev-1", "Left", 77),
-		).rejects.toThrow("append failed");
-	});
+    await expect(appendBatteryHistory("Keyboard", "dev-1", "Left", 77)).rejects.toThrow(
+      "append failed",
+    );
+  });
 
-	it("readBatteryHistory propagates invoke errors", async () => {
-		const error = new Error("read failed");
-		mockedInvoke.mockRejectedValue(error);
+  it("readBatteryHistory propagates invoke errors", async () => {
+    const error = new Error("read failed");
+    mockedInvoke.mockRejectedValue(error);
 
-		await expect(readBatteryHistory("Keyboard", "dev-1")).rejects.toThrow("read failed");
-	});
+    await expect(readBatteryHistory("Keyboard", "dev-1")).rejects.toThrow("read failed");
+  });
 });

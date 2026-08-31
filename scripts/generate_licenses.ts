@@ -30,461 +30,438 @@ const JS_OUTPUT = path.join(OUTPUT_DIR, "js-licenses.json");
  */
 
 interface CargoLicense {
-	name: string;
-	version: string;
-	license: string;
-	authors: string[];
-	repository?: string;
-	licenseText?: string;
+  name: string;
+  version: string;
+  license: string;
+  authors: string[];
+  repository?: string;
+  licenseText?: string;
 }
 
 interface JsLicense {
-	name: string;
-	version: string;
-	license: string;
-	repository?: string;
-	publisher?: string;
-	path: string;
-	licenseText?: string;
+  name: string;
+  version: string;
+  license: string;
+  repository?: string;
+  publisher?: string;
+  path: string;
+  licenseText?: string;
 }
 
 function isSpdxMetadata(text: string): boolean {
-	const trimmed = text.trim();
-	return (
-		trimmed.startsWith("SPDXVersion:") ||
-		(trimmed.includes("PackageLicenseDeclared:") &&
-			(trimmed.includes("PackageName:") || trimmed.includes("DataLicense:")))
-	);
+  const trimmed = text.trim();
+  return (
+    trimmed.startsWith("SPDXVersion:") ||
+    (trimmed.includes("PackageLicenseDeclared:") &&
+      (trimmed.includes("PackageName:") || trimmed.includes("DataLicense:")))
+  );
 }
 
 function extractDeclaredLicensesFromSpdx(text: string): string[] {
-	const ids: string[] = [];
-	const regex = /PackageLicenseDeclared:\s*(.+)/g;
-	let m: RegExpExecArray | null;
-	while ((m = regex.exec(text)) !== null) {
-		const id = m[1].trim();
-		if (id && !ids.includes(id)) {
-			ids.push(id);
-		}
-	}
-	return ids;
+  const ids: string[] = [];
+  const regex = /PackageLicenseDeclared:\s*(.+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(text)) !== null) {
+    const id = m[1].trim();
+    if (id && !ids.includes(id)) {
+      ids.push(id);
+    }
+  }
+  return ids;
 }
 
 function parseLicenseIds(licenseField: string): string[] {
-	return licenseField
-		.split(/\s+(?:OR|AND)\s+/)
-		.map((id) => id.trim())
-		.filter(Boolean);
+  return licenseField
+    .split(/\s+(?:OR|AND)\s+/)
+    .map((id) => id.trim())
+    .filter(Boolean);
 }
 
 const LICENSE_FILE_NAMES = ["license", "licence", "copying", "unlicense"];
 
 function isLicenseFileName(fileName: string): boolean {
-	const lower = fileName.toLowerCase();
-	return (
-		LICENSE_FILE_NAMES.some((n) => lower.startsWith(n)) || lower === "unlicense"
-	);
+  const lower = fileName.toLowerCase();
+  return LICENSE_FILE_NAMES.some((n) => lower.startsWith(n)) || lower === "unlicense";
 }
 
 async function findLicenseFromParentOrSibling(
-	pkgPath: string,
-	licenseIds: string[] | undefined
+  pkgPath: string,
+  licenseIds: string[] | undefined,
 ): Promise<string | undefined> {
-	if (!pkgPath) return undefined;
+  if (!pkgPath) return undefined;
 
-	const pkgDir = path.resolve(pkgPath);
-	const parentDir = path.dirname(pkgDir);
-	const nodeModules =
-		path.basename(parentDir).startsWith("@")
-			? path.dirname(parentDir)
-			: parentDir;
-	if (
-		path.basename(nodeModules) !== "node_modules" ||
-		!pkgDir.includes("node_modules")
-	) {
-		return undefined;
-	}
+  const pkgDir = path.resolve(pkgPath);
+  const parentDir = path.dirname(pkgDir);
+  const nodeModules = path.basename(parentDir).startsWith("@")
+    ? path.dirname(parentDir)
+    : parentDir;
+  if (path.basename(nodeModules) !== "node_modules" || !pkgDir.includes("node_modules")) {
+    return undefined;
+  }
 
-	const searchDirs: string[] = [];
-	const relParts = path.relative(nodeModules, pkgDir).split(path.sep);
-	if (relParts[0]?.startsWith("@")) {
-		const scope = relParts[0];
-		const scopeDir = path.join(nodeModules, scope);
-		try {
-			const siblings = await fs.readdir(scopeDir);
-			for (const s of siblings) {
-				if (s.startsWith(".")) continue;
-				searchDirs.push(path.join(scopeDir, s));
-			}
-		} catch { /* scope directory may not exist */ }
-		const unscopedName = scope.replace(/^@/, "");
-		searchDirs.push(path.join(nodeModules, unscopedName));
-	}
+  const searchDirs: string[] = [];
+  const relParts = path.relative(nodeModules, pkgDir).split(path.sep);
+  if (relParts[0]?.startsWith("@")) {
+    const scope = relParts[0];
+    const scopeDir = path.join(nodeModules, scope);
+    try {
+      const siblings = await fs.readdir(scopeDir);
+      for (const s of siblings) {
+        if (s.startsWith(".")) continue;
+        searchDirs.push(path.join(scopeDir, s));
+      }
+    } catch {
+      /* scope directory may not exist */
+    }
+    const unscopedName = scope.replace(/^@/, "");
+    searchDirs.push(path.join(nodeModules, unscopedName));
+  }
 
-	for (const dir of searchDirs) {
-		if (dir === pkgDir) continue;
-		try {
-			const entries = await fs.readdir(dir, { withFileTypes: true });
-			for (const ent of entries) {
-				if (!ent.isFile()) continue;
-				const base = path.basename(ent.name, path.extname(ent.name));
-				if (!isLicenseFileName(base)) continue;
-				const fullPath = path.join(dir, ent.name);
-				try {
-					const raw = await fs.readFile(fullPath, "utf-8");
-					if (raw.trim().length === 0) continue;
-					return isSpdxMetadata(raw)
-						? resolveSpdxMetadataToLicenseText(raw, licenseIds)
-						: raw;
-				} catch {
-					continue;
-				}
-			}
-		} catch {
-			continue;
-		}
-	}
-	return undefined;
+  for (const dir of searchDirs) {
+    if (dir === pkgDir) continue;
+    try {
+      const entries = await fs.readdir(dir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isFile()) continue;
+        const base = path.basename(ent.name, path.extname(ent.name));
+        if (!isLicenseFileName(base)) continue;
+        const fullPath = path.join(dir, ent.name);
+        try {
+          const raw = await fs.readFile(fullPath, "utf-8");
+          if (raw.trim().length === 0) continue;
+          return isSpdxMetadata(raw) ? resolveSpdxMetadataToLicenseText(raw, licenseIds) : raw;
+        } catch {
+          continue;
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
 }
 
 function resolveSpdxMetadataToLicenseText(
-	spdxText: string,
-	fallbackLicenseIds?: string[]
+  spdxText: string,
+  fallbackLicenseIds?: string[],
 ): string | undefined {
-	const declaredIds = extractDeclaredLicensesFromSpdx(spdxText);
-	const licenseIds =
-		declaredIds.length > 0 ? declaredIds : fallbackLicenseIds ?? [];
-	if (licenseIds.length === 0) return undefined;
+  const declaredIds = extractDeclaredLicensesFromSpdx(spdxText);
+  const licenseIds = declaredIds.length > 0 ? declaredIds : (fallbackLicenseIds ?? []);
+  if (licenseIds.length === 0) return undefined;
 
-	const texts: string[] = [];
-	for (const id of licenseIds) {
-		const entry = spdxFull[id as keyof typeof spdxFull];
-		if (entry?.licenseText) {
-			texts.push(
-				licenseIds.length > 1 ? `=== ${id} ===\n\n${entry.licenseText}` : entry.licenseText
-			);
-		}
-	}
-	if (texts.length === 0) return undefined;
-	return texts.join("\n\n");
+  const texts: string[] = [];
+  for (const id of licenseIds) {
+    const entry = spdxFull[id as keyof typeof spdxFull];
+    if (entry?.licenseText) {
+      texts.push(
+        licenseIds.length > 1 ? `=== ${id} ===\n\n${entry.licenseText}` : entry.licenseText,
+      );
+    }
+  }
+  if (texts.length === 0) return undefined;
+  return texts.join("\n\n");
 }
 
 async function ensureOutputDir(): Promise<void> {
-	try {
-		await fs.access(OUTPUT_DIR);
-	} catch {
-		await fs.mkdir(OUTPUT_DIR, { recursive: true });
-		console.log(`Created output directory: ${OUTPUT_DIR}`);
-	}
+  try {
+    await fs.access(OUTPUT_DIR);
+  } catch {
+    await fs.mkdir(OUTPUT_DIR, { recursive: true });
+    console.log(`Created output directory: ${OUTPUT_DIR}`);
+  }
 }
 
 function checkCargoAboutInstalled(): boolean {
-	try {
-		execSync("cargo about --version", { stdio: "pipe" });
-		return true;
-	} catch {
-		return false;
-	}
+  try {
+    execSync("cargo about --version", { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Run license verification using check_licenses.ts
  */
 function runLicenseCheck(cargoOnly: boolean, jsOnly: boolean): boolean {
-	console.log("\nRunning license verification...");
+  console.log("\nRunning license verification...");
 
-	try {
-		const args: string[] = [];
-		if (cargoOnly) args.push("--cargo-only");
-		if (jsOnly) args.push("--js-only");
+  try {
+    const args: string[] = [];
+    if (cargoOnly) args.push("--cargo-only");
+    if (jsOnly) args.push("--js-only");
 
-		execSync(`bun scripts/check_licenses.ts ${args.join(" ")}`, {
-			encoding: "utf-8",
-			stdio: "inherit",
-		});
-		return true;
-	} catch {
-		return false;
-	}
+    execSync(`bun scripts/check_licenses.ts ${args.join(" ")}`, {
+      encoding: "utf-8",
+      stdio: "inherit",
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function generateCargoLicenses(): Promise<void> {
-	console.log("\nGenerating Cargo licenses...");
+  console.log("\nGenerating Cargo licenses...");
 
-	if (!checkCargoAboutInstalled()) {
-		console.error("\x1b[31mError: cargo-about is not installed.\x1b[0m");
-		console.log("Install it with: cargo install cargo-about --features cli");
-		console.log("For more info: https://github.com/EmbarkStudios/cargo-about");
-		throw new Error("cargo-about not installed");
-	}
+  if (!checkCargoAboutInstalled()) {
+    console.error("\x1b[31mError: cargo-about is not installed.\x1b[0m");
+    console.log("Install it with: cargo install cargo-about --features cli");
+    console.log("For more info: https://github.com/EmbarkStudios/cargo-about");
+    throw new Error("cargo-about not installed");
+  }
 
-	console.log("Running cargo-about...");
+  console.log("Running cargo-about...");
 
-	// Temp file path (using -o option to avoid PowerShell encoding issues)
-	const tempOutputFile = path.join("..", OUTPUT_DIR, "cargo-about-raw.json");
+  // Temp file path (using -o option to avoid PowerShell encoding issues)
+  const tempOutputFile = path.join("..", OUTPUT_DIR, "cargo-about-raw.json");
 
-	try {
-		// Output to file using cargo-about with -o option
-		execSync(
-			`cargo about generate --format json --all-features -o "${tempOutputFile}"`,
-			{
-				cwd: "src-tauri",
-				encoding: "utf-8",
-				maxBuffer: 50 * 1024 * 1024, // 50MB buffer
-			}
-		);
+  try {
+    // Output to file using cargo-about with -o option
+    execSync(`cargo about generate --format json --all-features -o "${tempOutputFile}"`, {
+      cwd: "src-tauri",
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024, // 50MB buffer
+    });
 
-		// Read output file
-		const result = await fs.readFile(
-			path.join(OUTPUT_DIR, "cargo-about-raw.json"),
-			"utf-8"
-		);
-		const aboutData = JSON.parse(result);
+    // Read output file
+    const result = await fs.readFile(path.join(OUTPUT_DIR, "cargo-about-raw.json"), "utf-8");
+    const aboutData = JSON.parse(result);
 
-		// Delete temp file
-		await fs.unlink(path.join(OUTPUT_DIR, "cargo-about-raw.json"));
+    // Delete temp file
+    await fs.unlink(path.join(OUTPUT_DIR, "cargo-about-raw.json"));
 
-		// Format license information
-		// Use a map to aggregate licenses per package (for packages with multiple licenses like "MIT OR Apache-2.0")
-		const packageMap = new Map<
-			string,
-			{
-				name: string;
-				version: string;
-				licenses: Set<string>;
-				authors: string[];
-				repository?: string;
-				licenseTexts: Map<string, string>;
-			}
-		>();
+    // Format license information
+    // Use a map to aggregate licenses per package (for packages with multiple licenses like "MIT OR Apache-2.0")
+    const packageMap = new Map<
+      string,
+      {
+        name: string;
+        version: string;
+        licenses: Set<string>;
+        authors: string[];
+        repository?: string;
+        licenseTexts: Map<string, string>;
+      }
+    >();
 
-		// Extract license information from cargo-about output
-		if (aboutData.licenses) {
-			for (const licenseGroup of aboutData.licenses) {
-				const licenseId = licenseGroup.id || licenseGroup.name || "Unknown";
-				const licenseText = licenseGroup.text || undefined;
+    // Extract license information from cargo-about output
+    if (aboutData.licenses) {
+      for (const licenseGroup of aboutData.licenses) {
+        const licenseId = licenseGroup.id || licenseGroup.name || "Unknown";
+        const licenseText = licenseGroup.text || undefined;
 
-				for (const pkg of licenseGroup.used_by || []) {
-					const key = `${pkg.crate.name}@${pkg.crate.version}`;
+        for (const pkg of licenseGroup.used_by || []) {
+          const key = `${pkg.crate.name}@${pkg.crate.version}`;
 
-					if (!packageMap.has(key)) {
-						packageMap.set(key, {
-							name: pkg.crate.name,
-							version: pkg.crate.version,
-							licenses: new Set(),
-							authors: pkg.crate.authors || [],
-							repository: pkg.crate.repository,
-							licenseTexts: new Map(),
-						});
-					}
+          if (!packageMap.has(key)) {
+            packageMap.set(key, {
+              name: pkg.crate.name,
+              version: pkg.crate.version,
+              licenses: new Set(),
+              authors: pkg.crate.authors || [],
+              repository: pkg.crate.repository,
+              licenseTexts: new Map(),
+            });
+          }
 
-					const entry = packageMap.get(key)!;
-					entry.licenses.add(licenseId);
-					if (licenseText) {
-						const resolved =
-							isSpdxMetadata(licenseText)
-								? resolveSpdxMetadataToLicenseText(licenseText, [licenseId])
-								: licenseText;
-						if (resolved) {
-							entry.licenseTexts.set(licenseId, resolved);
-						}
-					}
-				}
-			}
-		}
+          const entry = packageMap.get(key)!;
+          entry.licenses.add(licenseId);
+          if (licenseText) {
+            const resolved = isSpdxMetadata(licenseText)
+              ? resolveSpdxMetadataToLicenseText(licenseText, [licenseId])
+              : licenseText;
+            if (resolved) {
+              entry.licenseTexts.set(licenseId, resolved);
+            }
+          }
+        }
+      }
+    }
 
-		// Convert map to array and combine license information
-		const licenses: CargoLicense[] = Array.from(packageMap.values()).map(
-			(pkg) => {
-				const licenseIds = Array.from(pkg.licenses).sort();
-				// Combine license texts with headers
-				let combinedLicenseText: string | undefined;
-				if (pkg.licenseTexts.size > 0) {
-					if (pkg.licenseTexts.size === 1) {
-						combinedLicenseText = pkg.licenseTexts.values().next().value;
-					} else {
-						combinedLicenseText = licenseIds
-							.filter((id) => pkg.licenseTexts.has(id))
-							.map((id) => `=== ${id} ===\n\n${pkg.licenseTexts.get(id)}`)
-							.join("\n\n");
-					}
-				}
+    // Convert map to array and combine license information
+    const licenses: CargoLicense[] = Array.from(packageMap.values()).map((pkg) => {
+      const licenseIds = Array.from(pkg.licenses).sort();
+      // Combine license texts with headers
+      let combinedLicenseText: string | undefined;
+      if (pkg.licenseTexts.size > 0) {
+        if (pkg.licenseTexts.size === 1) {
+          combinedLicenseText = pkg.licenseTexts.values().next().value;
+        } else {
+          combinedLicenseText = licenseIds
+            .filter((id) => pkg.licenseTexts.has(id))
+            .map((id) => `=== ${id} ===\n\n${pkg.licenseTexts.get(id)}`)
+            .join("\n\n");
+        }
+      }
 
-				return {
-					name: pkg.name,
-					version: pkg.version,
-					license: licenseIds.join(" OR "),
-					authors: pkg.authors,
-					repository: pkg.repository,
-					licenseText: combinedLicenseText,
-				};
-			}
-		);
+      return {
+        name: pkg.name,
+        version: pkg.version,
+        license: licenseIds.join(" OR "),
+        authors: pkg.authors,
+        repository: pkg.repository,
+        licenseText: combinedLicenseText,
+      };
+    });
 
-		// Sort by name
-		licenses.sort((a, b) => a.name.localeCompare(b.name));
+    // Sort by name
+    licenses.sort((a, b) => a.name.localeCompare(b.name));
 
-		await fs.writeFile(CARGO_OUTPUT, JSON.stringify(licenses, null, 2));
-		console.log(`\x1b[32mCargo licenses saved to: ${CARGO_OUTPUT}\x1b[0m`);
-		console.log(`Total packages: ${licenses.length}`);
-	} catch (error) {
-		if (error instanceof Error) {
-			console.error("Error running cargo-about:", error.message);
-		}
-		throw error;
-	}
+    await fs.writeFile(CARGO_OUTPUT, JSON.stringify(licenses, null, 2));
+    console.log(`\x1b[32mCargo licenses saved to: ${CARGO_OUTPUT}\x1b[0m`);
+    console.log(`Total packages: ${licenses.length}`);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error("Error running cargo-about:", error.message);
+    }
+    throw error;
+  }
 }
 
 async function generateJsLicenses(): Promise<void> {
-	console.log("\nGenerating JS licenses...");
+  console.log("\nGenerating JS licenses...");
 
-	try {
-		// Run license-checker via bun
-		const result = execSync(
-			"bun license-checker --json --production --relativeLicensePath",
-			{
-				encoding: "utf-8",
-				maxBuffer: 50 * 1024 * 1024,
-			}
-		);
+  try {
+    // Run license-checker via bun
+    const result = execSync("bun license-checker --json --production --relativeLicensePath", {
+      encoding: "utf-8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
 
-		const rawData = JSON.parse(result);
+    const rawData = JSON.parse(result);
 
-		// Format data
-		const licenses: JsLicense[] = [];
+    // Format data
+    const licenses: JsLicense[] = [];
 
-	for (const [pkgName, info] of Object.entries(rawData)) {
-		const pkgInfo = info as {
-			licenses?: string;
-			repository?: string;
-			publisher?: string;
-			path?: string;
-			licenseFile?: string;
-		};
+    for (const [pkgName, info] of Object.entries(rawData)) {
+      const pkgInfo = info as {
+        licenses?: string;
+        repository?: string;
+        publisher?: string;
+        path?: string;
+        licenseFile?: string;
+      };
 
-		// Extract package name and version
-		const atIndex = pkgName.lastIndexOf("@");
-		let name: string;
-		let version: string;
+      // Extract package name and version
+      const atIndex = pkgName.lastIndexOf("@");
+      let name: string;
+      let version: string;
 
-		if (atIndex > 0) {
-			name = pkgName.substring(0, atIndex);
-			version = pkgName.substring(atIndex + 1);
-		} else {
-			name = pkgName;
-			version = "unknown";
-		}
+      if (atIndex > 0) {
+        name = pkgName.substring(0, atIndex);
+        version = pkgName.substring(atIndex + 1);
+      } else {
+        name = pkgName;
+        version = "unknown";
+      }
 
-		// Skip the project itself (zmk-battery-center)
-		if (name === "zmk-battery-center") {
-			continue;
-		}
+      // Skip the project itself (zmk-battery-center)
+      if (name === "zmk-battery-center") {
+        continue;
+      }
 
-		// Read license text from licenseFile provided by license-checker
-		let licenseText: string | undefined;
-		if (pkgInfo.licenseFile) {
-			const fileName = path.basename(pkgInfo.licenseFile).toLowerCase();
-			const base = fileName.replace(/\.[^.]+$/, "");
-			if (isLicenseFileName(base)) {
-				try {
-					const raw = await fs.readFile(pkgInfo.licenseFile, "utf-8");
-					licenseText = isSpdxMetadata(raw)
-						? resolveSpdxMetadataToLicenseText(
-								raw,
-								pkgInfo.licenses
-									? parseLicenseIds(pkgInfo.licenses)
-									: undefined
-						  )
-						: raw;
-				} catch {
-					// Ignore read errors
-				}
-			}
-		}
+      // Read license text from licenseFile provided by license-checker
+      let licenseText: string | undefined;
+      if (pkgInfo.licenseFile) {
+        const fileName = path.basename(pkgInfo.licenseFile).toLowerCase();
+        const base = fileName.replace(/\.[^.]+$/, "");
+        if (isLicenseFileName(base)) {
+          try {
+            const raw = await fs.readFile(pkgInfo.licenseFile, "utf-8");
+            licenseText = isSpdxMetadata(raw)
+              ? resolveSpdxMetadataToLicenseText(
+                  raw,
+                  pkgInfo.licenses ? parseLicenseIds(pkgInfo.licenses) : undefined,
+                )
+              : raw;
+          } catch {
+            // Ignore read errors
+          }
+        }
+      }
 
-		if (!licenseText && pkgInfo.path) {
-			licenseText = await findLicenseFromParentOrSibling(
-				pkgInfo.path,
-				pkgInfo.licenses ? parseLicenseIds(pkgInfo.licenses) : undefined
-			);
-		}
+      if (!licenseText && pkgInfo.path) {
+        licenseText = await findLicenseFromParentOrSibling(
+          pkgInfo.path,
+          pkgInfo.licenses ? parseLicenseIds(pkgInfo.licenses) : undefined,
+        );
+      }
 
-		licenses.push({
-			name,
-			version,
-			license: pkgInfo.licenses || "Unknown",
-			repository: pkgInfo.repository,
-			publisher: pkgInfo.publisher,
-			path: pkgInfo.path || "",
-			licenseText,
-		});
-	}
+      licenses.push({
+        name,
+        version,
+        license: pkgInfo.licenses || "Unknown",
+        repository: pkgInfo.repository,
+        publisher: pkgInfo.publisher,
+        path: pkgInfo.path || "",
+        licenseText,
+      });
+    }
 
-		// Sort by name
-		licenses.sort((a, b) => a.name.localeCompare(b.name));
+    // Sort by name
+    licenses.sort((a, b) => a.name.localeCompare(b.name));
 
-		await fs.writeFile(JS_OUTPUT, JSON.stringify(licenses, null, 2));
-		console.log(`\x1b[32mJS licenses saved to: ${JS_OUTPUT}\x1b[0m`);
-		console.log(`Total packages: ${licenses.length}`);
-	} catch (error) {
-		if (error instanceof Error) {
-			console.error("Error running license-checker:", error.message);
-		}
-		throw error;
-	}
+    await fs.writeFile(JS_OUTPUT, JSON.stringify(licenses, null, 2));
+    console.log(`\x1b[32mJS licenses saved to: ${JS_OUTPUT}\x1b[0m`);
+    console.log(`Total packages: ${licenses.length}`);
+  } catch (error) {
+    if (error instanceof Error) {
+      console.error("Error running license-checker:", error.message);
+    }
+    throw error;
+  }
 }
 
-
-
 async function main(): Promise<void> {
-	const args = process.argv.slice(2);
-	const cargoOnly = args.includes("--cargo-only");
-	const jsOnly = args.includes("--js-only");
-	const skipVerify = args.includes("--skip-verify");
+  const args = process.argv.slice(2);
+  const cargoOnly = args.includes("--cargo-only");
+  const jsOnly = args.includes("--js-only");
+  const skipVerify = args.includes("--skip-verify");
 
-	console.log("License Generator for zmk-battery-center");
+  console.log("License Generator for zmk-battery-center");
 
-	await ensureOutputDir();
+  await ensureOutputDir();
 
-	let hasError = false;
+  let hasError = false;
 
-	// License verification (unless --skip-verify is specified)
-	if (!skipVerify) {
-		if (!runLicenseCheck(cargoOnly, jsOnly)) {
-			console.error("\x1b[31mLicense verification failed! Aborting.\x1b[0m");
-			console.error("If you believe this is a false positive, run with --skip-verify");
-			process.exit(1);
-		}
-	}
+  // License verification (unless --skip-verify is specified)
+  if (!skipVerify) {
+    if (!runLicenseCheck(cargoOnly, jsOnly)) {
+      console.error("\x1b[31mLicense verification failed! Aborting.\x1b[0m");
+      console.error("If you believe this is a false positive, run with --skip-verify");
+      process.exit(1);
+    }
+  }
 
-	if (!jsOnly) {
-		try {
-			await generateCargoLicenses();
-		} catch {
-			hasError = true;
-			console.error("\x1b[31mFailed to generate Cargo licenses\x1b[0m");
-		}
-	}
+  if (!jsOnly) {
+    try {
+      await generateCargoLicenses();
+    } catch {
+      hasError = true;
+      console.error("\x1b[31mFailed to generate Cargo licenses\x1b[0m");
+    }
+  }
 
-	if (!cargoOnly) {
-		try {
-			await generateJsLicenses();
-		} catch {
-			hasError = true;
-			console.error("\x1b[31mFailed to generate JS licenses\x1b[0m");
-		}
-	}
+  if (!cargoOnly) {
+    try {
+      await generateJsLicenses();
+    } catch {
+      hasError = true;
+      console.error("\x1b[31mFailed to generate JS licenses\x1b[0m");
+    }
+  }
 
-	if (hasError) {
-		console.log("\x1b[33mCompleted with errors. See above for details.\x1b[0m");
-		process.exit(1);
-	} else {
-		console.log("\x1b[32mAll licenses generated successfully!\x1b[0m");
-		console.log(`Output directory: ${OUTPUT_DIR}/`);
-	}
+  if (hasError) {
+    console.log("\x1b[33mCompleted with errors. See above for details.\x1b[0m");
+    process.exit(1);
+  } else {
+    console.log("\x1b[32mAll licenses generated successfully!\x1b[0m");
+    console.log(`Output directory: ${OUTPUT_DIR}/`);
+  }
 }
 
 main().catch((error) => {
-	console.error("Unexpected error:", error);
-	process.exit(1);
+  console.error("Unexpected error:", error);
+  process.exit(1);
 });

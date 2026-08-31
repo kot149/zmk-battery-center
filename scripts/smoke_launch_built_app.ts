@@ -145,7 +145,9 @@ async function main() {
       console.log("Smoke launch test passed.");
       return;
     }
-    throw new Error(`App exited too early (code=${String(exitCode)}, signal=${String(exitSignal)}).`);
+    throw new Error(
+      `App exited too early (code=${String(exitCode)}, signal=${String(exitSignal)}).`,
+    );
   }
 
   console.log("App remained running during smoke window.");

@@ -14,7 +14,7 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
   - Multiple keyboards simultaneously
 - Record battery level history and display in a graph
 - Multi-platform: Windows, macOS, Linux (limited, see [here](#limitations-on-linux) for details)
-[macOS only] Display battery level on the system tray (inspired by [ZMK Battery Bar](https://github.com/itouuuuuuuuu/zmk-battery-bar))
+  [macOS only] Display battery level on the system tray (inspired by [ZMK Battery Bar](https://github.com/itouuuuuuuuu/zmk-battery-bar))
 - (Options)
   - Push notifications when
     - Keyboard battery level reaches / drops below a certain threshold
@@ -31,6 +31,7 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
 ```sh
 powershell -ExecutionPolicy Bypass -Command "iex (irm 'https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_win.ps1')"
 ```
+
 [View install script](scripts/install_win.ps1)
 
 This requires admin privileges. If you don't have admin privileges, manually install with `*-setup.exe` in [Releases](https://github.com/kot149/zmk-battery-center/releases).
@@ -46,6 +47,7 @@ brew install --cask kot149/tap/zmk-battery-center
 ```
 
 > **Note:** The app may be blocked from opening as is not code-signed. To allow it, either:
+>
 > - Open **System Settings > Privacy & Security > Security** and click **Open Anyway**.
 > - Or run the following command in Terminal:
 >   ```sh
@@ -57,6 +59,7 @@ brew install --cask kot149/tap/zmk-battery-center
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_mac.sh | bash
 ```
+
 [View install script](scripts/install_mac.sh)
 
 #### Linux
@@ -64,12 +67,14 @@ curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scri
 ```sh
 curl -fsSL https://raw.githubusercontent.com/kot149/zmk-battery-center/main/scripts/install_linux.sh | bash
 ```
+
 [View install script](scripts/install_linux.sh)
 
 You will be prompted to select the package format from AppImage, .deb, or .rpm.
 AppImage installs to `~/.local/bin/zmk-battery-center.AppImage`. Debian and RPM packages install system-wide via `sudo` and usually add a desktop entry.
 
 ### Install manually
+
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
 If you worry about security, you can build the app yourself from source code. See [development](docs/DEVELOPMENT.md) for more details.
@@ -80,6 +85,7 @@ While this app is also released for Linux, it is not much tested, as the author 
 Feel free to report any issues you find on Linux, but I cannot guarantee that I can fix them.
 
 Also there are some limitations specifically on Linux:
+
 - The app may not appear around the system tray icon. Enable `Manual window positioning` (see [Window position is misaligned](#window-position-is-misaligned)) to place the window where you want it.
 - Tray icon left-click behavior depends on the SNI host (the desktop's tray implementation). On Ubuntu GNOME with the default `ubuntu-appindicators` extension, single left-click opens the context menu and **double-click** is required to toggle the window. On hosts that fully implement the SNI `Activate` method (e.g. KDE Plasma, sway/waybar), single left-click should toggle the window directly. Use the `Show` menu item as a universal fallback.
 - The app never disconnects the devices internally because call of `disconnect_device()` API on Linux causes OS-level disconnection. Unused connections might remain after the app exits.
@@ -89,6 +95,7 @@ Also there are some limitations specifically on Linux:
 ### Cannot open the app on macOS
 
 On macOS, the app is blocked from opening as it is not signed. Allow the app to open by either:
+
 - Open System Settings > Privacy & Security > Security and click `Open Anyway`.
 - Or, run the following command in the terminal to remove the app from quarantine:
   ```sh
@@ -130,6 +137,7 @@ See [docs/EXTERNAL_INTEGRATION.md](docs/EXTERNAL_INTEGRATION.md) for the externa
 ## References
 
 Implementation and discussion for split battery reporting over BLE GATT:
+
 - ZMK PR [#1243](https://github.com/zmkfirmware/zmk/pull/1243)
 - ZMK PR [#2045](https://github.com/zmkfirmware/zmk/pull/2045)
 
