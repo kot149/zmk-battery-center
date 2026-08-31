@@ -77,7 +77,7 @@ AppImage installs to `~/.local/bin/zmk-battery-center.AppImage`. Debian and RPM 
 
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
-If you worry about security, you can build the app yourself from source code. See [development](docs/DEVELOPMENT.md) for more details.
+If you worry about security, you can build the app yourself from source code. See [development](docs/development.md) for more details.
 
 ## Limitations on Linux
 
@@ -130,9 +130,9 @@ You can manually move the window to the correct position to address this issue.
 
 ## Development
 
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for environment setup, build commands, and running tests.
+See [docs/development.md](docs/development.md) for environment setup, build commands, and running tests.
 
-See [docs/EXTERNAL_INTEGRATION.md](docs/EXTERNAL_INTEGRATION.md) for the external battery snapshot file API.
+See [docs/external_integration.md](docs/external_integration.md) for the external battery snapshot file API.
 
 ## References
 
