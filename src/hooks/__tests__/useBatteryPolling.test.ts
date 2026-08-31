@@ -197,11 +197,11 @@ describe("useBatteryPolling", () => {
 		});
 
 		expect(recordBatteryReadings).toHaveBeenCalledOnce();
-		expect(recordBatteryReadings).toHaveBeenCalledWith(device, fetchedInfos);
+		expect(recordBatteryReadings).toHaveBeenCalledWith(device, [expect.objectContaining(fetchedInfos[0])]);
 		expect(notifyBatteryEdgeTransitions).toHaveBeenCalledOnce();
 		expect(notifyBatteryEdgeTransitions).toHaveBeenCalledWith(expect.objectContaining({
 		deviceId: device.id,
-		newBatteryInfos: fetchedInfos,
+		newBatteryInfos: [expect.objectContaining(fetchedInfos[0])],
 	}));
 	});
 

@@ -6,7 +6,12 @@ import {
 } from "@/utils/ble";
 import { logger } from "@/utils/log";
 import { fireAndForget } from "@/utils/common";
-import { mergeBatteryInfos, type RegisteredDevice } from "@/utils/appHelpers";
+import {
+	annotateBatteryInfosFromRead,
+	markBatteryInfosReadFailed,
+	mergeBatteryInfos,
+	type RegisteredDevice,
+} from "@/utils/appHelpers";
 import { collapseIfDisconnected, expandIfConnected } from "@/hooks/useRegisteredDevices";
 
 interface UseNotificationMonitorsOptions {
@@ -41,8 +46,6 @@ export function useNotificationMonitors({
 		const syncNotificationMonitors = async () => {
 			if (isStale()) return; // superseded while queued behind the previous run
 			const active = activeNotificationMonitorsRef.current;
-			// Derive the desired set from the stable key so that this effect
-			// does NOT re-run when battery levels or connection status change.
 			const desiredIds = registeredDeviceIdsKey ? registeredDeviceIdsKey.split(',') : [];
 			const desired = isNotificationMonitorMode
 				? new Set(desiredIds)
@@ -70,17 +73,25 @@ export function useNotificationMonitors({
 				try {
 					const info = await startBatteryNotificationMonitor(id);
 					// The monitor IS running now; `active` must say so even if this
-					// run was superseded — the next run reconciles from true state.
+					// run was superseded. The next run reconciles from true state.
 					active.add(id);
 					if (isStale()) return;
 					const infoArray = Array.isArray(info) ? info : [info];
+					const now = Date.now();
+					const annotatedInfos = annotateBatteryInfosFromRead(infoArray, now);
 					// Empty array means the device was not connected at startup and a
 					// connection watcher was launched. Keep isDisconnected:true until
 					// the watcher emits a battery-info-notification event on connection.
-					if (infoArray.length > 0) {
+					if (annotatedInfos.length > 0) {
 						commitRegisteredDevices(prev => prev.map(device => device.id === id
 							? expandIfConnected(
-								{ ...device, batteryInfos: mergeBatteryInfos(device.batteryInfos, infoArray), isDisconnected: false },
+								{
+									...device,
+									batteryInfos: mergeBatteryInfos(device.batteryInfos, annotatedInfos),
+									isDisconnected: false,
+									connectionStatusKnown: true,
+									connectionObservedAtUnixMs: now,
+								},
 								autoCollapseDisconnectedDevicesRef.current,
 							)
 							: device
@@ -88,19 +99,32 @@ export function useNotificationMonitors({
 					} else {
 						commitRegisteredDevices(prev => prev.map(device => device.id === id
 							? collapseIfDisconnected(
-								{ ...device, isDisconnected: true },
+								{
+									...device,
+									batteryInfos: markBatteryInfosReadFailed(device.batteryInfos),
+									isDisconnected: true,
+									connectionStatusKnown: true,
+									connectionObservedAtUnixMs: now,
+								},
 								autoCollapseDisconnectedDevicesRef.current,
 							)
 							: device
 						));
 					}
 				} catch {
+					const now = Date.now();
 					commitRegisteredDevices(prev => prev.map(device => {
-						if (device.id !== id || device.isDisconnected) {
+						if (device.id !== id) {
 							return device;
 						}
 						return collapseIfDisconnected(
-							{ ...device, isDisconnected: true },
+							{
+								...device,
+								batteryInfos: markBatteryInfosReadFailed(device.batteryInfos),
+								isDisconnected: true,
+								connectionStatusKnown: true,
+								connectionObservedAtUnixMs: now,
+							},
 							autoCollapseDisconnectedDevicesRef.current,
 						);
 					}));

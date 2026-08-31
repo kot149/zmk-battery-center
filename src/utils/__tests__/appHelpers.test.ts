@@ -20,12 +20,12 @@ describe("App helpers", () => {
 				{ battery_level: 19, user_description: "Central" },
 				{ battery_level: null, user_description: "Aux" },
 			];
-			expect(mapIsLowBattery(infos, 20)).toEqual([false, true, true, false]);
+			expect(mapIsLowBattery(infos, 20)).toMatchObject([false, true, true, false]);
 		});
 
 		it("respects a custom threshold", () => {
 			const infos = [{ battery_level: 30, user_description: null }];
-			expect(mapIsLowBattery(infos, 50)).toEqual([true]);
+			expect(mapIsLowBattery(infos, 50)).toMatchObject([true]);
 		});
 	});
 
@@ -37,7 +37,7 @@ describe("App helpers", () => {
 				{ battery_level: 100, user_description: "Central" },
 				{ battery_level: null, user_description: "Aux" },
 			];
-			expect(mapIsHighBattery(infos, 95)).toEqual([false, true, true, false]);
+			expect(mapIsHighBattery(infos, 95)).toMatchObject([false, true, true, false]);
 		});
 	});
 
@@ -46,7 +46,7 @@ describe("App helpers", () => {
 			const prev = [{ battery_level: 80, user_description: "Left" }];
 			const nextInfo = { battery_level: 65, user_description: "Right" };
 
-			expect(upsertBatteryInfo(prev, nextInfo)).toEqual([
+			expect(upsertBatteryInfo(prev, nextInfo)).toMatchObject([
 				{ battery_level: 80, user_description: "Left" },
 				{ battery_level: 65, user_description: "Right" },
 			]);
@@ -56,7 +56,7 @@ describe("App helpers", () => {
 			const prev = [{ battery_level: 42, user_description: "Central" }];
 			const nextInfo = { battery_level: null, user_description: "Central" };
 
-			expect(upsertBatteryInfo(prev, nextInfo)).toEqual([
+			expect(upsertBatteryInfo(prev, nextInfo)).toMatchObject([
 				{ battery_level: 42, user_description: "Central" },
 			]);
 		});
@@ -65,7 +65,7 @@ describe("App helpers", () => {
 			const prev = [{ battery_level: 42, user_description: "Central" }];
 			const nextInfo = { battery_level: 99, user_description: "Central" };
 
-			expect(upsertBatteryInfo(prev, nextInfo)).toEqual([
+			expect(upsertBatteryInfo(prev, nextInfo)).toMatchObject([
 				{ battery_level: 99, user_description: "Central" },
 			]);
 		});
@@ -74,7 +74,7 @@ describe("App helpers", () => {
 			const prev = [{ battery_level: 10, user_description: null }];
 			const nextInfo = { battery_level: 55, user_description: null };
 
-			expect(upsertBatteryInfo(prev, nextInfo)).toEqual([{ battery_level: 55, user_description: null }]);
+			expect(upsertBatteryInfo(prev, nextInfo)).toMatchObject([{ battery_level: 55, user_description: null }]);
 		});
 	});
 
@@ -90,7 +90,7 @@ describe("App helpers", () => {
 				{ battery_level: 71, user_description: "Central" },
 			];
 
-			expect(mergeBatteryInfos(prev, next)).toEqual([
+			expect(mergeBatteryInfos(prev, next)).toMatchObject([
 				{ battery_level: 30, user_description: "Left" },
 				{ battery_level: 44, user_description: "Right" },
 				{ battery_level: 71, user_description: "Central" },
@@ -99,7 +99,7 @@ describe("App helpers", () => {
 
 		it("returns empty array when next is empty", () => {
 			const prev = [{ battery_level: 30, user_description: "Left" }];
-			expect(mergeBatteryInfos(prev, [])).toEqual([]);
+			expect(mergeBatteryInfos(prev, [])).toMatchObject([]);
 		});
 
 		it("passes through next when prev is empty and levels are null", () => {
@@ -107,7 +107,7 @@ describe("App helpers", () => {
 				{ battery_level: null, user_description: "Left" },
 				{ battery_level: 44, user_description: "Right" },
 			];
-			expect(mergeBatteryInfos([], next)).toEqual([
+			expect(mergeBatteryInfos([], next)).toMatchObject([
 				{ battery_level: null, user_description: "Left" },
 				{ battery_level: 44, user_description: "Right" },
 			]);
@@ -116,7 +116,7 @@ describe("App helpers", () => {
 		it("keeps null battery level when no matching previous entry exists", () => {
 			const prev = [{ battery_level: 30, user_description: "Left" }];
 			const next = [{ battery_level: null, user_description: "Right" }];
-			expect(mergeBatteryInfos(prev, next)).toEqual([
+			expect(mergeBatteryInfos(prev, next)).toMatchObject([
 				{ battery_level: null, user_description: "Right" },
 			]);
 		});
@@ -136,7 +136,7 @@ describe("App helpers", () => {
 				},
 			];
 
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "abc-123",
 					name: "My Keyboard",
@@ -151,12 +151,12 @@ describe("App helpers", () => {
 		});
 
 		it("returns empty array for non-array input", () => {
-			expect(normalizeLoadedDevices({ invalid: true })).toEqual([]);
+			expect(normalizeLoadedDevices({ invalid: true })).toMatchObject([]);
 		});
 
 		it("uses empty batteryInfos when field is missing", () => {
 			const raw = [{ id: "dev-1", name: "Keyboard", isDisconnected: false }];
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "dev-1",
 					name: "Keyboard",
@@ -169,7 +169,7 @@ describe("App helpers", () => {
 
 		it("returns empty id and name strings when not strings", () => {
 			const raw = [{ id: 123, name: null, batteryInfos: [] }];
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "",
 					name: "",
@@ -189,7 +189,7 @@ describe("App helpers", () => {
 					batteryInfos: [],
 				},
 			];
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "plain-id",
 					name: "Plain Name",
@@ -206,7 +206,7 @@ describe("App helpers", () => {
 					{ id: "a", name: "A", batteryInfos: [], isDisconnected: false },
 					{ id: "b", name: "B", batteryInfos: [] },
 				]),
-			).toEqual([
+			).toMatchObject([
 				{ id: "a", name: "A", isDisconnected: false, isCollapsed: false, batteryInfos: [] },
 				{ id: "b", name: "B", isDisconnected: false, isCollapsed: false, batteryInfos: [] },
 			]);
@@ -224,7 +224,7 @@ describe("App helpers", () => {
 				},
 			];
 
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "dev-1",
 					name: "Keyboard",
@@ -248,7 +248,7 @@ describe("App helpers", () => {
 				},
 			];
 
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "dev-1",
 					name: "Keyboard",
@@ -270,7 +270,7 @@ describe("App helpers", () => {
 				},
 			];
 
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "dev-1",
 					name: "Keyboard",
@@ -291,7 +291,7 @@ describe("App helpers", () => {
 				},
 			];
 
-			expect(normalizeLoadedDevices(raw)).toEqual([
+			expect(normalizeLoadedDevices(raw)).toMatchObject([
 				{
 					id: "dev-1",
 					name: "Keyboard",

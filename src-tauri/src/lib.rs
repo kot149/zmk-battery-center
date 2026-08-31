@@ -4,6 +4,7 @@ use tauri_plugin_autostart::MacosLauncher;
 
 mod ble;
 mod common;
+mod external_integration;
 mod history;
 mod licenses;
 mod storage;
@@ -71,6 +72,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_positioner::init())
+        .manage(external_integration::ExternalIntegrationState::default())
         .invoke_handler(tauri::generate_handler![
             common::exit_app,
             ble::list_battery_devices,
@@ -78,6 +80,8 @@ pub fn run() {
             ble::start_battery_notification_monitor,
             ble::stop_battery_notification_monitor,
             ble::stop_all_battery_monitors,
+            external_integration::start_external_battery_source_session,
+            external_integration::publish_external_battery_snapshot,
             window::get_windows_text_scale_factor,
             licenses::get_licenses,
             storage::get_dev_store_path,

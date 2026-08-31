@@ -7,8 +7,10 @@ import { sendNotification } from "@/utils/notification";
 import { NotificationType } from "@/utils/config";
 import { notifyBatteryEdgeTransitions } from "@/utils/batteryEdgeNotification";
 import {
-	mergeBatteryInfos,
+	annotateBatteryInfosFromRead,
 	getRegisteredDeviceDisplayName,
+	markBatteryInfosReadFailed,
+	mergeBatteryInfos,
 	type RegisteredDevice,
 } from "@/utils/appHelpers";
 import { collapseIfDisconnected, expandIfConnected } from "@/hooks/useRegisteredDevices";
@@ -51,6 +53,7 @@ export function useBatteryPolling({
 	// Shared by the interval cycle and the manual reload: concurrent
 	// get_battery_info calls for one device can tear each other down.
 	const isCycleInFlightRef = useRef(false);
+
 	useEffect(() => {
 		pushNotificationRef.current = pushNotification;
 		pushNotificationWhenRef.current = pushNotificationWhen;
@@ -62,26 +65,36 @@ export function useBatteryPolling({
 
 	const updateBatteryInfo = useCallback(async (device: RegisteredDevice) => {
 		const isDisconnectedPrev = device.isDisconnected;
-
-		let attempts = 0;
 		const maxAttempts = isDisconnectedPrev ? 1 : 3;
+		let attempts = 0;
 
 		while (attempts < maxAttempts) {
 			logger.info(`Updating battery info for: ${device.id} (attempt ${attempts + 1} of ${maxAttempts})`);
 			try {
 				const info = await getBatteryInfo(device.id);
+				const now = Date.now();
 				const infoArray = Array.isArray(info) ? info : [info];
+				const annotatedInfos = annotateBatteryInfosFromRead(infoArray, now);
 				commitRegisteredDevices(prev => prev.map(d => {
 					if (d.id !== device.id) return d;
+					const batteryInfos = annotatedInfos.length > 0
+						? mergeBatteryInfos(d.batteryInfos, annotatedInfos)
+						: markBatteryInfosReadFailed(d.batteryInfos);
 					return expandIfConnected(
-						{ ...d, batteryInfos: mergeBatteryInfos(d.batteryInfos, infoArray), isDisconnected: false },
+						{
+							...d,
+							batteryInfos,
+							isDisconnected: false,
+							connectionStatusKnown: true,
+							connectionObservedAtUnixMs: now,
+						},
 						autoCollapseDisconnectedDevicesRef.current,
 					);
 				}));
 
-				recordBatteryReadings(device, infoArray);
+				recordBatteryReadings(device, annotatedInfos);
 
-				if(isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]){
+				if (isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Connected]) {
 					fireAndForget(
 						sendNotification(`${getRegisteredDeviceDisplayName(device)} has been connected.`),
 						`Failed to send connected notification for ${device.id}`,
@@ -92,7 +105,7 @@ export function useBatteryPolling({
 					deviceDisplayName: getRegisteredDeviceDisplayName(device),
 					deviceId: device.id,
 					prevBatteryInfos: device.batteryInfos,
-					newBatteryInfos: infoArray,
+					newBatteryInfos: annotatedInfos,
 					batteryPartLabels: device.batteryPartLabels,
 					lowBatteryThreshold: lowBatteryThresholdRef.current,
 					ignoreZeroPercent: ignoreZeroPercentRef.current,
@@ -105,23 +118,28 @@ export function useBatteryPolling({
 			} catch {
 				attempts++;
 				if (attempts >= maxAttempts) {
+					const now = Date.now();
 					commitRegisteredDevices(prev => prev.map(d => {
-						if (d.id !== device.id) {
-							return d;
-						}
+						if (d.id !== device.id) return d;
 						return collapseIfDisconnected(
-							{ ...d, isDisconnected: true },
+							{
+								...d,
+								batteryInfos: markBatteryInfosReadFailed(d.batteryInfos),
+								isDisconnected: true,
+								connectionStatusKnown: true,
+								connectionObservedAtUnixMs: now,
+							},
 							autoCollapseDisconnectedDevicesRef.current,
 						);
 					}));
 
-					if(!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]){
+					if (!isDisconnectedPrev && pushNotificationRef.current && pushNotificationWhenRef.current[NotificationType.Disconnected]) {
 						fireAndForget(
 							sendNotification(`${getRegisteredDeviceDisplayName(device)} has been disconnected.`),
 							`Failed to send disconnected notification for ${device.id}`,
 						);
-						return;
 					}
+					return;
 				}
 			}
 			await sleep(500);

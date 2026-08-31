@@ -17,12 +17,16 @@ import {
 
 const DEVICES_FILENAME = "devices.json";
 
+type RegisteredDevicesSnapshot = {
+	devices: RegisteredDevice[];
+	sourceRevision: number;
+};
+
 async function loadDevicesFromFile(): Promise<RegisteredDevice[]> {
 	const storePath = await getStorePath(DEVICES_FILENAME);
 	const deviceStore = await load(storePath, { autoSave: true, defaults: {} });
 	const raw = await deviceStore.get<unknown>("devices");
-	const devices = normalizeLoadedDevices(raw);
-	return devices;
+	return normalizeLoadedDevices(raw);
 }
 
 export function collapseIfDisconnected(device: RegisteredDevice, shouldCollapse: boolean): RegisteredDevice {
@@ -46,10 +50,9 @@ export function useRegisteredDevices() {
 		() => registeredDevices ?? [],
 		[registeredDevices],
 	);
-	const registeredDevicesRef = useRef<RegisteredDevice[]>(deviceList);
-	useEffect(() => {
-		registeredDevicesRef.current = deviceList;
-	}, [deviceList]);
+	const registeredDevicesRef = useRef<RegisteredDevice[]>([]);
+	const registeredDevicesRevisionRef = useRef(0);
+	const loadedRef = useRef(false);
 
 	const persistRegisteredDevices = useCallback(async (devices: RegisteredDevice[]) => {
 		const storePath = await getStorePath(DEVICES_FILENAME);
@@ -60,14 +63,15 @@ export function useRegisteredDevices() {
 
 	const commitRegisteredDevices = useCallback(
 		(recipe: (current: RegisteredDevice[]) => RegisteredDevice[]) => {
-			setRegisteredDevices((prev) => {
-				if (prev === undefined) {
-					return prev;
-				}
-				const next = recipe(prev);
-				fireAndForget(persistRegisteredDevices(next), "Failed to persist registered devices");
-				return next;
-			});
+			if (!loadedRef.current) {
+				return;
+			}
+			const current = registeredDevicesRef.current;
+			const next = recipe(current);
+			registeredDevicesRef.current = next;
+			registeredDevicesRevisionRef.current += 1;
+			setRegisteredDevices(next);
+			fireAndForget(persistRegisteredDevices(next), "Failed to persist registered devices");
 		},
 		[persistRegisteredDevices],
 	);
@@ -97,23 +101,31 @@ export function useRegisteredDevices() {
 		[registeredDeviceIds]
 	);
 
+	const getRegisteredDevicesSnapshot = useCallback((): RegisteredDevicesSnapshot => ({
+		devices: registeredDevicesRef.current,
+		sourceRevision: registeredDevicesRevisionRef.current,
+	}), []);
+
 	// Load saved devices
 	useEffect(() => {
 		let cancelled = false;
 		const fetchRegisteredDevices = async () => {
 			const devices = await loadDevicesFromFile();
-			if (cancelled) {
+			if (cancelled || loadedRef.current) {
 				return;
 			}
-			setRegisteredDevices((prev) => {
-				// Avoid overwriting user-visible state (e.g. after remove) when a
-				// slower load completes — common with StrictMode double-mount or
-				// store I/O contending with notification-mode persistence.
-				if (prev !== undefined) {
-					return prev;
-				}
-				return devices.map(d => ({ ...d, isDisconnected: true }));
-			});
+			// Avoid overwriting user-visible state after a slower load completes.
+			// This can happen when StrictMode starts the load effect twice.
+			const loadedDevices = devices.map(d => ({
+				...d,
+				isDisconnected: true,
+				connectionStatusKnown: false,
+				connectionObservedAtUnixMs: null,
+			}));
+			loadedRef.current = true;
+			registeredDevicesRef.current = loadedDevices;
+			registeredDevicesRevisionRef.current = 1;
+			setRegisteredDevices(loadedDevices);
 			logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
 		};
 		fireAndForget(fetchRegisteredDevices(), "Failed to load registered devices");
@@ -127,9 +139,12 @@ export function useRegisteredDevices() {
 		isDeviceLoaded,
 		deviceList,
 		registeredDevicesRef,
+		registeredDevicesRevisionRef,
+		loadedRef,
 		registeredDeviceIds,
 		registeredDeviceIdsKey,
 		commitRegisteredDevices,
 		setRegisteredDevicesForPanel,
+		getRegisteredDevicesSnapshot,
 	};
 }
