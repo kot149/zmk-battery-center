@@ -9,13 +9,14 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
+  root: path.resolve(dirname, "src"),
   plugins: [react(), tailwindcss()],
 
   test: {
     environment: "jsdom",
     globals: true,
-    setupFiles: "./src/test/setup.ts",
-    include: ["src/**/__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.tsx"],
+    setupFiles: "./test/setup.ts",
+    include: ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx"],
   },
 
   resolve: {
@@ -25,10 +26,12 @@ export default defineConfig(async () => ({
   },
 
   build: {
+    outDir: path.resolve(dirname, "dist"),
+    emptyOutDir: true,
     rollupOptions: {
       input: {
-        main: path.resolve(dirname, "index.html"),
-        about: path.resolve(dirname, "about.html"),
+        main: path.resolve(dirname, "src/index.html"),
+        about: path.resolve(dirname, "src/about.html"),
       },
     },
   },
