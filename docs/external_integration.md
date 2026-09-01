@@ -80,24 +80,14 @@ The producer writes complete JSON to a same-directory temporary file, flushes an
 
 `battery-state-v1.json` is a generic snapshot API intended for use by external tools and adapters.
 
-### Available integration
+### Available integrations
 
-#### RunCat Neo
-
-[zmk-battery-center-runcat-adapter](https://github.com/kot149/zmk-battery-center-runcat-adapter) is a separate adapter that converts `battery-state-v1.json` into the Custom Metrics JSON format supported by RunCat Neo.
-
-See the adapter repository for installation and configuration instructions.
+- **RunCat Neo:** [zmk-battery-center-runcat-adapter](https://github.com/kot149/zmk-battery-center-runcat-adapter) converts `battery-state-v1.json` into the Custom Metrics JSON format supported by RunCat Neo.
+- **TrafficMonitor:** [zmk-battery-center-trafficmonitor-plugin](https://github.com/kot149/zmk-battery-center-trafficmonitor-plugin) reads `battery-state-v1.json`, caches values outside `GetItemValueText()`, and displays one item for each device.
 
 ### Building other integrations
 
-Integrations for other applications are not provided by zmk-battery-center. They can be implemented by reading and monitoring `battery-state-v1.json` directly.
-
-For example:
-
-* **TrafficMonitor:** A plugin could read the snapshot from `DataRequired()` and cache the values for `GetItemValueText()`. File I/O and BLE operations should not be performed from `GetItemValueText()`.
-* **GNOME Shell:** An extension could monitor `battery-state-v1.json` with `GFileMonitor` and reload the complete document when the file is replaced.
-
-These are implementation examples only; zmk-battery-center does not include TrafficMonitor or GNOME Shell integrations.
+Integrations for other applications, such as GNOME Shell, can be implemented by reading and monitoring `battery-state-v1.json` directly.
 
 ## Compatibility
 
