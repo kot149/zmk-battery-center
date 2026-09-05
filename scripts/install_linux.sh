@@ -85,19 +85,67 @@ release_url() {
 verify_checksum() {
   local file_path="$1"
   local filename="$2"
-  local checksums_path="${TMP_DIR}/SHA256SUMS.txt"
-  if [[ ! -f "${checksums_path}" ]]; then
-    if ! curl -fsSL -o "${checksums_path}" "$(release_url "SHA256SUMS.txt")"; then
-      echo "Warning: SHA256SUMS.txt not available for this release; skipping integrity check." >&2
-      return 0
-    fi
+  local asset_digest
+  asset_digest="$(
+    printf '%s\n' "${RELEASE_JSON}" |
+      awk -v filename="${filename}" '
+        { json = json "\n" $0 }
+        END {
+          for (i = 1; i <= length(json); i++) {
+            character = substr(json, i, 1)
+            if (in_string) {
+              if (escaped) {
+                token = token character
+                escaped = 0
+              } else if (character == "\\") {
+                escaped = 1
+              } else if (character == "\"") {
+                in_string = 0
+                next_character = i + 1
+                while (substr(json, next_character, 1) ~ /[[:space:]]/) next_character++
+                if (substr(json, next_character, 1) == ":") {
+                  key[depth] = token
+                } else if (key[depth] != "") {
+                  if (key[depth] == "name") name[depth] = token
+                  if (key[depth] == "digest") digest[depth] = token
+                  delete key[depth]
+                }
+              } else {
+                token = token character
+              }
+              continue
+            }
+            if (character == "\"") {
+              in_string = 1
+              token = ""
+            } else if (character == "{") {
+              depth++
+              delete key[depth]
+              delete name[depth]
+              delete digest[depth]
+            } else if (character == "}") {
+              if (name[depth] == filename) {
+                print digest[depth]
+                exit
+              }
+              delete key[depth]
+              delete name[depth]
+              delete digest[depth]
+              depth--
+            } else if (character == ",") {
+              delete key[depth]
+            }
+          }
+        }
+      '
+  )"
+  if ! printf '%s\n' "${asset_digest}" | grep -Eq '^sha256:[0-9a-fA-F]{64}$'; then
+    echo "Error: no valid SHA-256 digest available for ${filename}." >&2
+    return 1
   fi
+
   local expected_hash
-  expected_hash="$(grep " ${filename}\$" "${checksums_path}" | awk '{print $1}')"
-  if [[ -z "${expected_hash}" ]]; then
-    echo "Error: ${filename} not found in SHA256SUMS.txt." >&2
-    exit 1
-  fi
+  expected_hash="$(printf '%s\n' "${asset_digest#sha256:}" | tr '[:upper:]' '[:lower:]')"
   local actual_hash
   actual_hash="$(sha256sum "${file_path}" | awk '{print $1}')"
   if [[ "${expected_hash}" != "${actual_hash}" ]]; then

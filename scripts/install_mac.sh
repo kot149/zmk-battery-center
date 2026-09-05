@@ -9,9 +9,10 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 echo "Starting zmk-battery-center installation..."
 
-# Get the latest version tag from GitHub API
+# Get the latest release from GitHub API
 echo "Fetching the latest version..."
-LATEST_VERSION=$(curl -sL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+RELEASE_JSON=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")
+LATEST_VERSION=$(printf '%s\n' "${RELEASE_JSON}" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
 
 if [ -z "$LATEST_VERSION" ]; then
     echo "Error: Could not fetch the latest version."
@@ -51,28 +52,85 @@ for candidate in \
 done
 
 if [ -z "${ARCHIVE_FILENAME}" ]; then
-    echo "Error: Could not download the app archive for v${LATEST_VERSION} (${ARCH_SUFFIX})." >&2nt
+    echo "Error: Could not download the app archive for v${LATEST_VERSION} (${ARCH_SUFFIX})." >&2
     exit 1
 fi
 
-# Verify archive integrity when the release publishes checksums
-CHECKSUMS_URL="https://github.com/${REPO}/releases/download/v${LATEST_VERSION}/SHA256SUMS.txt"
-CHECKSUMS_PATH="${TMP_DIR}/SHA256SUMS.txt"
-if curl -fsSL -o "${CHECKSUMS_PATH}" "${CHECKSUMS_URL}"; then
-    EXPECTED_HASH=$(grep " ${ARCHIVE_FILENAME}\$" "${CHECKSUMS_PATH}" | awk '{print $1}')
-    if [ -z "${EXPECTED_HASH}" ]; then
-        echo "Error: ${ARCHIVE_FILENAME} not found in SHA256SUMS.txt." >&2
-        exit 1
+# Verify archive integrity using the release asset digest
+verify_checksum() {
+    local file_path="$1"
+    local filename="$2"
+    local asset_digest
+    asset_digest=$(
+        printf '%s\n' "${RELEASE_JSON}" |
+            awk -v filename="${filename}" '
+                { json = json "\n" $0 }
+                END {
+                    for (i = 1; i <= length(json); i++) {
+                        character = substr(json, i, 1)
+                        if (in_string) {
+                            if (escaped) {
+                                token = token character
+                                escaped = 0
+                            } else if (character == "\\") {
+                                escaped = 1
+                            } else if (character == "\"") {
+                                in_string = 0
+                                next_character = i + 1
+                                while (substr(json, next_character, 1) ~ /[[:space:]]/) next_character++
+                                if (substr(json, next_character, 1) == ":") {
+                                    key[depth] = token
+                                } else if (key[depth] != "") {
+                                    if (key[depth] == "name") name[depth] = token
+                                    if (key[depth] == "digest") digest[depth] = token
+                                    delete key[depth]
+                                }
+                            } else {
+                                token = token character
+                            }
+                            continue
+                        }
+                        if (character == "\"") {
+                            in_string = 1
+                            token = ""
+                        } else if (character == "{") {
+                            depth++
+                            delete key[depth]
+                            delete name[depth]
+                            delete digest[depth]
+                        } else if (character == "}") {
+                            if (name[depth] == filename) {
+                                print digest[depth]
+                                exit
+                            }
+                            delete key[depth]
+                            delete name[depth]
+                            delete digest[depth]
+                            depth--
+                        } else if (character == ",") {
+                            delete key[depth]
+                        }
+                    }
+                }
+            '
+    )
+    if ! printf '%s\n' "${asset_digest}" | grep -Eq '^sha256:[0-9a-fA-F]{64}$'; then
+        echo "Error: no valid SHA-256 digest available for ${filename}." >&2
+        return 1
     fi
-    ACTUAL_HASH=$(shasum -a 256 "${ARCHIVE_TMP_PATH}" | awk '{print $1}')
-    if [ "${EXPECTED_HASH}" != "${ACTUAL_HASH}" ]; then
-        echo "Error: checksum mismatch for ${ARCHIVE_FILENAME}. Aborting." >&2
+
+    local expected_hash
+    expected_hash=$(printf '%s\n' "${asset_digest#sha256:}" | tr '[:upper:]' '[:lower:]')
+    local actual_hash
+    actual_hash=$(shasum -a 256 "${file_path}" | awk '{print $1}')
+    if [ "${expected_hash}" != "${actual_hash}" ]; then
+        echo "Error: checksum mismatch for ${filename}. Aborting." >&2
         exit 1
     fi
     echo "Checksum verified."
-else
-    echo "Warning: SHA256SUMS.txt not available for this release; skipping integrity check."
-fi
+}
+
+verify_checksum "${ARCHIVE_TMP_PATH}" "${ARCHIVE_FILENAME}"
 
 # Extract the archive and install the application
 echo "Extracting archive..."

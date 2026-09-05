@@ -22,22 +22,19 @@ try {
     Write-Host "Downloading from $url..."
     Invoke-WebRequest -Uri $url -OutFile $outFile
 
-    $sumsAsset = $latestRelease.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' }
-    if ($sumsAsset) {
-        $sumsFile = Join-Path $tmpDir "SHA256SUMS.txt"
-        Invoke-WebRequest -Uri $sumsAsset.browser_download_url -OutFile $sumsFile
-        $expectedLine = Get-Content $sumsFile | Where-Object { $_ -match [regex]::Escape($asset.name) + '$' }
-        if (-not $expectedLine) {
-            throw "$($asset.name) not found in SHA256SUMS.txt."
+    $digest = [string]$asset.digest
+    if ($digest) {
+        if ($digest -notmatch '^sha256:[0-9a-fA-F]{64}$') {
+            throw "Unsupported digest for $($asset.name)."
         }
-        $expectedHash = ($expectedLine -split '\s+')[0].ToLowerInvariant()
+        $expectedHash = $digest.Substring(7).ToLowerInvariant()
         $actualHash = (Get-FileHash -Algorithm SHA256 -Path $outFile).Hash.ToLowerInvariant()
         if ($expectedHash -ne $actualHash) {
             throw "Checksum mismatch for $($asset.name). Aborting."
         }
         Write-Host "Checksum verified."
     } else {
-        Write-Warning "SHA256SUMS.txt not available for this release; skipping integrity check."
+        throw "No SHA-256 digest available for $($asset.name)."
     }
 
     # Execute the silent installation as admin
