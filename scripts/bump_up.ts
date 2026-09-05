@@ -6,8 +6,6 @@ import { execSync } from "child_process";
 const REQUIRED_FILES = ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"];
 
 const CARGO_LOCK_PATH = "src-tauri/Cargo.lock";
-const CARGO_LOCK_TIMEOUT_MS = 10_000;
-const CARGO_LOCK_POLL_INTERVAL_MS = 100;
 
 async function checkFilesExist(): Promise<boolean> {
   let allFilesExist = true;
@@ -58,28 +56,18 @@ async function updateCargoToml(versionNumber: string): Promise<void> {
 }
 
 async function updateCargoLock(versionNumber: string): Promise<void> {
-  execSync("cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --no-deps", {
+  execSync("cargo update --manifest-path src-tauri/Cargo.toml --package zmk-battery-center", {
     stdio: ["ignore", "ignore", "inherit"],
   });
 
+  const content = await fs.readFile(CARGO_LOCK_PATH, "utf-8");
   const expectedVersion = `name = "zmk-battery-center"\nversion = "${versionNumber}"`;
-  const deadline = Date.now() + CARGO_LOCK_TIMEOUT_MS;
 
-  while (Date.now() <= deadline) {
-    try {
-      const content = await fs.readFile(CARGO_LOCK_PATH, "utf-8");
-      if (content.replace(/\r\n/g, "\n").includes(expectedVersion)) {
-        console.log(`Updated ${CARGO_LOCK_PATH} version to ${versionNumber}`);
-        return;
-      }
-    } catch {
-      // The lock file may not be available until Cargo finishes writing it.
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, CARGO_LOCK_POLL_INTERVAL_MS));
+  if (!content.replace(/\r\n/g, "\n").includes(expectedVersion)) {
+    throw new Error(`${CARGO_LOCK_PATH} does not contain version ${versionNumber}.`);
   }
 
-  throw new Error(`Timed out waiting for ${CARGO_LOCK_PATH} to contain version ${versionNumber}.`);
+  console.log(`Updated ${CARGO_LOCK_PATH} version to ${versionNumber}`);
 }
 
 function createGitCommit(version: string): void {
