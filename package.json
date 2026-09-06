@@ -1,6 +1,6 @@
 {
   "name": "zmk-battery-center",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "homepage": "https://github.com/kot149/zmk-battery-center",
   "bugs": "https://github.com/kot149/zmk-battery-center/issues",
