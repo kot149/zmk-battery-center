@@ -63,12 +63,13 @@ export function useTrayEvents({
 
     const showWindowAtConfiguredPosition = async (manualOverride?: boolean) => {
       const manual = manualOverride ?? configRef.current.manualWindowPositioning;
-      showWindow();
+      await showWindow();
       if (!manual) {
-        moveWindowToTrayCenter();
+        await moveWindowToTrayCenter();
       } else {
         await moveWindowTo(configRef.current.windowPosition.x, configRef.current.windowPosition.y);
       }
+      await setWindowFocus();
     };
 
     const openAboutWindow = async () => {
@@ -119,7 +120,6 @@ export function useTrayEvents({
             hideWindow();
           } else {
             await showWindowAtConfiguredPosition();
-            setWindowFocus();
           }
         }),
       );

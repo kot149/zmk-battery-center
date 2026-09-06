@@ -65,7 +65,7 @@ export function isWindowVisible() {
 }
 
 export function showWindow() {
-  appWindow.show();
+  return appWindow.show();
 }
 
 export function hideWindow() {
@@ -73,7 +73,7 @@ export function hideWindow() {
 }
 
 export function setWindowFocus() {
-  appWindow.setFocus();
+  return appWindow.setFocus();
 }
 
 export async function moveWindowToTrayCenter() {
