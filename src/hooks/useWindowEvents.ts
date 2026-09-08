@@ -2,7 +2,12 @@ import { useEffect, useRef } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { logger } from "@/utils/log";
 import { Config } from "@/utils/config";
-import { hideWindow, moveWindowTo, getIsWindowMovingByPlugin } from "@/utils/window";
+import {
+  hideWindow,
+  moveWindowTo,
+  getIsWindowMovingByPlugin,
+  setWindowAlwaysOnTop,
+} from "@/utils/window";
 import { platform } from "@tauri-apps/plugin-os";
 import { currentMonitor } from "@tauri-apps/api/window";
 
@@ -24,6 +29,12 @@ export function useWindowEvents({
   const hasRestoredPositionRef = useRef(false);
   const onWindowPositionChangeRef = useRef(onWindowPositionChange);
   onWindowPositionChangeRef.current = onWindowPositionChange;
+  // The focus listener is registered once, so these are read through refs rather
+  // than captured at mount.
+  const pinWindowRef = useRef(config.pinWindow);
+  pinWindowRef.current = config.pinWindow;
+  const isConfigLoadedRef = useRef(isConfigLoaded);
+  isConfigLoadedRef.current = isConfigLoaded;
 
   // Restore window position on initial config load
   useEffect(() => {
@@ -39,6 +50,16 @@ export function useWindowEvents({
     config.windowPosition.x,
     config.windowPosition.y,
   ]);
+
+  // A pinned window stays open, but also needs to stay above the focused window.
+  useEffect(() => {
+    if (!isConfigLoaded) {
+      return;
+    }
+    setWindowAlwaysOnTop(config.pinWindow).catch((err) => {
+      logger.error(`Failed to set always-on-top: ${err}`);
+    });
+  }, [isConfigLoaded, config.pinWindow]);
 
   // Handle window events
   useEffect(() => {
@@ -117,6 +138,14 @@ export function useWindowEvents({
             }
 
             focusTimeoutRef.current = setTimeout(() => {
+              if (!isConfigLoadedRef.current) {
+                logger.debug("Config not loaded yet, not hiding");
+                return;
+              }
+              if (pinWindowRef.current) {
+                logger.debug("Window pinned, staying open");
+                return;
+              }
               if (!isWindowFocusedRef.current && !isWindowMovingRef.current) {
                 hideWindow();
                 logger.debug("Hiding window");

@@ -13,8 +13,8 @@ import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
 import TopRightButtons from "./components/TopRightButtons";
-import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
-import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
+import { hideWindow, moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
+import { PlusIcon, ArrowPathIcon, Cog8ToothIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import Modal from "./components/Modal";
 import { useConfigContext } from "@/context/ConfigContext";
 import Settings from "@/components/Settings";
@@ -542,6 +542,15 @@ function App() {
                   onClick: handleOpenSettings,
                   ariaLabel: "Settings",
                 },
+                ...(config.pinWindow
+                  ? [
+                      {
+                        icon: <XMarkIcon className="size-5" />,
+                        onClick: () => hideWindow(),
+                        ariaLabel: "Hide window",
+                      },
+                    ]
+                  : []),
               ]}
             />
           </div>

@@ -39,6 +39,7 @@ export type Config = {
   ignoreZeroPercent: boolean;
   highBatteryThreshold: number;
   manualWindowPositioning: boolean;
+  pinWindow: boolean;
   windowPosition: {
     x: number;
     y: number;
@@ -65,6 +66,7 @@ export const defaultConfig: Config = {
   ignoreZeroPercent: true,
   highBatteryThreshold: 80,
   manualWindowPositioning: false,
+  pinWindow: false,
   windowPosition: {
     x: 0,
     y: 0,

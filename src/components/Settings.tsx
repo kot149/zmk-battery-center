@@ -291,6 +291,17 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
             </div>
           </SettingsGroup>
 
+          {/* Pin window */}
+          <SettingsGroup>
+            <div className="flex items-center justify-between gap-3">
+              <span className="shrink-0">Pin window</span>
+              <Switch
+                checked={config.pinWindow}
+                onCheckedChange={(checked) => setConfig((c) => ({ ...c, pinWindow: checked }))}
+              />
+            </div>
+          </SettingsGroup>
+
           {/* Tray icon components (macOS only) */}
           {isMac && (
             <SettingsGroup className="flex w-full flex-col gap-2">
