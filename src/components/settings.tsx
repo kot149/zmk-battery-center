@@ -62,10 +62,11 @@ function BatteryThresholdInput({
   ariaLabel,
 }: BatteryThresholdInputProps) {
   const [draft, setDraft] = React.useState<string>(String(value));
-
-  React.useEffect(() => {
+  const [prevValue, setPrevValue] = React.useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
     setDraft(String(value));
-  }, [value]);
+  }
 
   const commit = () => {
     if (draft.trim() === "") {
