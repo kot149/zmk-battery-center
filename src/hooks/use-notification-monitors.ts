@@ -11,8 +11,8 @@ import {
   markBatteryInfosReadFailed,
   mergeBatteryInfos,
   type RegisteredDevice,
-} from "@/utils/appHelpers";
-import { collapseIfDisconnected, expandIfConnected } from "@/hooks/useRegisteredDevices";
+} from "@/utils/app-helpers";
+import { collapseIfDisconnected, expandIfConnected } from "@/hooks/use-registered-devices";
 
 interface UseNotificationMonitorsOptions {
   isNotificationMonitorMode: boolean;

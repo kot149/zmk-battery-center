@@ -1,5 +1,5 @@
 import type { DateRange } from "@/components/date-range-picker";
-import type { BatteryHistoryRecord } from "@/utils/batteryHistory";
+import type { BatteryHistoryRecord } from "@/utils/battery-history";
 
 // Unified row that Recharts consumes (timestamp + one key per part)
 export type ChartRow = { timestamp: number } & Record<string, number | undefined>;

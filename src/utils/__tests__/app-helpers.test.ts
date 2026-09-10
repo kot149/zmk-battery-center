@@ -6,7 +6,7 @@ import {
   normalizeLoadedDevices,
   upsertBatteryInfo,
   getRegisteredDeviceDisplayName,
-} from "../appHelpers";
+} from "../app-helpers";
 
 describe("App helpers", () => {
   describe("getRegisteredDeviceDisplayName", () => {

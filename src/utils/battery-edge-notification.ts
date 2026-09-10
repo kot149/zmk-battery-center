@@ -2,8 +2,8 @@ import { sendNotification } from "@/utils/notification";
 import { fireAndForget } from "@/utils/common";
 import { logger } from "@/utils/log";
 import { NotificationType } from "@/utils/config";
-import { mapIsLowBattery, mapIsHighBattery } from "@/utils/appHelpers";
-import { defaultBatteryPartDisplayName, getBatteryPartDisplayName } from "@/utils/batteryLabels";
+import { mapIsLowBattery, mapIsHighBattery } from "@/utils/app-helpers";
+import { defaultBatteryPartDisplayName, getBatteryPartDisplayName } from "@/utils/battery-labels";
 import type { BatteryInfo } from "@/utils/ble";
 
 interface NotifyBatteryEdgeTransitionsParams {

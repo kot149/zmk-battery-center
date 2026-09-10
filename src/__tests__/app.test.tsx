@@ -75,11 +75,11 @@ vi.mock("@/utils/ble", () => ({
   stopAllBatteryMonitors: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/hooks/useWindowEvents", () => ({
+vi.mock("@/hooks/use-window-events", () => ({
   useWindowEvents: vi.fn(),
 }));
 
-vi.mock("@/hooks/useTrayEvents", () => ({
+vi.mock("@/hooks/use-tray-events", () => ({
   useTrayEvents: vi.fn(),
 }));
 
@@ -92,7 +92,7 @@ vi.mock("@/utils/notification", () => ({
   sendNotification: vi.fn(async () => true),
 }));
 
-vi.mock("@/utils/batteryHistory", () => ({
+vi.mock("@/utils/battery-history", () => ({
   appendBatteryHistory: vi.fn(async () => undefined),
   recordBatteryReadings: vi.fn(),
 }));

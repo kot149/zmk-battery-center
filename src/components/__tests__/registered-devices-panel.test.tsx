@@ -2,7 +2,7 @@ import { useState } from "react";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 import RegisteredDevicesPanel from "../registered-devices-panel";
 
 vi.mock("../battery-history-chart", () => ({

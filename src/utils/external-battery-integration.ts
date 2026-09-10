@@ -1,8 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { BatteryInfo } from "@/utils/ble";
-import { getRegisteredDeviceDisplayName, isValidBatteryLevel } from "@/utils/appHelpers";
-import type { RegisteredDevice } from "@/utils/appHelpers";
-import { getBatteryPartDisplayName } from "@/utils/batteryLabels";
+import { getRegisteredDeviceDisplayName, isValidBatteryLevel } from "@/utils/app-helpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
+import { getBatteryPartDisplayName } from "@/utils/battery-labels";
 
 export type ExternalConnectionStatus = "unknown" | "connected" | "disconnected";
 export type ExternalBatteryValueStatus = "current" | "stale" | "unavailable";

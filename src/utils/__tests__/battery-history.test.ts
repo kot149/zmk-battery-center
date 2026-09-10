@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { appendBatteryHistory, readBatteryHistory } from "../batteryHistory";
+import { appendBatteryHistory, readBatteryHistory } from "../battery-history";
 
 const mockedInvoke = vi.mocked(invoke);
 

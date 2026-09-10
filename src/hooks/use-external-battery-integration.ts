@@ -5,8 +5,8 @@ import {
 	publishExternalBatterySnapshot,
 	startExternalBatterySourceSession,
 	type RegisteredDevicesSnapshot,
-} from "@/utils/externalBatteryIntegration";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+} from "@/utils/external-battery-integration";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 
 const PUBLISH_DEBOUNCE_MS = 75;
 

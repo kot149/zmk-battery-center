@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useExternalBatteryIntegration } from "@/hooks/useExternalBatteryIntegration";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import { useExternalBatteryIntegration } from "@/hooks/use-external-battery-integration";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 
 const mocks = vi.hoisted(() => ({
 	buildExternalBatteryDevices: vi.fn((devices: RegisteredDevice[]) => devices.map(device => ({ id: device.id }))),
@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 	publishExternalBatterySnapshot: vi.fn(async () => undefined),
 }));
 
-vi.mock("@/utils/externalBatteryIntegration", () => ({
+vi.mock("@/utils/external-battery-integration", () => ({
 	buildExternalBatteryDevices: mocks.buildExternalBatteryDevices,
 	startExternalBatterySourceSession: mocks.startExternalBatterySourceSession,
 	publishExternalBatterySnapshot: mocks.publishExternalBatterySnapshot,

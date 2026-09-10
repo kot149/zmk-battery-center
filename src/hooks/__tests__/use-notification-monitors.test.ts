@@ -1,13 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useNotificationMonitors } from "../useNotificationMonitors";
+import { useNotificationMonitors } from "../use-notification-monitors";
 import {
   startBatteryNotificationMonitor,
   stopBatteryNotificationMonitor,
   stopAllBatteryMonitors,
 } from "@/utils/ble";
 import type { BatteryInfo } from "@/utils/ble";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 
 vi.mock("@/utils/ble", () => ({
   startBatteryNotificationMonitor: vi.fn(),

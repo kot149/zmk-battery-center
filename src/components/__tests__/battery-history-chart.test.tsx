@@ -2,15 +2,15 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 import BatteryHistoryChart from "../battery-history-chart";
 import {
   findRowIndexAtOrBefore,
   getXAxisConfig,
   MIN_X_AXIS_TICKS,
   MAX_X_AXIS_TICKS,
-} from "@/utils/batteryChartMath";
-import type { ChartRow } from "@/utils/batteryChartMath";
+} from "@/utils/battery-chart-math";
+import type { ChartRow } from "@/utils/battery-chart-math";
 import { ConfigProvider } from "@/providers/config-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 
@@ -57,7 +57,7 @@ vi.mock("recharts", () => ({
   ReferenceLine: () => null,
 }));
 
-vi.mock("@/utils/batteryHistory", () => ({
+vi.mock("@/utils/battery-history", () => ({
   readBatteryHistory: (...args: unknown[]) => mockReadBatteryHistory(...args),
 }));
 

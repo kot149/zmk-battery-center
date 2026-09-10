@@ -3,7 +3,7 @@ import {
   batteryPartLabelStorageKey,
   defaultBatteryPartDisplayName,
   getBatteryPartDisplayName,
-} from "../batteryLabels";
+} from "../battery-labels";
 
 describe("batteryLabels", () => {
   it("uses Central as the storage key for null user_description", () => {

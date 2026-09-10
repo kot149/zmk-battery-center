@@ -3,8 +3,8 @@ import {
 	buildExternalBatteryDevices,
 	getExternalBatteryPartId,
 	toStableExternalKey,
-} from "@/utils/externalBatteryIntegration";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+} from "@/utils/external-battery-integration";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 
 function device(overrides: Partial<RegisteredDevice> = {}): RegisteredDevice {
 	return {

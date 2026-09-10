@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, type RefObject, type MutableRefObject } from "react";
 import BatteryIcon from "@/components/battery-icon";
 import BatteryHistoryChart from "@/components/battery-history-chart";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 import { Button } from "@/components/button";
 import {
   ArrowUturnLeftIcon,
@@ -15,8 +15,8 @@ import {
   batteryPartLabelStorageKey,
   defaultBatteryPartDisplayName,
   getBatteryPartDisplayName,
-} from "@/utils/batteryLabels";
-import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
+} from "@/utils/battery-labels";
+import { getRegisteredDeviceDisplayName } from "@/utils/app-helpers";
 import { cn } from "@/utils/cn";
 
 const WifiOffIcon: React.FC<{ className?: string }> = ({ className }) => (

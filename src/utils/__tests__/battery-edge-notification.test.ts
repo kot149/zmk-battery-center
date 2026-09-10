@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationType } from "../config";
-import { notifyBatteryEdgeTransitions } from "../batteryEdgeNotification";
+import { notifyBatteryEdgeTransitions } from "../battery-edge-notification";
 
 const { mockSendNotification } = vi.hoisted(() => ({
   mockSendNotification: vi.fn(async (_message: string) => true),

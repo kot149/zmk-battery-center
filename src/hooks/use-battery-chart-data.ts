@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 import { logger } from "@/utils/log";
-import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
-import { smooth, type ChartRow } from "@/utils/batteryChartMath";
+import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/battery-history";
+import { smooth, type ChartRow } from "@/utils/battery-chart-math";
 import type { DateRange } from "@/components/date-range-picker";
 
 type GroupedHistory = Map<string, BatteryHistoryRecord[]>;

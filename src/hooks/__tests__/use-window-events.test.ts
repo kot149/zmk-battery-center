@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useWindowEvents } from "../useWindowEvents";
+import { useWindowEvents } from "../use-window-events";
 import { defaultConfig, type Config } from "@/utils/config";
 import { hideWindow, setWindowAlwaysOnTop } from "@/utils/window";
 

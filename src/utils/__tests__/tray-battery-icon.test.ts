@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { syncTrayBatteryIcon, trayBatteryPayloadFromPrimaryDevice } from "../trayBatteryIcon";
+import { syncTrayBatteryIcon, trayBatteryPayloadFromPrimaryDevice } from "../tray-battery-icon";
 import { defaultConfig, TrayIconComponent } from "@/utils/config";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 import type { BatteryInfo } from "@/utils/ble";
 
 const mockedInvoke = vi.mocked(invoke);

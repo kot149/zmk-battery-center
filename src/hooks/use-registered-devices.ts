@@ -10,7 +10,7 @@ import {
 import { logger } from "@/utils/log";
 import { load, getStorePath } from "@/utils/storage";
 import { fireAndForget } from "@/utils/common";
-import { normalizeLoadedDevices, type RegisteredDevice } from "@/utils/appHelpers";
+import { normalizeLoadedDevices, type RegisteredDevice } from "@/utils/app-helpers";
 
 const DEVICES_FILENAME = "devices.json";
 

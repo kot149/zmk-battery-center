@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useRegisteredDevices } from "@/hooks/useRegisteredDevices";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import { useRegisteredDevices } from "@/hooks/use-registered-devices";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 
 const store = {
 	get: vi.fn(),

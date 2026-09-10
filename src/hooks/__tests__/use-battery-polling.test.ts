@@ -1,22 +1,22 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useBatteryPolling } from "@/hooks/useBatteryPolling";
+import { useBatteryPolling } from "@/hooks/use-battery-polling";
 import { getBatteryInfo, type BatteryInfo } from "@/utils/ble";
-import { recordBatteryReadings } from "@/utils/batteryHistory";
-import { notifyBatteryEdgeTransitions } from "@/utils/batteryEdgeNotification";
+import { recordBatteryReadings } from "@/utils/battery-history";
+import { notifyBatteryEdgeTransitions } from "@/utils/battery-edge-notification";
 import { sendNotification } from "@/utils/notification";
 import { NotificationType } from "@/utils/config";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 
 vi.mock("@/utils/ble", () => ({
   getBatteryInfo: vi.fn(),
 }));
 
-vi.mock("@/utils/batteryHistory", () => ({
+vi.mock("@/utils/battery-history", () => ({
   recordBatteryReadings: vi.fn(),
 }));
 
-vi.mock("@/utils/batteryEdgeNotification", () => ({
+vi.mock("@/utils/battery-edge-notification", () => ({
   notifyBatteryEdgeTransitions: vi.fn(),
 }));
 

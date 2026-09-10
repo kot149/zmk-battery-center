@@ -9,10 +9,10 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
-import type { RegisteredDevice } from "@/utils/appHelpers";
+import type { RegisteredDevice } from "@/utils/app-helpers";
 import DateRangePicker, { type DateRange } from "@/components/date-range-picker";
 import { useConfigContext } from "@/providers/config-provider";
-import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
+import { getRegisteredDeviceDisplayName } from "@/utils/app-helpers";
 
 // ── Types ──────────────────────────────────────────────
 import {
@@ -21,8 +21,8 @@ import {
   findRowIndexAtOrBefore,
   getXAxisConfig,
   MS_IN_DAY,
-} from "@/utils/batteryChartMath";
-import { useBatteryChartData } from "@/hooks/useBatteryChartData";
+} from "@/utils/battery-chart-math";
+import { useBatteryChartData } from "@/hooks/use-battery-chart-data";
 import ChartSettingsPanel from "@/components/chart-settings-panel";
 
 interface BatteryHistoryChartProps {

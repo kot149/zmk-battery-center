@@ -2,18 +2,18 @@ import { useEffect, useCallback, useRef } from "react";
 import { getBatteryInfo } from "@/utils/ble";
 import { logger } from "@/utils/log";
 import { fireAndForget, sleep } from "@/utils/common";
-import { recordBatteryReadings } from "@/utils/batteryHistory";
+import { recordBatteryReadings } from "@/utils/battery-history";
 import { sendNotification } from "@/utils/notification";
 import { NotificationType } from "@/utils/config";
-import { notifyBatteryEdgeTransitions } from "@/utils/batteryEdgeNotification";
+import { notifyBatteryEdgeTransitions } from "@/utils/battery-edge-notification";
 import {
   annotateBatteryInfosFromRead,
   getRegisteredDeviceDisplayName,
   markBatteryInfosReadFailed,
   mergeBatteryInfos,
   type RegisteredDevice,
-} from "@/utils/appHelpers";
-import { collapseIfDisconnected, expandIfConnected } from "@/hooks/useRegisteredDevices";
+} from "@/utils/app-helpers";
+import { collapseIfDisconnected, expandIfConnected } from "@/hooks/use-registered-devices";
 
 interface UseBatteryPollingOptions {
   isPollingMode: boolean;

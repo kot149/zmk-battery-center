@@ -20,29 +20,29 @@ import { useConfigContext } from "@/providers/config-provider";
 import Settings from "@/components/settings";
 import { sendNotification } from "./utils/notification";
 import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
-import { notifyBatteryEdgeTransitions } from "./utils/batteryEdgeNotification";
+import { notifyBatteryEdgeTransitions } from "./utils/battery-edge-notification";
 import { fireAndForget, withTimeout } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
-import { useWindowEvents } from "@/hooks/useWindowEvents";
-import { useTrayEvents } from "@/hooks/useTrayEvents";
+import { useWindowEvents } from "@/hooks/use-window-events";
+import { useTrayEvents } from "@/hooks/use-tray-events";
 import { emit, listen } from "@tauri-apps/api/event";
-import { recordBatteryReadings } from "@/utils/batteryHistory";
+import { recordBatteryReadings } from "@/utils/battery-history";
 import {
   annotateBatteryInfosFromRead,
   markBatteryInfosReadFailed,
   upsertBatteryInfo,
   getRegisteredDeviceDisplayName,
   type RegisteredDevice,
-} from "@/utils/appHelpers";
-import { syncTrayBatteryIcon } from "@/utils/trayBatteryIcon";
+} from "@/utils/app-helpers";
+import { syncTrayBatteryIcon } from "@/utils/tray-battery-icon";
 import {
   useRegisteredDevices,
   collapseIfDisconnected,
   expandIfConnected,
-} from "@/hooks/useRegisteredDevices";
-import { useNotificationMonitors } from "@/hooks/useNotificationMonitors";
-import { useBatteryPolling } from "@/hooks/useBatteryPolling";
-import { useExternalBatteryIntegration } from "@/hooks/useExternalBatteryIntegration";
+} from "@/hooks/use-registered-devices";
+import { useNotificationMonitors } from "@/hooks/use-notification-monitors";
+import { useBatteryPolling } from "@/hooks/use-battery-polling";
+import { useExternalBatteryIntegration } from "@/hooks/use-external-battery-integration";
 
 export type { RegisteredDevice };
 

@@ -1,5 +1,5 @@
 import { useState, useMemo, Suspense, useEffect } from "react";
-import { useLicenses, mergeLicenses, License } from "./hooks/useLicenses";
+import { useLicenses, mergeLicenses, License } from "./hooks/use-licenses";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import "./app.css";
