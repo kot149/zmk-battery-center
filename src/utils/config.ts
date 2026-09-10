@@ -1,5 +1,5 @@
 import { load, type Store, getStorePath } from "@/utils/storage";
-import { Theme } from "@/context/theme-provider";
+import { Theme } from "@/providers/theme-provider";
 import {
   enable as enableAutostart,
   isEnabled as isAutostartEnabled,

@@ -16,7 +16,7 @@ import {
   setConfig as storeSetConfig,
   type Config,
 } from "../utils/config";
-import { useTheme, type Theme } from "@/context/theme-provider";
+import { useTheme, type Theme } from "@/providers/theme-provider";
 import { logger } from "@/utils/log";
 import { listen, emit } from "@tauri-apps/api/event";
 

@@ -11,8 +11,8 @@ import {
   MAX_X_AXIS_TICKS,
 } from "@/utils/batteryChartMath";
 import type { ChartRow } from "@/utils/batteryChartMath";
-import { ConfigProvider } from "@/context/ConfigContext";
-import { ThemeProvider } from "@/context/theme-provider";
+import { ConfigProvider } from "@/providers/config-provider";
+import { ThemeProvider } from "@/providers/theme-provider";
 
 const mockReadBatteryHistory = vi.fn();
 const mockListen = vi.fn();

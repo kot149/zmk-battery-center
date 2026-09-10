@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { ConfigProvider, useConfigContext } from "../ConfigContext";
+import { ConfigProvider, useConfigContext } from "../config-provider";
 import { ThemeProvider } from "../theme-provider";
 import * as configModule from "../../utils/config";
 

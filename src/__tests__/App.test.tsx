@@ -48,7 +48,7 @@ function getStoreSetCalls(): [string, unknown][] {
   return mockStore.set.mock.calls as unknown as [string, unknown][];
 }
 
-vi.mock("@/context/ConfigContext", () => ({
+vi.mock("@/providers/config-provider", () => ({
   useConfigContext: () => {
     const [config, setConfig] = useState(mockedConfig);
     setMockedConfigInApp = setConfig;

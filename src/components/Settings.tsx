@@ -9,7 +9,7 @@ import {
   clampBatteryThreshold,
   defaultConfig,
 } from "../utils/config";
-import { useTheme, type Theme } from "@/context/theme-provider";
+import { useTheme, type Theme } from "@/providers/theme-provider";
 import {
   Select,
   SelectTrigger,
@@ -19,7 +19,7 @@ import {
 } from "@/components/shadcn/select";
 import { Switch } from "@/components/shadcn/switch";
 import { XMarkIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
-import { useConfigContext } from "@/context/ConfigContext";
+import { useConfigContext } from "@/providers/config-provider";
 import TopRightButtons from "./TopRightButtons";
 import { platform } from "@tauri-apps/plugin-os";
 

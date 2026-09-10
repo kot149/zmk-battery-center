@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import type { RegisteredDevice } from "@/utils/appHelpers";
 import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
-import { useConfigContext } from "@/context/ConfigContext";
+import { useConfigContext } from "@/providers/config-provider";
 import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 
 // ── Types ──────────────────────────────────────────────
