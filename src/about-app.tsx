@@ -81,6 +81,9 @@ function LicenseItem({ license }: { license: License }) {
   };
 
   const handleHeaderKeyDown = (e: KeyboardEvent) => {
+    // Let interactive descendants (e.g. the repository link) handle keys
+    // natively instead of toggling the license body.
+    if ((e.target as Element | null)?.closest?.("a, button")) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       toggleExpanded();
