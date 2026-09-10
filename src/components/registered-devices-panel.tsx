@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect, type RefObject, type MutableRefObject } from "react";
-import BatteryIcon from "@/components/BatteryIcon";
-import BatteryHistoryChart from "@/components/BatteryHistoryChart";
+import BatteryIcon from "@/components/battery-icon";
+import BatteryHistoryChart from "@/components/battery-history-chart";
 import type { RegisteredDevice } from "@/utils/appHelpers";
-import { Button } from "@/components/Button";
+import { Button } from "@/components/button";
 import {
   ArrowUturnLeftIcon,
   ChevronDownIcon,

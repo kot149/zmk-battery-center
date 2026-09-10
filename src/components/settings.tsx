@@ -1,5 +1,5 @@
 import React from "react";
-import Button from "./Button";
+import Button from "./button";
 import {
   FETCH_INTERVAL_AUTO,
   NotificationType,
@@ -20,7 +20,7 @@ import {
 import { Switch } from "@/components/shadcn/switch";
 import { XMarkIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 import { useConfigContext } from "@/providers/config-provider";
-import TopRightButtons from "./TopRightButtons";
+import TopRightButtons from "./top-right-buttons";
 import { platform } from "@tauri-apps/plugin-os";
 
 import { cn } from "@/utils/cn";

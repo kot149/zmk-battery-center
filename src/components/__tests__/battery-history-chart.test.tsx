@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { RegisteredDevice } from "@/utils/appHelpers";
-import BatteryHistoryChart from "../BatteryHistoryChart";
+import BatteryHistoryChart from "../battery-history-chart";
 import {
   findRowIndexAtOrBefore,
   getXAxisConfig,

@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/shadcn/select";
-import TopRightButtons from "@/components/TopRightButtons";
+import TopRightButtons from "@/components/top-right-buttons";
 
 type RangePreset = {
   label: string;

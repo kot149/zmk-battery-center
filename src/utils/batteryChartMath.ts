@@ -1,4 +1,4 @@
-import type { DateRange } from "@/components/DateRangePicker";
+import type { DateRange } from "@/components/date-range-picker";
 import type { BatteryHistoryRecord } from "@/utils/batteryHistory";
 
 // Unified row that Recharts consumes (timestamp + one key per part)

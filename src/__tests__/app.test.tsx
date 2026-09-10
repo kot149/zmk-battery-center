@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode, useState, type Dispatch, type SetStateAction } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import App from "@/App";
+import App from "@/app";
 import { getBatteryInfo, startBatteryNotificationMonitor } from "@/utils/ble";
 import { defaultConfig, FETCH_INTERVAL_AUTO, NotificationType } from "@/utils/config";
 import { sendNotification } from "@/utils/notification";

@@ -2,7 +2,7 @@ import { useState, useMemo, Suspense, useEffect } from "react";
 import { useLicenses, mergeLicenses, License } from "./hooks/useLicenses";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
-import "./App.css";
+import "./app.css";
 
 // remove border radius from root element
 {

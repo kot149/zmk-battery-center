@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import DateRangePicker from "../DateRangePicker";
+import DateRangePicker from "../date-range-picker";
 
 describe("DateRangePicker", () => {
   it("calls onCancel when backdrop is clicked", async () => {

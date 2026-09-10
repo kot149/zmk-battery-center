@@ -1,4 +1,4 @@
-import "./App.css";
+import "./app.css";
 import {
   listBatteryDevices,
   getBatteryInfo,
@@ -9,15 +9,15 @@ import {
   BatteryMonitorStatusEvent,
 } from "./utils/ble";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import Button from "./components/Button";
-import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
+import Button from "./components/button";
+import RegisteredDevicesPanel from "./components/registered-devices-panel";
 import { logger } from "./utils/log";
-import TopRightButtons from "./components/TopRightButtons";
+import TopRightButtons from "./components/top-right-buttons";
 import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
 import { PlusIcon, ArrowPathIcon, Cog8ToothIcon, MapPinIcon } from "@heroicons/react/24/outline";
-import Modal from "./components/Modal";
+import Modal from "./components/modal";
 import { useConfigContext } from "@/providers/config-provider";
-import Settings from "@/components/Settings";
+import Settings from "@/components/settings";
 import { sendNotification } from "./utils/notification";
 import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
 import { notifyBatteryEdgeTransitions } from "./utils/batteryEdgeNotification";

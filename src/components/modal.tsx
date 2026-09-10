@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import Button from "./Button";
+import Button from "./button";
 import { XMarkIcon } from "@heroicons/react/24/outline";
 
 interface ModalProps {

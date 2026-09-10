@@ -10,7 +10,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import type { RegisteredDevice } from "@/utils/appHelpers";
-import DateRangePicker, { type DateRange } from "@/components/DateRangePicker";
+import DateRangePicker, { type DateRange } from "@/components/date-range-picker";
 import { useConfigContext } from "@/providers/config-provider";
 import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
 
@@ -23,7 +23,7 @@ import {
   MS_IN_DAY,
 } from "@/utils/batteryChartMath";
 import { useBatteryChartData } from "@/hooks/useBatteryChartData";
-import ChartSettingsPanel from "@/components/ChartSettingsPanel";
+import ChartSettingsPanel from "@/components/chart-settings-panel";
 
 interface BatteryHistoryChartProps {
   device: RegisteredDevice;

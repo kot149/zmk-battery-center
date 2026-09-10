@@ -3,9 +3,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RegisteredDevice } from "@/utils/appHelpers";
-import RegisteredDevicesPanel from "../RegisteredDevicesPanel";
+import RegisteredDevicesPanel from "../registered-devices-panel";
 
-vi.mock("../BatteryHistoryChart", () => ({
+vi.mock("../battery-history-chart", () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <button type="button" onClick={onClose} aria-label="Close mocked chart">
       Close Chart

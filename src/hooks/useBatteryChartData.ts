@@ -4,7 +4,7 @@ import type { RegisteredDevice } from "@/utils/appHelpers";
 import { logger } from "@/utils/log";
 import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/batteryHistory";
 import { smooth, type ChartRow } from "@/utils/batteryChartMath";
-import type { DateRange } from "@/components/DateRangePicker";
+import type { DateRange } from "@/components/date-range-picker";
 
 type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
 
