@@ -22,8 +22,8 @@ async function pathExists(path: string): Promise<boolean> {
 function candidatePaths(root: string): string[] {
   const ext = process.platform === "win32" ? ".exe" : "";
   return [
-    resolve(root, "src-tauri", "target", "release", `${APP_NAME}${ext}`),
-    resolve(root, "src-tauri", "target", "debug", `${APP_NAME}${ext}`),
+    resolve(root, "target", "release", `${APP_NAME}${ext}`),
+    resolve(root, "target", "debug", `${APP_NAME}${ext}`),
   ];
 }
 

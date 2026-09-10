@@ -5,7 +5,7 @@ import { execSync } from "child_process";
 
 const REQUIRED_FILES = ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml"];
 
-const CARGO_LOCK_PATH = "src-tauri/Cargo.lock";
+const CARGO_LOCK_PATH = "Cargo.lock";
 
 async function checkFilesExist(): Promise<boolean> {
   let allFilesExist = true;
@@ -73,12 +73,9 @@ async function updateCargoLock(versionNumber: string): Promise<void> {
 function createGitCommit(version: string): void {
   const commitMessage = `chore: bump up to ${version}`;
 
-  execSync(
-    "git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock",
-    {
-      stdio: "inherit",
-    },
-  );
+  execSync("git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml Cargo.lock", {
+    stdio: "inherit",
+  });
 
   execSync(`git commit -m "${commitMessage}"`, {
     stdio: "inherit",

@@ -35,9 +35,7 @@
    ```
    - If build fails, try cleaning the build cache
      ```sh
-     cd src-tauri
      cargo clean
-     cd ..
      ```
    - Specify the target platform with `--target` option. If omitted, the app will be built for the current platform.
      ```sh

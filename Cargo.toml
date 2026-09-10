@@ -1,0 +1,13 @@
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "unwind"
+strip = true

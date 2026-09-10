@@ -77,7 +77,7 @@ runs:
     - name: Rust cache
       uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       with:
-        workspaces: "./src-tauri -> target"
+        workspaces: ". -> target"
 
     - name: Install cargo-about
       shell: bash

@@ -39,11 +39,11 @@ jobs:
           toolchain: stable
       - uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
-          workspaces: "./src-tauri -> target"
+          workspaces: ". -> target"
       - run: bun install --frozen-lockfile
       - name: Build frontend (required by tauri::generate_context!)
         run: bun run build:ui
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: cargo test
 
   e2e:
     runs-on: ubuntu-latest
@@ -65,4 +65,4 @@ jobs:
         with:
           toolchain: stable
       - run: cargo install cargo-audit --locked
-      - run: cargo audit --file src-tauri/Cargo.lock
+      - run: cargo audit --file Cargo.lock
