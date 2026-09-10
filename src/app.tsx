@@ -14,7 +14,8 @@ import RegisteredDevicesPanel from "./components/registered-devices-panel";
 import { logger } from "./utils/log";
 import TopRightButtons from "./components/top-right-buttons";
 import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
-import { PlusIcon, ArrowPathIcon, Cog8ToothIcon, MapPinIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
+import PushPinIcon from "./components/push-pin-icon";
 import Modal from "./components/modal";
 import { useConfigContext } from "@/providers/config-provider";
 import Settings from "@/components/settings";
@@ -523,14 +524,12 @@ function App() {
               {/* Pin window */}
               <div className="pl-2 pt-0.5">
                 <Button
-                  className={`w-10 h-10 rounded-lg hover:bg-secondary flex items-center justify-center text-2xl p-0! text-foreground relative z-10 ${
-                    config.pinWindow ? "bg-muted-foreground/30" : "bg-transparent"
-                  }`}
+                  className="group w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl p-0! text-foreground relative z-10"
                   onClick={() => setConfig((c) => ({ ...c, pinWindow: !c.pinWindow }))}
                   aria-label={config.pinWindow ? "Unpin window" : "Pin window"}
                   aria-pressed={config.pinWindow}
                 >
-                  <MapPinIcon className="size-5" />
+                  <PushPinIcon pinned={config.pinWindow} className="size-7" />
                 </Button>
               </div>
 
