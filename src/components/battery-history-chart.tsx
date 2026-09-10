@@ -274,8 +274,11 @@ const BatteryHistoryChart: React.FC<BatteryHistoryChartProps> = ({ device, onClo
                       className={`${layoutClass} gap-x-6 gap-y-2 pt-1 w-fit mx-auto`}
                       style={{ fontSize: "0.8rem", gridTemplateColumns: gridCols }}
                     >
-                      {payload?.map((entry, index) => (
-                        <div key={`item-${index}`} className="flex items-center gap-1.5">
+                      {payload?.map((entry) => (
+                        <div
+                          key={String(entry.dataKey ?? entry.value)}
+                          className="flex items-center gap-1.5"
+                        >
                           <div
                             style={{
                               minWidth: 20,

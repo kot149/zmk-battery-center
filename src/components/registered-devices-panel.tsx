@@ -579,13 +579,13 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
                     <div className="text-muted-foreground mx-auto">No battery information</div>
                   ) : (
                     <div className="space-y-1 ml-7">
-                      {device.batteryInfos.map((b, batteryIndex) => {
+                      {device.batteryInfos.map((b) => {
                         const partKey = batteryPartLabelStorageKey(b.user_description);
                         const isEditing =
                           labelEdit?.deviceId === device.id && labelEdit.partKey === partKey;
                         return (
                           <BatteryPartRow
-                            key={batteryIndex}
+                            key={partKey}
                             device={device}
                             b={b}
                             isEditing={isEditing}
