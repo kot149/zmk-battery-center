@@ -13,8 +13,8 @@ import Button from "./components/Button";
 import RegisteredDevicesPanel from "./components/RegisteredDevicesPanel";
 import { logger } from "./utils/log";
 import TopRightButtons from "./components/TopRightButtons";
-import { hideWindow, moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
-import { PlusIcon, ArrowPathIcon, Cog8ToothIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
+import { PlusIcon, ArrowPathIcon, Cog8ToothIcon, MapPinIcon } from "@heroicons/react/24/outline";
 import Modal from "./components/Modal";
 import { useConfigContext } from "@/context/ConfigContext";
 import Settings from "@/components/Settings";
@@ -74,7 +74,7 @@ function App() {
 
   const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
   const [error, setError] = useState("");
-  const { config, isConfigLoaded } = useConfigContext();
+  const { config, setConfig, isConfigLoaded } = useConfigContext();
 
   const pushNotificationRef = useRef(config.pushNotification);
   const pushNotificationWhenRef = useRef(config.pushNotificationWhen);
@@ -519,40 +519,47 @@ function App() {
               ></div>
             )}
 
-            {/* Top-right buttons */}
-            <TopRightButtons
-              buttons={[
-                {
-                  icon: <PlusIcon className="size-5" />,
-                  onClick: handleOpenModal,
-                  ariaLabel: "Add Device",
-                  disabled: !isDeviceLoaded,
-                },
-                {
-                  icon: <ArrowPathIcon className="size-5" />,
-                  onClick: handleReload,
-                  ariaLabel: "Reload",
-                  disabled:
-                    deviceList.length === 0 ||
-                    state === State.fetchingBatteryInfo ||
-                    !isPollingMode,
-                },
-                {
-                  icon: <Cog8ToothIcon className="size-5" />,
-                  onClick: handleOpenSettings,
-                  ariaLabel: "Settings",
-                },
-                ...(config.pinWindow
-                  ? [
-                      {
-                        icon: <XMarkIcon className="size-5" />,
-                        onClick: () => hideWindow(),
-                        ariaLabel: "Hide window",
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            <div className="flex flex-row items-start">
+              {/* Pin window */}
+              <div className="pl-2 pt-0.5">
+                <Button
+                  className={`w-10 h-10 rounded-lg hover:bg-secondary flex items-center justify-center text-2xl p-0! text-foreground relative z-10 ${
+                    config.pinWindow ? "bg-muted-foreground/30" : "bg-transparent"
+                  }`}
+                  onClick={() => setConfig((c) => ({ ...c, pinWindow: !c.pinWindow }))}
+                  aria-label={config.pinWindow ? "Unpin window" : "Pin window"}
+                  aria-pressed={config.pinWindow}
+                >
+                  <MapPinIcon className="size-5" />
+                </Button>
+              </div>
+
+              {/* Top-right buttons */}
+              <TopRightButtons
+                buttons={[
+                  {
+                    icon: <PlusIcon className="size-5" />,
+                    onClick: handleOpenModal,
+                    ariaLabel: "Add Device",
+                    disabled: !isDeviceLoaded,
+                  },
+                  {
+                    icon: <ArrowPathIcon className="size-5" />,
+                    onClick: handleReload,
+                    ariaLabel: "Reload",
+                    disabled:
+                      deviceList.length === 0 ||
+                      state === State.fetchingBatteryInfo ||
+                      !isPollingMode,
+                  },
+                  {
+                    icon: <Cog8ToothIcon className="size-5" />,
+                    onClick: handleOpenSettings,
+                    ariaLabel: "Settings",
+                  },
+                ]}
+              />
+            </div>
           </div>
 
           {/* Modal (device selection) */}

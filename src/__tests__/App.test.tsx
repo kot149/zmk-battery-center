@@ -6,13 +6,10 @@ import { getBatteryInfo, startBatteryNotificationMonitor } from "@/utils/ble";
 import { defaultConfig, FETCH_INTERVAL_AUTO, NotificationType } from "@/utils/config";
 import { sendNotification } from "@/utils/notification";
 
-const { mockMoveWindowToTrayCenter, mockResizeWindowToContent, mockHideWindow } = vi.hoisted(
-  () => ({
-    mockMoveWindowToTrayCenter: vi.fn(async () => undefined),
-    mockResizeWindowToContent: vi.fn(async () => undefined),
-    mockHideWindow: vi.fn(() => undefined),
-  }),
-);
+const { mockMoveWindowToTrayCenter, mockResizeWindowToContent } = vi.hoisted(() => ({
+  mockMoveWindowToTrayCenter: vi.fn(async () => undefined),
+  mockResizeWindowToContent: vi.fn(async () => undefined),
+}));
 
 const mockStore = {
   get: vi.fn(),
@@ -89,7 +86,6 @@ vi.mock("@/hooks/useTrayEvents", () => ({
 vi.mock("@/utils/window", () => ({
   moveWindowToTrayCenter: mockMoveWindowToTrayCenter,
   resizeWindowToContent: mockResizeWindowToContent,
-  hideWindow: mockHideWindow,
 }));
 
 vi.mock("@/utils/notification", () => ({
