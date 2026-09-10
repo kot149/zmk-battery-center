@@ -14,7 +14,7 @@ const mockScriptPaths = [
 ] as const;
 
 function cloneSeed(seed: MockSeed): MockSeed {
-  return JSON.parse(JSON.stringify(seed)) as MockSeed;
+  return structuredClone(seed);
 }
 
 export const baseSeed: MockSeed = {

@@ -7,7 +7,7 @@
   const STORAGE_PREFIX = "__e2e_tauri_store__";
 
   function clone(value) {
-    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    return structuredClone(value);
   }
 
   function localStorageKey(path) {

@@ -80,8 +80,7 @@ export function useWindowEvents({
     };
 
     const saveWindowPosition = async (position: { x: number; y: number }) => {
-      const isVisible = await window.isVisible();
-      const isFocused = await window.isFocused();
+      const [isVisible, isFocused] = await Promise.all([window.isVisible(), window.isFocused()]);
       if (!isVisible || !isFocused) {
         logger.debug(
           `Skipped saving window position: isVisible=${isVisible}, isFocused=${isFocused} (position: ${position.x}, ${position.y})`,
