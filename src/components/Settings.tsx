@@ -16,8 +16,8 @@ import {
   SelectContent,
   SelectItem,
   SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
+} from "@/components/shadcn/select";
+import { Switch } from "@/components/shadcn/switch";
 import { XMarkIcon, MoonIcon, SunIcon } from "@heroicons/react/24/outline";
 import { useConfigContext } from "@/context/ConfigContext";
 import TopRightButtons from "./TopRightButtons";
