@@ -153,6 +153,7 @@ type PartLabelEditProps = {
   resetAriaLabel?: string;
   resetTitle?: string;
   inputClassName?: string;
+  inputAriaLabel?: string;
 };
 
 const PartLabelEdit: React.FC<PartLabelEditProps> = ({
@@ -167,11 +168,13 @@ const PartLabelEdit: React.FC<PartLabelEditProps> = ({
   resetAriaLabel = "Reset label and close",
   resetTitle = "Reset label and close",
   inputClassName,
+  inputAriaLabel = "Edit label",
 }) => (
   <div className="relative w-full min-w-0">
     <input
       ref={inputRef}
       type="text"
+      aria-label={inputAriaLabel}
       className={cn(
         "box-border w-full min-w-0 rounded border border-border bg-background py-0.5 pl-0.5 pr-7 text-sm text-card-foreground",
         inputClassName,
@@ -291,6 +294,7 @@ const BatteryPartRow: React.FC<BatteryPartRowProps> = ({
             onReset={() => resetLabelAndCloseEdit(device.id, b.user_description)}
             inputRef={inputRef}
             skipLabelCommitOnBlurRef={skipLabelCommitOnBlurRef}
+            inputAriaLabel="Edit battery part label"
           />
         ) : (
           <PartLabelView
@@ -510,6 +514,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
                         resetAriaLabel="Reset device name and close"
                         resetTitle="Reset to advertised name and close"
                         inputClassName="text-lg font-semibold"
+                        inputAriaLabel="Edit device display name"
                       />
                     ) : (
                       <>

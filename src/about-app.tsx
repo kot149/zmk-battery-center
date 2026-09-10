@@ -1,4 +1,4 @@
-import { useState, useMemo, Suspense, useEffect } from "react";
+import { useState, useMemo, Suspense, useEffect, type KeyboardEvent } from "react";
 import { useLicenses, mergeLicenses, License } from "./hooks/use-licenses";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
@@ -13,6 +13,10 @@ import "./app.css";
 }
 
 const REPO_URL = "https://github.com/kot149/zmk-battery-center";
+
+function handleOpenUrl(url: string) {
+  openUrl(url);
+}
 
 function AboutSection() {
   const [version, setVersion] = useState<string | null>(null);
@@ -70,16 +74,32 @@ function AboutSection() {
 
 function LicenseItem({ license }: { license: License }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const expandable = Boolean(license.licenseText);
 
-  const handleOpenUrl = (url: string) => {
-    openUrl(url);
+  const toggleExpanded = () => {
+    if (expandable) setIsExpanded((prev) => !prev);
+  };
+
+  const handleHeaderKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleExpanded();
+    }
   };
 
   return (
     <div className="bg-card rounded-lg border border-border">
       <div
-        className={`p-3 ${license.licenseText ? "cursor-pointer hover:bg-secondary/50" : ""}`}
-        onClick={() => license.licenseText && setIsExpanded((prev) => !prev)}
+        className={`p-3 ${expandable ? "cursor-pointer hover:bg-secondary/50" : ""}`}
+        onClick={toggleExpanded}
+        {...(expandable
+          ? {
+              role: "button",
+              tabIndex: 0,
+              "aria-expanded": isExpanded,
+              onKeyDown: handleHeaderKeyDown,
+            }
+          : {})}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
@@ -165,6 +185,7 @@ function About() {
         {/* Search */}
         <input
           type="text"
+          aria-label="Search packages or licenses"
           placeholder="Search packages or licenses..."
           className="w-full px-3 py-2 bg-card border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
           value={searchQuery}
