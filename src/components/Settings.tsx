@@ -23,7 +23,7 @@ import { useConfigContext } from "@/context/ConfigContext";
 import TopRightButtons from "./TopRightButtons";
 import { platform } from "@tauri-apps/plugin-os";
 
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 type SettingsGroupProps = {
   children: React.ReactNode;

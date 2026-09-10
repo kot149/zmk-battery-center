@@ -17,7 +17,7 @@ import {
   getBatteryPartDisplayName,
 } from "@/utils/batteryLabels";
 import { getRegisteredDeviceDisplayName } from "@/utils/appHelpers";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 
 const WifiOffIcon: React.FC<{ className?: string }> = ({ className }) => (
   <span
