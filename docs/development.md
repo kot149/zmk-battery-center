@@ -48,6 +48,13 @@
      bun tauri build --target x86_64-apple-darwin
      ```
 
+## Frontend file conventions
+
+- TypeScript and TSX filenames use kebab-case.
+- React components live in `src/components/`, with shadcn primitives in `src/components/shadcn/`.
+- Providers live in `src/providers/`, hooks in `src/hooks/`, and shared utilities in `src/utils/`.
+- Unit tests live in the nearest `__tests__/` directory and use the same kebab-case basename as the files they test.
+
 ## Testing
 
 Data directory for unit tests and E2E tests is isolated by default, so test-run data does not mix with local development data.
@@ -133,17 +140,17 @@ Recommended stack:
 
 Primary unit targets:
 
-- `src/App.tsx`
+- `src/app.tsx`
   - `upsertBatteryInfo`: insert vs update by `user_description`, keep previous value when new `battery_level` is `null`.
   - `mergeBatteryInfos`: preserve previous `battery_level` only when incoming value is `null`.
   - `normalizeLoadedDevices`: legacy key compatibility (`user_descriptor`), `DeviceId("...")` normalization, invalid shapes fallback.
 - `src/utils/config.ts`
   - `loadSavedConfig`: defaults are merged correctly.
   - `setConfig`: autostart enable/disable logic, notification permission request behavior.
-- `src/utils/batteryHistory.ts`
+- `src/utils/battery-history.ts`
   - `appendBatteryHistory` sends expected payload to Tauri `invoke`.
   - `readBatteryHistory` returns typed records and passes IDs correctly.
-- `src/context/ConfigContext.tsx`
+- `src/providers/config-provider.tsx`
   - initial load updates context + emits `config-changed`.
   - `update-config` listener merges partial updates and avoids event loop.
 - `src/components/*`

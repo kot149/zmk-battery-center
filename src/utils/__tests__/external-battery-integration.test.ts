@@ -1,96 +1,149 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildExternalBatteryDevices,
-	getExternalBatteryPartId,
-	toStableExternalKey,
+  buildExternalBatteryDevices,
+  getExternalBatteryPartId,
+  toStableExternalKey,
 } from "@/utils/external-battery-integration";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 
 function device(overrides: Partial<RegisteredDevice> = {}): RegisteredDevice {
-	return {
-		id: "kbd-1",
-		name: "Corne",
-		batteryInfos: [{
-			battery_level: 87,
-			user_description: null,
-			observed_at_unix_ms: 100,
-			last_read_succeeded: true,
-		}],
-		isDisconnected: false,
-		isCollapsed: false,
-		connectionStatusKnown: true,
-		connectionObservedAtUnixMs: 110,
-		...overrides,
-	};
+  return {
+    id: "kbd-1",
+    name: "Corne",
+    batteryInfos: [
+      {
+        battery_level: 87,
+        user_description: null,
+        observed_at_unix_ms: 100,
+        last_read_succeeded: true,
+      },
+    ],
+    isDisconnected: false,
+    isCollapsed: false,
+    connectionStatusKnown: true,
+    connectionObservedAtUnixMs: 110,
+    ...overrides,
+  };
 }
 
 describe("external battery integration", () => {
-	it("encodes stable keys from UTF-8 bytes", () => {
-		expect(toStableExternalKey("device", "キーボード")).toBe("devicee382ade383bce3839ce383bce38389");
-		expect(getExternalBatteryPartId("Peripheral")).toBe("part5065726970686572616c");
-		expect(getExternalBatteryPartId(null)).toBe("central");
-	});
+  it("encodes stable keys from UTF-8 bytes", () => {
+    expect(toStableExternalKey("device", "キーボード")).toBe(
+      "devicee382ade383bce3839ce383bce38389",
+    );
+    expect(getExternalBatteryPartId("Peripheral")).toBe("part5065726970686572616c");
+    expect(getExternalBatteryPartId(null)).toBe("central");
+  });
 
-	it("maps custom display names and preserves ordering", () => {
-		const input = [device({
-			displayName: "Work keyboard",
-			batteryPartLabels: { Central: "Main" },
-			batteryInfos: [
-				{ battery_level: 0, user_description: null, observed_at_unix_ms: 1, last_read_succeeded: true },
-				{ battery_level: 100, user_description: "Peripheral", observed_at_unix_ms: 2, last_read_succeeded: true },
-			],
-		})];
-		const mapped = buildExternalBatteryDevices(input);
-		expect(mapped[0]).toMatchObject({
-			key: "device6b62642d31",
-			displayName: "Work keyboard",
-			connectionStatus: "connected",
-			connectionObservedAtUnixMs: 110,
-		});
-		expect(mapped[0].batteryParts).toEqual([
-			expect.objectContaining({ id: "central", displayName: "Main", levelPercent: 0, valueStatus: "current" }),
-			expect.objectContaining({ id: "part5065726970686572616c", displayName: "Peripheral", levelPercent: 100, valueStatus: "current" }),
-		]);
-	});
+  it("maps custom display names and preserves ordering", () => {
+    const input = [
+      device({
+        displayName: "Work keyboard",
+        batteryPartLabels: { Central: "Main" },
+        batteryInfos: [
+          {
+            battery_level: 0,
+            user_description: null,
+            observed_at_unix_ms: 1,
+            last_read_succeeded: true,
+          },
+          {
+            battery_level: 100,
+            user_description: "Peripheral",
+            observed_at_unix_ms: 2,
+            last_read_succeeded: true,
+          },
+        ],
+      }),
+    ];
+    const mapped = buildExternalBatteryDevices(input);
+    expect(mapped[0]).toMatchObject({
+      key: "device6b62642d31",
+      displayName: "Work keyboard",
+      connectionStatus: "connected",
+      connectionObservedAtUnixMs: 110,
+    });
+    expect(mapped[0].batteryParts).toEqual([
+      expect.objectContaining({
+        id: "central",
+        displayName: "Main",
+        levelPercent: 0,
+        valueStatus: "current",
+      }),
+      expect.objectContaining({
+        id: "part5065726970686572616c",
+        displayName: "Peripheral",
+        levelPercent: 100,
+        valueStatus: "current",
+      }),
+    ]);
+  });
 
-	it.each([
-		[false, undefined, "unknown"],
-		[true, true, "disconnected"],
-		[true, false, "connected"],
-	] as const)("maps connection state", (knownMarker, disconnected, expected) => {
-		const mapped = buildExternalBatteryDevices([device({
-			connectionStatusKnown: knownMarker,
-			isDisconnected: disconnected ?? false,
-		})]);
-		expect(mapped[0].connectionStatus).toBe(expected);
-		expect(mapped[0].connectionObservedAtUnixMs).toBe(expected === "unknown" ? null : 110);
-	});
+  it.each([
+    [false, undefined, "unknown"],
+    [true, true, "disconnected"],
+    [true, false, "connected"],
+  ] as const)("maps connection state", (knownMarker, disconnected, expected) => {
+    const mapped = buildExternalBatteryDevices([
+      device({
+        connectionStatusKnown: knownMarker,
+        isDisconnected: disconnected ?? false,
+      }),
+    ]);
+    expect(mapped[0].connectionStatus).toBe(expected);
+    expect(mapped[0].connectionObservedAtUnixMs).toBe(expected === "unknown" ? null : 110);
+  });
 
-	it("distinguishes current, stale, and unavailable values", () => {
-		const mapped = buildExternalBatteryDevices([device({
-			batteryInfos: [
-				{ battery_level: 50, user_description: null, last_read_succeeded: true, observed_at_unix_ms: 1 },
-				{ battery_level: 60, user_description: "Left", last_read_succeeded: false, observed_at_unix_ms: 2 },
-				{ battery_level: null, user_description: "Right", last_read_succeeded: false, observed_at_unix_ms: null },
-				{ battery_level: 101, user_description: "Invalid", last_read_succeeded: true, observed_at_unix_ms: 3 },
-			],
-		})]);
-		expect(mapped[0].batteryParts.map(part => part.valueStatus)).toEqual([
-			"current", "stale", "unavailable", "unavailable",
-		]);
-	});
+  it("distinguishes current, stale, and unavailable values", () => {
+    const mapped = buildExternalBatteryDevices([
+      device({
+        batteryInfos: [
+          {
+            battery_level: 50,
+            user_description: null,
+            last_read_succeeded: true,
+            observed_at_unix_ms: 1,
+          },
+          {
+            battery_level: 60,
+            user_description: "Left",
+            last_read_succeeded: false,
+            observed_at_unix_ms: 2,
+          },
+          {
+            battery_level: null,
+            user_description: "Right",
+            last_read_succeeded: false,
+            observed_at_unix_ms: null,
+          },
+          {
+            battery_level: 101,
+            user_description: "Invalid",
+            last_read_succeeded: true,
+            observed_at_unix_ms: 3,
+          },
+        ],
+      }),
+    ]);
+    expect(mapped[0].batteryParts.map((part) => part.valueStatus)).toEqual([
+      "current",
+      "stale",
+      "unavailable",
+      "unavailable",
+    ]);
+  });
 
-	it("marks numeric levels stale while disconnected or unknown", () => {
-		for (const overrides of [{ isDisconnected: true }, { connectionStatusKnown: false }]) {
-			const mapped = buildExternalBatteryDevices([device(overrides)]);
-			expect(mapped[0].batteryParts[0].valueStatus).toBe("stale");
-		}
-	});
+  it("marks numeric levels stale while disconnected or unknown", () => {
+    for (const overrides of [{ isDisconnected: true }, { connectionStatusKnown: false }]) {
+      const mapped = buildExternalBatteryDevices([device(overrides)]);
+      expect(mapped[0].batteryParts[0].valueStatus).toBe("stale");
+    }
+  });
 
-	it("does not mutate the source devices", () => {
-		const input = [device()];
-		const before = structuredClone(input);
-		buildExternalBatteryDevices(input);
-		expect(input).toEqual(before);
-	});
+  it("does not mutate the source devices", () => {
+    const input = [device()];
+    const before = structuredClone(input);
+    buildExternalBatteryDevices(input);
+    expect(input).toEqual(before);
+  });
 });

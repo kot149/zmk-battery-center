@@ -56,6 +56,17 @@
   "ignorePatterns": ["dist/**", "node_modules/**", "src-tauri/**"],
   "overrides": [
     {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "rules": {
+        "unicorn/filename-case": [
+          "error",
+          {
+            "case": "kebabCase"
+          }
+        ]
+      }
+    },
+    {
       "files": ["e2e/**/*.ts"],
       "rules": {
         "react/rules-of-hooks": "off",

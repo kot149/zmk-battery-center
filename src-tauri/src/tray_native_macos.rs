@@ -53,7 +53,7 @@ impl DrawState {
     }
 }
 
-// src/utils/trayBatteryIcon.ts authoritatively pre-derives single-character payload glyphs.
+// src/utils/tray-battery-icon.ts authoritatively pre-derives single-character payload glyphs.
 // This only coerces malformed payloads defensively and must not add semantic label rules.
 fn one_char(s: &Option<String>, d: char) -> char {
     s.as_ref()
