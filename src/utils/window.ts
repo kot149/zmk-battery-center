@@ -76,6 +76,10 @@ export function setWindowFocus() {
   return appWindow.setFocus();
 }
 
+export function setWindowAlwaysOnTop(alwaysOnTop: boolean) {
+  return appWindow.setAlwaysOnTop(alwaysOnTop);
+}
+
 export async function moveWindowToTrayCenter() {
   if (isTrayPositionSet) {
     await waitForWindowMoveEnd();
