@@ -237,33 +237,25 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ onApply, onCancel, in
   /** false = picking start, true = picking end */
   const [pickingEnd, setPickingEnd] = useState(false);
 
-  const [leftYear, setLeftYear] = useState(() => {
+  const [leftView, setLeftView] = useState(() => {
     const base = initialRange ? initialRange.start : new Date();
-    return base.getFullYear();
-  });
-  const [leftMonth, setLeftMonth] = useState(() => {
-    const base = initialRange ? initialRange.start : new Date();
-    return base.getMonth();
+    return { year: base.getFullYear(), month: base.getMonth() };
   });
 
   const prevMonth = useCallback(() => {
-    setLeftMonth((m) => {
-      if (m === 0) {
-        setLeftYear((y) => y - 1);
-        return 11;
-      }
-      return m - 1;
-    });
+    setLeftView((prev) =>
+      prev.month === 0
+        ? { year: prev.year - 1, month: 11 }
+        : { year: prev.year, month: prev.month - 1 },
+    );
   }, []);
 
   const nextMonth = useCallback(() => {
-    setLeftMonth((m) => {
-      if (m === 11) {
-        setLeftYear((y) => y + 1);
-        return 0;
-      }
-      return m + 1;
-    });
+    setLeftView((prev) =>
+      prev.month === 11
+        ? { year: prev.year + 1, month: 0 }
+        : { year: prev.year, month: prev.month + 1 },
+    );
   }, []);
 
   const handleDateClick = useCallback(
@@ -325,8 +317,8 @@ const DateRangePicker: React.FC<DateRangePickerProps> = ({ onApply, onCancel, in
         {/* Calendar + overlapping action buttons */}
         <div className="relative">
           <Calendar
-            year={leftYear}
-            month={leftMonth}
+            year={leftView.year}
+            month={leftView.month}
             selectedStart={selectedStart}
             selectedEnd={selectedEnd}
             hoverDate={pickingEnd ? hoverDate : null}
