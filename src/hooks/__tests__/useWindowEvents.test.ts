@@ -1,5 +1,5 @@
 import { renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useWindowEvents } from "../useWindowEvents";
 import { defaultConfig, type Config } from "@/utils/config";
 import { hideWindow, setWindowAlwaysOnTop } from "@/utils/window";
@@ -36,9 +36,13 @@ function blur() {
   handler({ payload: false });
 }
 
+type Props = { config: Config; isConfigLoaded: boolean };
+
 function render(config: Config, isConfigLoaded = true) {
-  return renderHook(() =>
-    useWindowEvents({ config, isConfigLoaded, onWindowPositionChange: vi.fn() }),
+  return renderHook(
+    ({ config, isConfigLoaded }: Props) =>
+      useWindowEvents({ config, isConfigLoaded, onWindowPositionChange: vi.fn() }),
+    { initialProps: { config, isConfigLoaded } },
   );
 }
 
@@ -48,6 +52,10 @@ describe("useWindowEvents pin behaviour", () => {
     vi.useFakeTimers();
     mockOnFocusChanged.mockResolvedValue(() => undefined);
     mockOnMoved.mockResolvedValue(() => undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("hides on blur when the window is not pinned", async () => {
@@ -80,12 +88,12 @@ describe("useWindowEvents pin behaviour", () => {
     expect(hideWindow).not.toHaveBeenCalled();
   });
 
-  it("applies always-on-top to match the pin setting", async () => {
-    render({ ...defaultConfig, pinWindow: true });
+  it("applies always-on-top when the pin setting changes", async () => {
+    const { rerender } = render({ ...defaultConfig, pinWindow: true });
     expect(setWindowAlwaysOnTop).toHaveBeenCalledWith(true);
 
     vi.clearAllMocks();
-    render({ ...defaultConfig, pinWindow: false });
+    rerender({ config: { ...defaultConfig, pinWindow: false }, isConfigLoaded: true });
     expect(setWindowAlwaysOnTop).toHaveBeenCalledWith(false);
   });
 });
