@@ -28,13 +28,16 @@ export function useWindowEvents({
   const focusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasRestoredPositionRef = useRef(false);
   const onWindowPositionChangeRef = useRef(onWindowPositionChange);
-  onWindowPositionChangeRef.current = onWindowPositionChange;
   // The focus listener is registered once, so these are read through refs rather
   // than captured at mount.
   const pinWindowRef = useRef(config.pinWindow);
-  pinWindowRef.current = config.pinWindow;
   const isConfigLoadedRef = useRef(isConfigLoaded);
-  isConfigLoadedRef.current = isConfigLoaded;
+
+  useEffect(() => {
+    onWindowPositionChangeRef.current = onWindowPositionChange;
+    pinWindowRef.current = config.pinWindow;
+    isConfigLoadedRef.current = isConfigLoaded;
+  });
 
   // Restore window position on initial config load
   useEffect(() => {

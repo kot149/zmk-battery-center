@@ -27,8 +27,10 @@ export function useExternalBatteryIntegration({
   const sourceGenerationRef = useRef<number | null>(null);
   const sourceGenerationPromiseRef = useRef<Promise<number> | null>(null);
 
-  getSnapshotRef.current = getRegisteredDevicesSnapshot;
-  isDeviceLoadedRef.current = isDeviceLoaded;
+  useEffect(() => {
+    getSnapshotRef.current = getRegisteredDevicesSnapshot;
+    isDeviceLoadedRef.current = isDeviceLoaded;
+  });
 
   const getSourceGeneration = useCallback(() => {
     if (sourceGenerationRef.current !== null) {

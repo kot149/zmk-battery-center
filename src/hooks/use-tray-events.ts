@@ -31,10 +31,12 @@ export function useTrayEvents({
   onManualWindowPositioningChange,
 }: UseTrayEventsOptions) {
   const configRef = useRef(config);
-  configRef.current = config;
-
   const onManualWindowPositioningChangeRef = useRef(onManualWindowPositioningChange);
-  onManualWindowPositioningChangeRef.current = onManualWindowPositioningChange;
+
+  useEffect(() => {
+    configRef.current = config;
+    onManualWindowPositioningChangeRef.current = onManualWindowPositioningChange;
+  });
 
   // Synchronize backend state whenever manualWindowPositioning config changes
   useEffect(() => {
