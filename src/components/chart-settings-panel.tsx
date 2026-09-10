@@ -52,7 +52,9 @@ const ChartSettingsPanel: React.FC<ChartSettingsPanelProps> = ({
   // Lock clicks briefly after closing a Select to prevent the collapse click from reaching the panel
   const isClickLocked = useRef(false);
 
-  // Close settings panel when clicking outside
+  // Close settings panel when clicking outside. The listener is added in an
+  // effect, which runs after the opening mousedown has finished dispatching,
+  // so the opening click cannot immediately close the panel.
   useEffect(() => {
     if (!showSettings) return;
     const handler = (e: MouseEvent) => {
@@ -64,12 +66,8 @@ const ChartSettingsPanel: React.FC<ChartSettingsPanelProps> = ({
       if (settingsButtonRef.current?.contains(target)) return;
       setShowSettings(false);
     };
-    // Use setTimeout to ensure the lock prevents immediate event bubbling
-    const id = setTimeout(() => {
-      document.addEventListener("mousedown", handler);
-    }, 0);
+    document.addEventListener("mousedown", handler);
     return () => {
-      clearTimeout(id);
       document.removeEventListener("mousedown", handler);
     };
   }, [showSettings]);

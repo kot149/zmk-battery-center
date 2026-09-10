@@ -299,17 +299,28 @@ function App() {
 
   // Handle window size change
   useEffect(() => {
+    let cancelled = false;
+    const timeoutIds: Array<ReturnType<typeof setTimeout>> = [];
     resizeWindowToContent().then(() => {
+      if (cancelled) return;
       if (isConfigLoaded && !config.manualWindowPositioning) {
         moveWindowToTrayCenter();
-        setTimeout(() => {
-          moveWindowToTrayCenter();
-        }, 50);
-        setTimeout(() => {
-          moveWindowToTrayCenter();
-        }, 100);
+        timeoutIds.push(
+          setTimeout(() => {
+            moveWindowToTrayCenter();
+          }, 50),
+        );
+        timeoutIds.push(
+          setTimeout(() => {
+            moveWindowToTrayCenter();
+          }, 100),
+        );
       }
     });
+    return () => {
+      cancelled = true;
+      for (const id of timeoutIds) clearTimeout(id);
+    };
   }, [deviceLayoutKey, state, panelLayoutRevision, config.manualWindowPositioning, isConfigLoaded]);
 
   useEffect(() => {
