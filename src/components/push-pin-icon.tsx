@@ -5,13 +5,9 @@ type PushPinIconProps = SVGProps<SVGSVGElement> & {
 };
 
 export default function PushPinIcon({ pinned, className, ...props }: PushPinIconProps) {
-  const outlineClass = pinned
-    ? "opacity-0 group-hover:opacity-100"
-    : "opacity-100 group-hover:opacity-0";
+  const outlineClass = pinned ? "opacity-0" : "opacity-100";
 
-  const fillClass = pinned
-    ? "opacity-100 group-hover:opacity-0"
-    : "opacity-0 group-hover:opacity-100";
+  const fillClass = pinned ? "opacity-100" : "opacity-0";
 
   return (
     <svg
