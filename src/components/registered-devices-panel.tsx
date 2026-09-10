@@ -361,11 +361,9 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
   const handleMenuClose = () => setMenuOpen(null);
 
   const handleToggleChart = (id: string) => {
-    setChartOpen((prev) => {
-      const next = prev === id ? null : id;
-      onChartOpenChange?.(next !== null);
-      return next;
-    });
+    const next = chartOpen === id ? null : id;
+    setChartOpen(next);
+    onChartOpenChange?.(next !== null);
     setMenuOpen(null);
   };
 

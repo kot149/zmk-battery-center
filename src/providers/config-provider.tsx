@@ -33,12 +33,16 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
   const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const { setTheme } = useTheme();
 
-  // rerender-dependencies: Use refs for values that should not trigger effect re-runs
+  // Latest refs so stable callbacks read fresh values without re-subscribing effects.
   const setThemeRef = useRef(setTheme);
-  setThemeRef.current = setTheme;
-
+  const configRef = useRef(config);
   const isConfigLoadedRef = useRef(isConfigLoaded);
-  isConfigLoadedRef.current = isConfigLoaded;
+
+  useEffect(() => {
+    setThemeRef.current = setTheme;
+    configRef.current = config;
+    isConfigLoadedRef.current = isConfigLoaded;
+  });
 
   const updateConfigWithPersistence = useCallback(async (newConfig: Config, skipEmit = false) => {
     await storeSetConfig(newConfig);
@@ -48,17 +52,20 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // rerender-dependencies: Read isConfigLoaded from ref inside setState updater
-  // so updateConfig has a stable identity and doesn't cause effect re-subscriptions
+  // Compute the next config outside the state updater so the updater stays
+  // pure (React may re-invoke updaters). configRef is kept in sync above and
+  // updated synchronously here so back-to-back calls observe the latest value.
   const updateConfig = useCallback(
     (updates: SetStateAction<Config>, skipEmit = false) => {
-      setConfig((prevConfig) => {
-        const newConfig = typeof updates === "function" ? updates(prevConfig) : updates;
-        if (isConfigLoadedRef.current) {
-          updateConfigWithPersistence(newConfig, skipEmit);
-        }
-        return newConfig;
-      });
+      const newConfig =
+        typeof updates === "function"
+          ? (updates as (prev: Config) => Config)(configRef.current)
+          : updates;
+      configRef.current = newConfig;
+      setConfig(newConfig);
+      if (isConfigLoadedRef.current) {
+        void updateConfigWithPersistence(newConfig, skipEmit);
+      }
     },
     [updateConfigWithPersistence],
   );
@@ -69,6 +76,10 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     (async () => {
       const loaded = await loadSavedConfig();
       if (isMounted) {
+        // Sync refs here (not only in the passive effect below) so updates
+        // triggered before the next effect flush still observe loaded state.
+        configRef.current = loaded;
+        isConfigLoadedRef.current = true;
         setConfig(loaded);
         setIsConfigLoaded(true);
         setThemeRef.current(loaded.theme as Theme);
