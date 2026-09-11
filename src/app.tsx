@@ -129,6 +129,13 @@ function App() {
     );
   }, []);
 
+  const handlePinWindowChange = useCallback((enabled: boolean) => {
+    fireAndForget(
+      emit("update-config", { pinWindow: enabled }),
+      "Failed to emit pin window update",
+    );
+  }, []);
+
   useWindowEvents({
     config,
     isConfigLoaded,
@@ -139,6 +146,7 @@ function App() {
     config,
     isConfigLoaded,
     onManualWindowPositioningChange: handleManualWindowPositioningChange,
+    onPinWindowChange: handlePinWindowChange,
   });
 
   useEffect(() => {

@@ -89,10 +89,12 @@ pub fn run() {
             history::read_battery_history,
             tray::update_tray_battery_icon,
             tray::update_manual_positioning,
+            tray::update_pin_window,
         ])
         .setup(|app| {
             app.manage(tray::TrayState {
                 manual_positioning: std::sync::atomic::AtomicBool::new(false),
+                pin_window: std::sync::atomic::AtomicBool::new(false),
                 #[cfg(target_os = "linux")]
                 tray_handle: std::sync::Mutex::new(None),
             });

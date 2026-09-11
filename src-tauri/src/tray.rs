@@ -1,5 +1,7 @@
 use crate::tray_battery_payload::TrayBatteryPayload;
-use std::sync::{atomic::{AtomicBool, Ordering}, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "linux")]
+use std::sync::Mutex;
 use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
     AppHandle, Emitter, Manager,
@@ -9,6 +11,7 @@ use ksni::TrayMethods;
 
 pub struct TrayState {
     pub manual_positioning: AtomicBool,
+    pub pin_window: AtomicBool,
     #[cfg(target_os = "linux")]
     pub tray_handle: Mutex<Option<ksni::Handle<LinuxTray>>>,
 }
@@ -43,6 +46,12 @@ impl ksni::Tray for LinuxTray {
         } else {
             "  Manual window positioning"
         };
+        let is_pinned = state.pin_window.load(Ordering::Relaxed);
+        let pin_label = if is_pinned {
+            "✔ Pin window"
+        } else {
+            "  Pin window"
+        };
 
         vec![
             StandardItem {
@@ -68,6 +77,14 @@ impl ksni::Tray for LinuxTray {
                         label: manual_label.into(),
                         activate: Box::new(|this: &mut Self| {
                             let _ = this.app.emit("tray_menu_toggle_manual_positioning", ());
+                        }),
+                        ..Default::default()
+                    }
+                    .into(),
+                    StandardItem {
+                        label: pin_label.into(),
+                        activate: Box::new(|this: &mut Self| {
+                            let _ = this.app.emit("tray_menu_toggle_pin_window", ());
                         }),
                         ..Default::default()
                     }
@@ -131,6 +148,25 @@ pub async fn update_manual_positioning(
         if let Some(handle) = handle_opt {
             // Empty closure: TrayState is re-read inside menu(); calling update()
             // is what triggers ksni to rebuild the menu with the new state.
+            let _ = handle.update(|_| {}).await;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_pin_window(
+    state: tauri::State<'_, TrayState>,
+    enabled: bool,
+) -> Result<(), String> {
+    state.pin_window.store(enabled, Ordering::Relaxed);
+    #[cfg(target_os = "linux")]
+    {
+        let handle_opt = {
+            let guard = state.tray_handle.lock().unwrap();
+            guard.clone()
+        };
+        if let Some(handle) = handle_opt {
             let _ = handle.update(|_| {}).await;
         }
     }

@@ -23,19 +23,24 @@ interface UseTrayEventsOptions {
   config: Config;
   isConfigLoaded: boolean;
   onManualWindowPositioningChange: (enabled: boolean) => void;
+  onPinWindowChange: (enabled: boolean) => void;
 }
 
 export function useTrayEvents({
   config,
   isConfigLoaded,
   onManualWindowPositioningChange,
+  onPinWindowChange,
 }: UseTrayEventsOptions) {
   const configRef = useRef(config);
   const onManualWindowPositioningChangeRef = useRef(onManualWindowPositioningChange);
+  const onPinWindowChangeRef = useRef(onPinWindowChange);
+  const menuRef = useRef<Menu | null>(null);
 
   useEffect(() => {
     configRef.current = config;
     onManualWindowPositioningChangeRef.current = onManualWindowPositioningChange;
+    onPinWindowChangeRef.current = onPinWindowChange;
   });
 
   // Synchronize backend state whenever manualWindowPositioning config changes
@@ -47,6 +52,49 @@ export function useTrayEvents({
       );
     }
   }, [config.manualWindowPositioning, isConfigLoaded]);
+
+  // Synchronize backend state whenever pinWindow config changes (Linux)
+  useEffect(() => {
+    if (!isConfigLoaded) return;
+    if (platform() === "linux") {
+      invoke("update_pin_window", { enabled: config.pinWindow }).catch((err) =>
+        logger.error(`Failed to update pin window in backend: ${err}`),
+      );
+    }
+  }, [config.pinWindow, isConfigLoaded]);
+
+  // Keep the tray check items in sync when config changes elsewhere
+  // (e.g. the main view pin button).
+  useEffect(() => {
+    if (!isConfigLoaded) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    const syncCheckedState = async () => {
+      try {
+        const controlMenu = (await menu.get("control")) as Submenu | null;
+        if (!controlMenu) return;
+        const manualItem = (await controlMenu.get(
+          "manual_window_positioning",
+        )) as CheckMenuItem | null;
+        if (manualItem) {
+          const isChecked = await manualItem.isChecked();
+          if (isChecked !== configRef.current.manualWindowPositioning) {
+            await manualItem.setChecked(configRef.current.manualWindowPositioning);
+          }
+        }
+        const pinItem = (await controlMenu.get("pin_window")) as CheckMenuItem | null;
+        if (pinItem) {
+          const isChecked = await pinItem.isChecked();
+          if (isChecked !== configRef.current.pinWindow) {
+            await pinItem.setChecked(configRef.current.pinWindow);
+          }
+        }
+      } catch (err) {
+        logger.error(`Failed to sync tray menu checked state: ${err}`);
+      }
+    };
+    void syncCheckedState();
+  }, [config.manualWindowPositioning, config.pinWindow, isConfigLoaded]);
 
   useEffect(() => {
     if (!isConfigLoaded) return;
@@ -164,6 +212,19 @@ export function useTrayEvents({
                   onManualWindowPositioningChangeRef.current(isChecked);
                 },
               },
+              {
+                id: "pin_window",
+                text: "Pin window",
+                checked: configRef.current.pinWindow,
+                action: async (trayId: string) => {
+                  const controlMenu = (await menu?.get("control")) as Submenu | null;
+                  const thisMenu = (await controlMenu?.get(trayId)) as CheckMenuItem | null;
+                  if (!thisMenu) return;
+
+                  const isChecked = await thisMenu.isChecked();
+                  onPinWindowChangeRef.current(isChecked);
+                },
+              },
             ],
           },
           {
@@ -186,11 +247,15 @@ export function useTrayEvents({
           await tray.setMenu(menu);
           await tray.setShowMenuOnLeftClick(false);
         }
+        menuRef.current = menu;
       } else {
         if (cancelled) return;
         // Initialize Rust state
         await invoke("update_manual_positioning", {
           enabled: configRef.current.manualWindowPositioning,
+        });
+        await invoke("update_pin_window", {
+          enabled: configRef.current.pinWindow,
         });
 
         track(
@@ -210,6 +275,14 @@ export function useTrayEvents({
           }),
         );
 
+        track(
+          await listen("tray_menu_toggle_pin_window", async () => {
+            const isChecked = !configRef.current.pinWindow;
+            onPinWindowChangeRef.current(isChecked);
+            await invoke("update_pin_window", { enabled: isChecked });
+          }),
+        );
+
         track(await listen("tray_menu_about", openAboutWindow));
       }
     };
@@ -218,6 +291,7 @@ export function useTrayEvents({
 
     return () => {
       cancelled = true;
+      menuRef.current = null;
       for (const unlisten of unlistens.splice(0)) unlisten();
     };
   }, [isConfigLoaded]);
