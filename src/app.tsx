@@ -535,7 +535,7 @@ function App() {
               {/* Pin window */}
               <div className="pl-2 pt-0.5">
                 <Button
-                  className="group w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl p-0! text-foreground relative z-10"
+                  className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl p-0! text-foreground relative z-10"
                   onClick={() => setConfig((c) => ({ ...c, pinWindow: !c.pinWindow }))}
                   aria-label={config.pinWindow ? "Unpin window" : "Pin window"}
                   aria-pressed={config.pinWindow}
