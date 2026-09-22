@@ -721,13 +721,16 @@ fn record_history(app: &AppHandle, device: &MonitorDevice, infos: &[MonitorBatte
             );
         }
     }
-    let _ = app.emit(
-        HISTORY_EVENT,
-        HistoryEvent {
-            device_id: device.id.clone(),
-            records,
-        },
-    );
+    if crate::window::main_window_requested(app) {
+        let _ = app.emit_to(
+            "main",
+            HISTORY_EVENT,
+            HistoryEvent {
+                device_id: device.id.clone(),
+                records,
+            },
+        );
+    }
 }
 
 fn service() -> Result<MonitorService, String> {
@@ -1023,7 +1026,9 @@ impl MonitorCore {
         if let Ok(mut cache) = self.cache.write() {
             *cache = self.snapshot.clone();
         }
-        let _ = self.app.emit(STATE_EVENT, &self.snapshot);
+        if crate::window::main_window_requested(&self.app) {
+            let _ = self.app.emit_to("main", STATE_EVENT, &self.snapshot);
+        }
         let app = self.app.clone();
         let snapshot = self.snapshot.clone();
         tauri::async_runtime::spawn(async move {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 import { logger } from "@/utils/log";
@@ -24,8 +24,10 @@ export function useBatteryChartData(options: {
   const [grouped, setGrouped] = useState<GroupedHistory>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
 
   const load = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -38,6 +40,7 @@ export function useBatteryChartData(options: {
         sinceForFetch = new Date(customRange.start.getTime() - smoothingWindow).toISOString();
       }
       const records = await readBatteryHistory(device.name, device.id, sinceForFetch);
+      if (generation !== loadGeneration.current) return;
       const map = new Map<string, BatteryHistoryRecord[]>();
       for (const r of records) {
         if (r.battery_level === 0) continue; // Ignore 0%
@@ -47,16 +50,20 @@ export function useBatteryChartData(options: {
       }
       setGrouped(map);
     } catch (e) {
+      if (generation !== loadGeneration.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
       logger.warn(`Failed to load battery history: ${msg}`);
     } finally {
-      setIsLoading(false);
+      if (generation === loadGeneration.current) setIsLoading(false);
     }
   }, [device.name, device.id, rangeMs, customRange, smoothingWindow]);
 
   useEffect(() => {
-    load();
+    void load();
+    return () => {
+      loadGeneration.current += 1;
+    };
   }, [load]);
 
   // Apply new readings incrementally; fall back to a full reload for
@@ -86,6 +93,15 @@ export function useBatteryChartData(options: {
       unlistenPromise.then((unlisten) => unlisten());
     };
   }, [device.id, load]);
+
+  useEffect(() => {
+    const unlistenPromise = listen("main-window-shown", () => {
+      void load();
+    });
+    return () => {
+      unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, [load]);
 
   // ── Derived data ───────────────────────────────────
   const allKeys = useMemo(() => [...grouped.keys()], [grouped]);

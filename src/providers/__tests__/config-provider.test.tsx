@@ -10,22 +10,27 @@ import * as monitorModule from "../../utils/monitor";
 const mockListen = vi.fn();
 const mockUnlisten = vi.fn();
 let monitorStateHandler: ((event: { payload: monitorModule.MonitorSnapshot }) => void) | undefined;
+let mainWindowShownHandler: (() => void) | undefined;
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: (...args: unknown[]) => mockListen(...args),
 }));
 
-vi.mock("../../utils/monitor", () => ({
-  getMonitorState: vi.fn(),
-  updateMonitorConfig: vi.fn(),
-  addMonitorDevice: vi.fn(),
-  removeMonitorDevice: vi.fn(),
-  setMonitorDeviceDisplayName: vi.fn(),
-  setMonitorPartLabel: vi.fn(),
-  setMonitorDeviceCollapsed: vi.fn(),
-  reorderMonitorDevices: vi.fn(),
-  reloadMonitor: vi.fn(),
-}));
+vi.mock("../../utils/monitor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/monitor")>();
+  return {
+    ...actual,
+    getMonitorState: vi.fn(),
+    updateMonitorConfig: vi.fn(),
+    addMonitorDevice: vi.fn(),
+    removeMonitorDevice: vi.fn(),
+    setMonitorDeviceDisplayName: vi.fn(),
+    setMonitorPartLabel: vi.fn(),
+    setMonitorDeviceCollapsed: vi.fn(),
+    reorderMonitorDevices: vi.fn(),
+    reloadMonitor: vi.fn(),
+  };
+});
 
 vi.mock("@/utils/log", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -96,17 +101,24 @@ describe("ConfigContext", () => {
     mockListen.mockReset();
     mockUnlisten.mockReset();
     monitorStateHandler = undefined;
+    mainWindowShownHandler = undefined;
     mockListen.mockImplementation(
       async (
         event: string,
-        handler: (event: { payload: monitorModule.MonitorSnapshot }) => void,
+        handler: ((event: { payload: monitorModule.MonitorSnapshot }) => void) | (() => void),
       ) => {
         if (event === "monitor-state-changed") {
-          monitorStateHandler = handler;
+          monitorStateHandler = handler as (event: {
+            payload: monitorModule.MonitorSnapshot;
+          }) => void;
+        }
+        if (event === "main-window-shown") {
+          mainWindowShownHandler = handler as () => void;
         }
         return mockUnlisten;
       },
     );
+    delete window.__INITIAL_MONITOR_STATE__;
   });
 
   it("hydrates config and devices from the canonical monitor snapshot", async () => {
@@ -126,6 +138,111 @@ describe("ConfigContext", () => {
     expect(screen.getByTestId("fetchInterval").textContent).toBe("auto");
     expect(screen.getByTestId("device-count").textContent).toBe("1");
     expect(monitorModule.getMonitorState).toHaveBeenCalledOnce();
+  });
+
+  it("bootstraps synchronously from the injected monitor snapshot", async () => {
+    const initial = snapshot(7, {
+      config: { ...defaultConfig, theme: "light", fetchInterval: "auto" },
+      devices: [],
+    });
+    window.__INITIAL_MONITOR_STATE__ = initial;
+    vi.mocked(monitorModule.getMonitorState).mockResolvedValue(
+      snapshot(7, { config: { ...defaultConfig, theme: "dark" }, devices: [] }),
+    );
+
+    renderWithProviders(<ConfigDisplay />);
+
+    expect(screen.getByTestId("loaded").textContent).toBe("yes");
+    expect(screen.getByTestId("hydration-settled").textContent).toBe("yes");
+    expect(screen.getByTestId("theme").textContent).toBe("light");
+    await waitFor(() => expect(monitorModule.getMonitorState).toHaveBeenCalledOnce());
+    expect(document.documentElement.classList.contains("light")).toBe(true);
+  });
+
+  it("skips the injected snapshot during a browser reload", async () => {
+    const navigationSpy = vi.spyOn(window.performance, "getEntriesByType").mockReturnValue([
+      {
+        type: "reload",
+      } as PerformanceNavigationTiming,
+    ]);
+    window.__INITIAL_MONITOR_STATE__ = snapshot(10, {
+      config: { ...defaultConfig, theme: "light" },
+      devices: [],
+    });
+
+    renderWithProviders(<ConfigDisplay />);
+
+    expect(screen.getByTestId("loaded").textContent).toBe("no");
+    expect(screen.getByTestId("hydration-settled").textContent).toBe("no");
+    await waitFor(() => expect(screen.getByTestId("loaded").textContent).toBe("yes"));
+    expect(screen.getByTestId("theme").textContent).toBe("dark");
+    navigationSpy.mockRestore();
+  });
+
+  it("keeps a newer event when the bootstrap reconciliation response is stale", async () => {
+    let resolveMonitorState!: (value: monitorModule.MonitorSnapshot) => void;
+    vi.mocked(monitorModule.getMonitorState).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveMonitorState = resolve;
+      }),
+    );
+    window.__INITIAL_MONITOR_STATE__ = snapshot(10);
+
+    renderWithProviders(<ConfigDisplay />);
+    await waitFor(() => expect(mockListen).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      monitorStateHandler?.({
+        payload: snapshot(11, { config: { ...defaultConfig, theme: "light" }, devices: [] }),
+      });
+    });
+    resolveMonitorState(snapshot(9, { config: { ...defaultConfig, theme: "dark" }, devices: [] }));
+    await waitFor(() => expect(screen.getByTestId("device-count").textContent).toBe("0"));
+
+    expect(screen.getByTestId("theme").textContent).toBe("light");
+  });
+
+  it("fetches fresh state on show without waiting for a pre-suspend request", async () => {
+    let resolveInitial!: (value: monitorModule.MonitorSnapshot) => void;
+    vi.mocked(monitorModule.getMonitorState)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveInitial = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(
+        snapshot(12, { config: { ...defaultConfig, theme: "light" }, devices: [] }),
+      );
+    window.__INITIAL_MONITOR_STATE__ = snapshot(10);
+
+    renderWithProviders(<ConfigDisplay />);
+    await waitFor(() => expect(monitorModule.getMonitorState).toHaveBeenCalledOnce());
+
+    await act(async () => {
+      mainWindowShownHandler?.();
+    });
+
+    await waitFor(() => expect(monitorModule.getMonitorState).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("device-count").textContent).toBe("0"));
+    await act(async () => resolveInitial(snapshot(10)));
+    expect(screen.getByTestId("device-count").textContent).toBe("0");
+    expect(screen.getByTestId("theme").textContent).toBe("light");
+  });
+
+  it("refreshes once when the main window is shown again", async () => {
+    renderWithProviders(<ConfigDisplay />);
+    await waitFor(() => expect(screen.getByTestId("loaded").textContent).toBe("yes"));
+    vi.mocked(monitorModule.getMonitorState).mockClear();
+    vi.mocked(monitorModule.getMonitorState).mockResolvedValue(
+      snapshot(2, { config: { ...defaultConfig, theme: "light" }, devices: [] }),
+    );
+
+    await act(async () => {
+      mainWindowShownHandler?.();
+    });
+
+    await waitFor(() => expect(monitorModule.getMonitorState).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByTestId("theme").textContent).toBe("light"));
   });
 
   it("settles hydration and exposes the load error when the snapshot cannot be loaded", async () => {
@@ -205,7 +322,7 @@ describe("ConfigContext", () => {
     );
 
     view.unmount();
-    await waitFor(() => expect(mockUnlisten).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockUnlisten).toHaveBeenCalledTimes(2));
   });
 
   it("throws when used outside ConfigProvider", () => {

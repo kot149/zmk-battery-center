@@ -17,6 +17,7 @@ import type { BleDeviceInfo } from "@/utils/ble";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 import {
   addMonitorDevice,
+  getInitialMonitorState,
   getMonitorState,
   reloadMonitor as reloadMonitorState,
   removeMonitorDevice,
@@ -68,10 +69,12 @@ function configPatch(previous: Config, next: Config): MonitorConfigPatch {
 }
 
 export const ConfigProvider = ({ children }: { children: ReactNode }) => {
-  const [snapshot, setSnapshot] = useState<MonitorSnapshot | null>(null);
-  const [isMonitorHydrationSettled, setIsMonitorHydrationSettled] = useState(false);
+  const [snapshot, setSnapshot] = useState<MonitorSnapshot | null>(getInitialMonitorState);
+  const [isMonitorHydrationSettled, setIsMonitorHydrationSettled] = useState(
+    () => snapshot !== null,
+  );
   const [monitorError, setMonitorError] = useState<string | null>(null);
-  const snapshotRef = useRef<MonitorSnapshot | null>(null);
+  const snapshotRef = useRef<MonitorSnapshot | null>(snapshot);
   const { setTheme } = useTheme();
 
   const applySnapshot = useCallback(
@@ -93,6 +96,12 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
     [setTheme],
   );
 
+  useEffect(() => {
+    if (snapshot) {
+      setTheme(snapshot.config.theme as Theme);
+    }
+  }, [setTheme, snapshot]);
+
   const runMonitorCommand = useCallback(
     async (command: () => Promise<MonitorSnapshot>): Promise<void> => {
       try {
@@ -108,53 +117,84 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false;
-    let unlisten: (() => void) | undefined;
+    const unlisteners: Array<() => void> = [];
+    const subscriptionErrors: string[] = [];
+
+    const refreshMonitorState = async (): Promise<MonitorSnapshot | null> => {
+      if (cancelled) return null;
+      try {
+        const next = await getMonitorState();
+        if (!cancelled) {
+          applySnapshot(next);
+        }
+        return next;
+      } catch (error: unknown) {
+        if (!cancelled) {
+          const message = `Failed to load monitor state: ${errorMessage(error)}`;
+          logger.error(message);
+          setMonitorError(message);
+        }
+        return null;
+      }
+    };
+
+    const subscribe = <T,>(
+      eventName: string,
+      handler: (event: { payload: T }) => void,
+      errorMessagePrefix: string,
+    ) =>
+      listen<T>(eventName, handler)
+        .then((unlisten) => {
+          if (cancelled) {
+            unlisten();
+          } else {
+            unlisteners.push(unlisten);
+          }
+        })
+        .catch((error: unknown) => {
+          const message = `${errorMessagePrefix}: ${errorMessage(error)}`;
+          subscriptionErrors.push(message);
+          logger.error(message);
+        });
 
     const subscribeAndHydrate = async () => {
-      let subscriptionError: string | null = null;
-
-      try {
-        const registeredUnlisten = await listen<MonitorSnapshot>(
+      await Promise.all([
+        subscribe<MonitorSnapshot>(
           "monitor-state-changed",
           (event) => {
             if (!cancelled) {
               applySnapshot(event.payload);
             }
           },
-        );
-
-        if (cancelled) {
-          registeredUnlisten();
-          return;
-        }
-        unlisten = registeredUnlisten;
-      } catch (error) {
-        subscriptionError = `Failed to subscribe to monitor state: ${errorMessage(error)}`;
-        logger.error(subscriptionError);
+          "Failed to subscribe to monitor state",
+        ),
+        subscribe<void>(
+          "main-window-shown",
+          () => {
+            void refreshMonitorState();
+          },
+          "Failed to subscribe to main window shown event",
+        ),
+      ]);
+      if (cancelled) {
+        return;
       }
 
-      try {
-        const initial = await getMonitorState();
-        if (!cancelled) {
-          applySnapshot(initial);
-          if (subscriptionError) {
-            setMonitorError(subscriptionError);
-          }
-        }
-      } catch (error) {
-        if (!cancelled) {
-          const message = `Failed to load monitor state: ${errorMessage(error)}`;
-          logger.error(message);
-          setMonitorError(message);
-          setIsMonitorHydrationSettled(true);
-        }
+      const initial = await refreshMonitorState();
+      if (!cancelled && initial && subscriptionErrors.length > 0) {
+        setMonitorError(subscriptionErrors.join("; "));
+      }
+      if (!cancelled && initial === null) {
+        setIsMonitorHydrationSettled(true);
       }
     };
 
     void subscribeAndHydrate();
     return () => {
       cancelled = true;
-      unlisten?.();
+      for (const unlisten of unlisteners) {
+        unlisten();
+      }
     };
   }, [applySnapshot]);
 

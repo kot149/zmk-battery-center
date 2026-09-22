@@ -224,6 +224,61 @@ describe("BatteryHistoryChart", () => {
     });
   });
 
+  it("reloads history when the main window is shown", async () => {
+    mockReadBatteryHistory.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        timestamp: "2026-01-01T00:00:00.000Z",
+        user_description: "Central",
+        battery_level: 80,
+      },
+    ]);
+    renderChart();
+
+    await waitFor(() => {
+      expect(mockListen).toHaveBeenCalledWith("main-window-shown", expect.any(Function));
+    });
+    const handler = mockListen.mock.calls.find((call) => call[0] === "main-window-shown")?.[1] as
+      | (() => void)
+      | undefined;
+    expect(handler).toBeDefined();
+
+    await act(async () => {
+      handler?.();
+    });
+
+    await waitFor(() => {
+      expect(mockReadBatteryHistory).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("does not let a pre-suspend load overwrite refreshed history", async () => {
+    let resolveOld!: (records: unknown[]) => void;
+    mockReadBatteryHistory
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+      )
+      .mockResolvedValueOnce([
+        {
+          timestamp: new Date().toISOString(),
+          user_description: "Central",
+          battery_level: 80,
+        },
+      ]);
+    renderChart();
+    await waitFor(() => expect(mockReadBatteryHistory).toHaveBeenCalledOnce());
+    const handlers = mockListen.mock.calls
+      .filter((call) => call[0] === "main-window-shown")
+      .map((call) => call[1] as () => void);
+    await act(async () => {
+      handlers.forEach((handler) => handler());
+    });
+    await waitFor(() => expect(screen.getByTestId("line-chart")).toBeTruthy());
+    await act(async () => resolveOld([]));
+    expect(screen.getByTestId("line-chart")).toBeTruthy();
+  });
+
   it("cleans up battery-history-updated listener on unmount", async () => {
     mockReadBatteryHistory.mockResolvedValue([]);
     const view = renderChart();

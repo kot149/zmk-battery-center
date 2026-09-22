@@ -108,8 +108,11 @@ describe("App", () => {
     renderApp();
 
     expect(screen.getByText("Keyboard")).toBeTruthy();
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("window_ready"));
-    expect(mocks.resizeWindowToContent).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("window_ready", { width: 0, height: 0 }),
+    );
+    expect(mocks.resizeWindowToContent).not.toHaveBeenCalled();
+    expect(mocks.moveWindowToTrayCenter).not.toHaveBeenCalled();
   });
 
   it("reveals the window when monitor hydration fails", async () => {
@@ -121,15 +124,41 @@ describe("App", () => {
     renderApp();
 
     expect(screen.getByRole("alert").textContent).toContain("backend unavailable");
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("window_ready"));
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("window_ready", { width: 0, height: 0 }),
+    );
   });
 
-  it("reveals the window even when content resize fails", async () => {
-    mocks.resizeWindowToContent.mockRejectedValueOnce(new Error("resize failed"));
+  it("sends measured content dimensions with readiness", async () => {
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(360);
+    const height = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(240);
+    try {
+      renderApp();
+      await waitFor(() =>
+        expect(mocks.invoke).toHaveBeenCalledWith("window_ready", { width: 360, height: 240 }),
+      );
+    } finally {
+      width.mockRestore();
+      height.mockRestore();
+    }
+  });
 
+  it("waits for hydration before signaling readiness", async () => {
+    mocks.context.isMonitorHydrationSettled = false;
     renderApp();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
 
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("window_ready"));
+  it("resizes subsequent layouts without revealing the window again", async () => {
+    const user = userEvent.setup();
+    renderApp();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce());
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await waitFor(() => expect(mocks.resizeWindowToContent).toHaveBeenCalled());
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "window_ready")).toHaveLength(
+      1,
+    );
   });
 
   it("retries readiness after a native reveal error", async () => {

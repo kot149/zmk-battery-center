@@ -238,6 +238,24 @@ function App() {
     const resizeAndReady = async () => {
       if (!isMonitorHydrationSettled) return;
 
+      if (!windowReadyRef.current) {
+        const content = document.getElementById("app");
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          if (cancelled) return;
+          try {
+            await invoke("window_ready", {
+              width: content?.clientWidth ?? 0,
+              height: content?.clientHeight ?? 0,
+            });
+            windowReadyRef.current = true;
+            return;
+          } catch (caughtError: unknown) {
+            logger.error(`Failed to signal main window readiness: ${errorMessage(caughtError)}`);
+          }
+        }
+        return;
+      }
+
       try {
         await resizeWindowToContent();
       } catch (caughtError: unknown) {
@@ -250,18 +268,6 @@ function App() {
           await moveWindowToTrayCenter();
         } catch (caughtError: unknown) {
           logger.error(`Failed to position main window: ${errorMessage(caughtError)}`);
-        }
-      }
-
-      if (cancelled || windowReadyRef.current) return;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        if (cancelled) return;
-        try {
-          await invoke("window_ready");
-          windowReadyRef.current = true;
-          return;
-        } catch (caughtError: unknown) {
-          logger.error(`Failed to signal main window readiness: ${errorMessage(caughtError)}`);
         }
       }
     };

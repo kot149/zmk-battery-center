@@ -1,15 +1,16 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::Duration;
-use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_positioner::{Position, WindowExt};
 #[cfg(target_os = "windows")]
 use windows::UI::ViewManagement::UISettings;
+
+#[cfg(target_os = "windows")]
+mod suspension;
 
 #[derive(Default)]
 pub struct WindowState {
     requested_visible: AtomicBool,
     ready: AtomicBool,
-    closing: AtomicBool,
     generation: AtomicU64,
     pub tray_position_known: AtomicBool,
 }
@@ -35,7 +36,15 @@ fn position_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Resul
     Ok(())
 }
 
+pub fn main_window_requested(app: &AppHandle) -> bool {
+    app.state::<WindowState>()
+        .requested_visible
+        .load(Ordering::SeqCst)
+}
+
 fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<()> {
+    #[cfg(target_os = "windows")]
+    suspension::resume(window);
     let config = crate::monitor::current_config(app);
     if let Err(error) = window.set_always_on_top(config["pinWindow"].as_bool().unwrap_or(false)) {
         log::warn!("Failed to set main window pin state: {error}");
@@ -44,7 +53,11 @@ fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
         log::warn!("Failed to position main window: {error}");
     }
     window.show()?;
-    window.set_focus()
+    if let Err(error) = window.set_focus() {
+        log::warn!("Failed to focus main window: {error}");
+    }
+    let _ = app.emit_to("main", "main-window-shown", ());
+    Ok(())
 }
 
 pub fn show_main_window(app: &AppHandle) {
@@ -53,9 +66,6 @@ pub fn show_main_window(app: &AppHandle) {
         let state = handle.state::<WindowState>();
         state.generation.fetch_add(1, Ordering::SeqCst);
         state.requested_visible.store(true, Ordering::SeqCst);
-        if state.closing.load(Ordering::SeqCst) {
-            return;
-        }
         if let Some(window) = handle.get_webview_window("main") {
             if state.ready.load(Ordering::SeqCst) {
                 if let Err(error) = reveal_main_window(&handle, &window) {
@@ -66,7 +76,17 @@ pub fn show_main_window(app: &AppHandle) {
         }
         state.ready.store(false, Ordering::SeqCst);
         let result = WebviewWindowBuilder::from_config(&handle, &handle.config().app.windows[0])
-            .and_then(|builder| builder.visible(false).build());
+            .and_then(|builder| {
+                let builder = if let Some(snapshot) = crate::monitor::current_snapshot() {
+                    builder.initialization_script(format!(
+                        "window.__INITIAL_MONITOR_STATE__ = {};",
+                        serde_json::to_string(&snapshot)?
+                    ))
+                } else {
+                    builder
+                };
+                builder.visible(false).build()
+            });
         if let Err(error) = result {
             state.requested_visible.store(false, Ordering::SeqCst);
             log::error!("Failed to create main window: {error}");
@@ -79,66 +99,41 @@ pub fn show_main_window(app: &AppHandle) {
 pub fn hide_main_window(app: &AppHandle) {
     let handle = app.clone();
     if let Err(error) = app.run_on_main_thread(move || {
-        let state = handle.state::<WindowState>();
-        state.requested_visible.store(false, Ordering::SeqCst);
-        let generation = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
         if let Some(window) = handle.get_webview_window("main") {
             if let Err(error) = window.hide() {
                 log::error!("Failed to hide main window: {error}");
                 return;
             }
         }
-        // Allow pending IPC writes to finish and quick tray clicks to reuse the view.
-        tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let app = handle.clone();
-            let _ = handle.run_on_main_thread(move || {
-                let state = app.state::<WindowState>();
-                if should_release(
-                    generation,
-                    state.generation.load(Ordering::SeqCst),
-                    state.requested_visible.load(Ordering::SeqCst),
-                ) {
-                    if let Some(window) = app.get_webview_window("main") {
-                        state.closing.store(true, Ordering::SeqCst);
-                        if let Err(error) = window.destroy() {
-                            state.closing.store(false, Ordering::SeqCst);
-                            log::warn!("Failed to release main WebView: {error}");
-                        } else {
-                            state.ready.store(false, Ordering::SeqCst);
-                            log::debug!("Released hidden main WebView");
-                        }
-                    }
-                }
-            });
-        });
+        let state = handle.state::<WindowState>();
+        state.requested_visible.store(false, Ordering::SeqCst);
+        state.generation.fetch_add(1, Ordering::SeqCst);
+        #[cfg(target_os = "windows")]
+        suspension::schedule(&handle);
     }) {
         log::error!("Failed to schedule main window dismissal: {error}");
     }
 }
 
-fn should_release(scheduled_generation: u64, current_generation: u64, visible: bool) -> bool {
-    scheduled_generation == current_generation && !visible
+#[cfg(any(target_os = "windows", test))]
+fn should_suspend(
+    scheduled_generation: u64,
+    current_generation: u64,
+    visible: bool,
+    ready: bool,
+) -> bool {
+    scheduled_generation == current_generation && !visible && ready
 }
 
 pub fn on_main_destroyed(app: &AppHandle) {
     let state = app.state::<WindowState>();
+    state.generation.fetch_add(1, Ordering::SeqCst);
     state.ready.store(false, Ordering::SeqCst);
-    state.closing.store(false, Ordering::SeqCst);
-    if state.requested_visible.load(Ordering::SeqCst) {
-        let app = app.clone();
-        tauri::async_runtime::spawn(async move {
-            show_main_window(&app);
-        });
-    }
+    state.requested_visible.store(false, Ordering::SeqCst);
 }
 
 pub fn toggle_main_window(app: &AppHandle) {
-    if app
-        .state::<WindowState>()
-        .requested_visible
-        .load(Ordering::SeqCst)
-    {
+    if main_window_requested(app) {
         hide_main_window(app);
     } else {
         show_main_window(app);
@@ -146,15 +141,24 @@ pub fn toggle_main_window(app: &AppHandle) {
 }
 
 pub fn refresh_main_window(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        app.state::<WindowState>()
-            .ready
-            .store(false, Ordering::SeqCst);
-        if let Err(error) = window.reload() {
-            log::warn!("Failed to reload main window: {error}");
+    let handle = app.clone();
+    if let Err(error) = app.run_on_main_thread(move || {
+        if let Some(window) = handle.get_webview_window("main") {
+            let state = handle.state::<WindowState>();
+            state.generation.fetch_add(1, Ordering::SeqCst);
+            state.requested_visible.store(true, Ordering::SeqCst);
+            #[cfg(target_os = "windows")]
+            suspension::resume(&window);
+            let was_ready = state.ready.swap(false, Ordering::SeqCst);
+            if let Err(error) = window.reload() {
+                state.ready.store(was_ready, Ordering::SeqCst);
+                log::warn!("Failed to reload main window: {error}");
+            }
         }
+        show_main_window(&handle);
+    }) {
+        log::error!("Failed to schedule main window reload: {error}");
     }
-    show_main_window(app);
 }
 
 pub fn show_about_window(app: &AppHandle) {
@@ -189,7 +193,12 @@ pub async fn dismiss_main_window(app: AppHandle) {
 }
 
 #[tauri::command]
-pub async fn window_ready(app: AppHandle, window: WebviewWindow) -> Result<(), String> {
+pub async fn window_ready(
+    app: AppHandle,
+    window: WebviewWindow,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
     if window.label() != "main" {
         return Ok(());
     }
@@ -197,20 +206,49 @@ pub async fn window_ready(app: AppHandle, window: WebviewWindow) -> Result<(), S
     let (reply, result) = tokio::sync::oneshot::channel();
     app.run_on_main_thread(move || {
         let state = handle.state::<WindowState>();
-        if state.closing.load(Ordering::SeqCst) {
-            let _ = reply.send(Err("Main window is closing".to_string()));
-            return;
+        if let Err(error) = resize_main_window(&window, width, height) {
+            log::warn!("Failed to size main window: {error}");
         }
         state.ready.store(true, Ordering::SeqCst);
         let revealed = if state.requested_visible.load(Ordering::SeqCst) {
             reveal_main_window(&handle, &window).map_err(|error| error.to_string())
         } else {
+            #[cfg(target_os = "windows")]
+            suspension::schedule(&handle);
             Ok(())
         };
         let _ = reply.send(revealed);
     })
     .map_err(|error| error.to_string())?;
     result.await.map_err(|error| error.to_string())?
+}
+
+fn resize_main_window(window: &WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+    let size = content_size(
+        width,
+        height,
+        get_windows_text_scale_factor(),
+        cfg!(target_os = "linux"),
+    )?;
+    window.set_size(size).map_err(|error| error.to_string())
+}
+
+fn content_size(
+    width: f64,
+    height: f64,
+    scale: f64,
+    linux: bool,
+) -> Result<tauri::LogicalSize<f64>, String> {
+    if [width, height, scale]
+        .iter()
+        .any(|value| !value.is_finite() || *value <= 0.0)
+    {
+        return Err("Content dimensions and scale must be positive and finite".into());
+    }
+    // GTK client-side decorations add a shadow margin outside the content.
+    let width = width * scale + if linux { 16.0 } else { 0.0 };
+    let height = height * scale + if linux { 8.0 } else { 0.0 };
+    Ok(tauri::LogicalSize::new(width, height))
 }
 
 #[tauri::command]
@@ -255,13 +293,35 @@ pub fn get_windows_text_scale_factor() -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::should_release;
+    use super::{content_size, should_suspend};
 
     #[test]
-    fn releases_only_the_current_hidden_window() {
-        assert!(should_release(1, 1, false));
-        assert!(!should_release(1, 2, false));
-        assert!(!should_release(1, 1, true));
-        assert!(!should_release(1, 2, true));
+    fn suspends_only_the_current_ready_hidden_window() {
+        assert!(should_suspend(1, 1, false, true));
+        assert!(!should_suspend(1, 2, false, true));
+        assert!(!should_suspend(1, 1, true, true));
+        assert!(!should_suspend(1, 2, true, true));
+        assert!(!should_suspend(1, 1, false, false));
+    }
+
+    #[test]
+    fn scales_content_and_preserves_linux_shadow_margins() {
+        assert_eq!(
+            content_size(360.0, 200.0, 1.25, false).unwrap(),
+            tauri::LogicalSize::new(450.0, 250.0)
+        );
+        assert_eq!(
+            content_size(360.0, 200.0, 1.0, true).unwrap(),
+            tauri::LogicalSize::new(376.0, 208.0)
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_content_dimensions() {
+        for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            assert!(content_size(invalid, 200.0, 1.0, false).is_err());
+            assert!(content_size(360.0, invalid, 1.0, false).is_err());
+            assert!(content_size(360.0, 200.0, invalid, false).is_err());
+        }
     }
 }

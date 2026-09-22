@@ -9,6 +9,29 @@ export type MonitorSnapshot = {
   devices: RegisteredDevice[];
 };
 
+declare global {
+  interface Window {
+    __INITIAL_MONITOR_STATE__?: MonitorSnapshot;
+  }
+}
+
+export function getInitialMonitorState(): MonitorSnapshot | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const navigationEntries =
+    typeof window.performance?.getEntriesByType === "function"
+      ? window.performance.getEntriesByType("navigation")
+      : [];
+  const navigationType = (navigationEntries[0] as PerformanceNavigationTiming | undefined)?.type;
+  if (navigationType === "reload") {
+    return null;
+  }
+
+  return window.__INITIAL_MONITOR_STATE__ ?? null;
+}
+
 export type MonitorConfigPatch = Partial<Config>;
 
 export function getMonitorState(): Promise<MonitorSnapshot> {
