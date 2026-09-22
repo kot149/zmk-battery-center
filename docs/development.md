@@ -46,6 +46,12 @@
      bun tauri build --target x86_64-apple-darwin
      ```
 
+## Background monitoring and window lifetime
+
+Rust owns device state, polling, BLE subscriptions, battery history, notifications, external snapshots, and tray actions. The process starts without a main WebView. A tray action creates the window and injects the current monitor snapshot into its initialization script. The frontend subscribes to `monitor-state-changed` before requesting `get_monitor_state`; revisions prevent an older response from replacing a newer event.
+
+UI edits use narrow `monitor_*` commands. They do not write device snapshots or config files independently. Existing `config.json` and `devices.json` formats are retained. The main window is revealed after hydration and layout, or with an error message if hydration fails. Hiding or closing it retains the WebView on all platforms, and monitoring continues. On Windows, after one hidden second the app sets the WebView2 controller invisible and calls `TrySuspend` on a best-effort basis; the runtime can decline or fail suspension. Reopening resumes the controller and makes it visible before showing the window. Background monitor and history events are not delivered to a hidden window; `main-window-shown` triggers a fresh monitor snapshot and battery-history read. About is a separate window and stays alive until closed.
+
 ## Frontend file conventions
 
 - TypeScript and TSX filenames use kebab-case.
@@ -91,6 +97,19 @@ Layer 1 E2E does not launch a Tauri shell, so that directory is not read by the 
    ```sh
    bun run test:e2e -g "first launch"
    ```
+
+### Windows window-lifecycle test
+
+Build an isolated debug app, then exercise the real tray and WebView2:
+
+```sh
+bun tauri build --debug --no-bundle --config '{"identifier":"com.zmk-battery-center.lifecycle-test"}'
+bun scripts/test_window_lifecycle.ts
+```
+
+This test uses a fresh fixture directory under `test-results/`, leaves an installed instance alone, and stops only the process it launches. It verifies headless startup, tray-driven opening, quick-reopen reuse, a retained WebView across suspension and reopening, continued background snapshot publication, UI state reconciliation, and the native close action. It records the native suspension result, screenshots, and whole-process-tree working-set/private-byte measurements. The `webviews` metric counts descendant WebView2 processes, not retained controllers, so the DOM marker and native result verify the lifecycle instead. Open timings include CDP connection and visibility checks, so they are not pure paint latency. An invalid fixture BLE ID exercises disconnected-device handling without requiring hardware; successful BLE reads and OS notifications still need a real keyboard.
+
+The test opens a local WebView2 debugging port only for its own process. `window_test_driver.ps1` sends tray-icon's Windows mouse callback to that process; update its message constant if the tray-icon backend changes.
 
 ### Smoke test for built app launch
 
@@ -139,18 +158,16 @@ Recommended stack:
 Primary unit targets:
 
 - `src/app.tsx`
-  - `upsertBatteryInfo`: insert vs update by `user_description`, keep previous value when new `battery_level` is `null`.
-  - `mergeBatteryInfos`: preserve previous `battery_level` only when incoming value is `null`.
-  - `normalizeLoadedDevices`: legacy key compatibility (`user_descriptor`), `DeviceId("...")` normalization, invalid shapes fallback.
-- `src/utils/config.ts`
-  - `loadSavedConfig`: defaults are merged correctly.
-  - `setConfig`: autostart enable/disable logic, notification permission request behavior.
+  - Render the backend device snapshot and route user actions to narrow monitor commands.
+  - Reveal the main window only after state hydration and layout.
+- `src/utils/monitor.ts`
+  - Send the expected command names and arguments for device/config mutations.
 - `src/utils/battery-history.ts`
   - `appendBatteryHistory` sends expected payload to Tauri `invoke`.
   - `readBatteryHistory` returns typed records and passes IDs correctly.
 - `src/providers/config-provider.tsx`
-  - initial load updates context + emits `config-changed`.
-  - `update-config` listener merges partial updates and avoids event loop.
+  - Subscribe before hydration and reject stale revisions.
+  - Apply native config/device events and recover from failed writes.
 - `src/components/*`
   - `RegisteredDevicesPanel`: renders multiple devices, remove callback wiring.
   - `DateRangePicker` / `BatteryHistoryChart`: range changes and empty data rendering.
@@ -170,6 +187,12 @@ Recommended stack:
 
 Primary unit targets:
 
+- `src-tauri/src/monitor.rs`
+  - Normalize legacy config/devices and preserve previous battery values after failed reads.
+  - Detect threshold edges by array index and honor notification settings.
+  - Ignore stale I/O results after mode or device changes; keep IPC responsive during BLE reads.
+- `src-tauri/src/window.rs`
+  - Suspend only the current ready hidden window, never a reopened one.
 - `src-tauri/src/history.rs`
   - `safe_filename`: sanitizes special characters and preserves allowed characters.
   - append/read round-trip for CSV records.
@@ -205,13 +228,12 @@ Core scenarios:
    - adding device renders it in list with battery info
    - removing device updates UI and persistence payload
 3. Polling mode
-   - settings set fixed interval
-   - periodic refresh updates battery level
-   - low battery transition triggers notification call once per transition
+   - settings update the backend interval
+   - backend snapshots refresh battery levels without a frontend timer
 4. Notification monitor mode (`fetchInterval = auto`)
-   - monitor starts when device is registered
-   - `battery-info-notification` event updates matching device row
-   - disconnected/connected status events update state and notification behavior
+   - settings select backend BLE subscriptions
+   - native state events update matching device rows and connection status
+   - the frontend does not duplicate backend notifications
 5. Persistence and reload
    - saved devices/config are loaded on next app start
    - legacy device payload shape is normalized correctly
@@ -221,13 +243,9 @@ Core scenarios:
 
 #### Layer 2: Desktop integration E2E on real Tauri shell (scheduled or manual)
 
-> **Status: planned, not implemented.** Nothing in this repository runs Layer 2 today — this section is a design sketch. Layer 1 (mocked Playwright E2E in `e2e/`) is the only implemented E2E layer.
+The Windows lifecycle test above drives a real Tauri shell and WebView2 through the native tray callback and Playwright CDP. It covers process lifetime, on-demand creation, WebView retention, background suspension, and state recovery. Broader tray menu coverage and macOS/Linux desktop automation remain manual.
 
 Purpose: cover integration points that browser-only tests cannot validate.
-
-Recommended stack:
-
-- Tauri WebDriver-based flow (for example, `tauri-driver`) on Windows/macOS runners
 
 Core scenarios:
 
