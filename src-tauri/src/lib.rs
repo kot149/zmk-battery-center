@@ -7,6 +7,7 @@ mod common;
 mod external_integration;
 mod history;
 mod licenses;
+mod monitor;
 mod storage;
 mod tray;
 mod tray_battery_payload;
@@ -83,6 +84,18 @@ pub fn run() {
             external_integration::start_external_battery_source_session,
             external_integration::publish_external_battery_snapshot,
             window::get_windows_text_scale_factor,
+            window::dismiss_main_window,
+            window::window_ready,
+            window::position_main_window_at_tray,
+            monitor::get_monitor_state,
+            monitor::monitor_update_config,
+            monitor::monitor_add_device,
+            monitor::monitor_remove_device,
+            monitor::monitor_set_device_display_name,
+            monitor::monitor_set_part_label,
+            monitor::monitor_set_device_collapsed,
+            monitor::monitor_reorder_devices,
+            monitor::monitor_reload,
             licenses::get_licenses,
             storage::get_dev_store_path,
             history::append_battery_history,
@@ -95,10 +108,14 @@ pub fn run() {
             app.manage(tray::TrayState {
                 manual_positioning: std::sync::atomic::AtomicBool::new(false),
                 pin_window: std::sync::atomic::AtomicBool::new(false),
+                #[cfg(not(target_os = "linux"))]
+                checks: std::sync::Mutex::new(None),
                 #[cfg(target_os = "linux")]
                 tray_handle: std::sync::Mutex::new(None),
             });
 
+            app.manage(window::WindowState::default());
+            monitor::initialize(app.handle()).map_err(std::io::Error::other)?;
             tray::init_tray(app.handle().clone());
 
             #[cfg(target_os = "macos")]
@@ -108,6 +125,25 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|window, event| {
+            if window.label() == "main" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    window::hide_main_window(window.app_handle());
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested {
+                api, code: None, ..
+            } => api.prevent_exit(),
+            tauri::RunEvent::WindowEvent {
+                label,
+                event: tauri::WindowEvent::Destroyed,
+                ..
+            } if label == "main" => window::on_main_destroyed(app),
+            _ => {}
+        });
 }

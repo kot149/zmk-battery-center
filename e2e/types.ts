@@ -38,6 +38,7 @@ declare global {
   interface Window {
     __E2E_TAURI_SEED__?: MockSeed;
     __e2eTauriMock: {
+      emit: (eventName: string, payload: unknown) => Promise<void>;
       emitBatteryInfo: (id: string, batteryInfo: MockBatteryInfo) => Promise<void>;
       emitMonitorStatus: (id: string, connected: boolean) => Promise<void>;
       readStore: (path: string) => MockStoreData;

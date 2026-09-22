@@ -12,9 +12,15 @@ test("first launch shows no registered devices", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "No devices registered" })).toBeVisible();
 });
 
-test("add device flow from modal list", async ({ page }) => {
+test("add device flow uses the canonical monitor command", async ({ page }) => {
   await addFirstDevice(page);
   await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
+
+  const monitorAddCalls = await page.evaluate(() =>
+    window.__e2eTauriMock.getInvocations().filter((entry) => entry.cmd === "monitor_add_device"),
+  );
+  expect(monitorAddCalls).toHaveLength(1);
+  expect(monitorAddCalls[0]?.args?.device).toEqual({ id: "kbd-1", name: "MockBoard One" });
 });
 
 test.describe("add device modal with no devices", () => {
@@ -33,147 +39,19 @@ test.describe("add device modal with no devices", () => {
   });
 });
 
-test("notification-monitor event updates device battery info", async ({ page }) => {
+test("full monitor snapshots update battery information", async ({ page }) => {
   await addFirstDevice(page);
-  await page.evaluate(() => {
-    return window.__e2eTauriMock.emitBatteryInfo("kbd-1", {
+  await page.evaluate(() =>
+    window.__e2eTauriMock.emitBatteryInfo("kbd-1", {
       battery_level: 42,
       user_description: "Central",
-    });
-  });
+    }),
+  );
   await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("42%");
 });
 
-test("notification-monitor event retains previous battery level when payload is null", async ({
-  page,
-}) => {
+test("full monitor snapshots update disconnected state", async ({ page }) => {
   await addFirstDevice(page);
-  await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
-  await page.evaluate(() => {
-    return window.__e2eTauriMock.emitBatteryInfo("kbd-1", {
-      battery_level: null,
-      user_description: "Central",
-    });
-  });
-  await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
-});
-
-test("remove device returns to empty registered state", async ({ page }) => {
-  await addFirstDevice(page);
-  await openDeviceMenu(page, "MockBoard One");
-  await page.getByRole("button", { name: "Remove" }).click();
-  await expect(page.getByRole("heading", { name: "No devices registered" })).toBeVisible();
-});
-
-test("remove device updates persistence payload", async ({ page }) => {
-  await addFirstDevice(page);
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        return window.__e2eTauriMock.readStore("devices.json").devices?.length ?? 0;
-      });
-    })
-    .toBe(1);
-
-  await openDeviceMenu(page, "MockBoard One");
-  await page.getByRole("button", { name: "Remove" }).click();
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        return window.__e2eTauriMock.readStore("devices.json").devices?.length ?? 0;
-      });
-    })
-    .toBe(0);
-});
-
-test("persistence reload flow loads devices from mocked store on new page", async ({
-  page,
-  context,
-}) => {
-  await addFirstDevice(page);
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        const data = window.__e2eTauriMock.readStore("devices.json");
-        return data.devices?.length ?? 0;
-      });
-    })
-    .toBe(1);
-
-  const reloadedPage = await createSeededPage(context, {
-    platform: "windows",
-    availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
-    batteryById: {
-      "kbd-1": [{ battery_level: 87, user_description: "Central" }],
-    },
-  });
-
-  await expect(reloadedPage.getByText("MockBoard One")).toBeVisible();
-  await expect(reloadedPage.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
-  await reloadedPage.close();
-});
-
-test("collapsed device state persists across reload", async ({ page, context }) => {
-  await addFirstDevice(page);
-  await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
-
-  await page.getByRole("button", { name: "Collapse device" }).click();
-  await expect(page.getByRole("button", { name: "Expand device" })).toBeVisible();
-  await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveCount(0);
-
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        return window.__e2eTauriMock.readStore("devices.json").devices?.[0]?.isCollapsed ?? false;
-      });
-    })
-    .toBe(true);
-
-  const reloadedPage = await createSeededPage(context, {
-    platform: "windows",
-    availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
-    batteryById: {
-      "kbd-1": [{ battery_level: 87, user_description: "Central" }],
-    },
-  });
-
-  await expect(reloadedPage.getByText("MockBoard One")).toBeVisible();
-  await expect(reloadedPage.getByRole("button", { name: "Expand device" })).toBeVisible();
-  await expect(reloadedPage.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveCount(0);
-  await reloadedPage.close();
-});
-
-test.describe("legacy saved device payload", () => {
-  test.use({
-    seed: {
-      platform: "windows",
-      config: { fetchInterval: "auto" },
-      availableDevices: [],
-      batteryById: {},
-      registeredDevices: [
-        {
-          id: 'DeviceId("legacy-id")',
-          name: 'DeviceId("Legacy Keyboard")',
-          isDisconnected: true,
-          batteryInfos: [{ battery_level: 73, user_description: "Left" }],
-        },
-      ],
-    },
-  });
-
-  test("is normalized on load", async ({ page }) => {
-    await expect(page.getByText("Legacy Keyboard")).toBeVisible();
-    await expect(page.getByTestId(batteryLevelTestId("legacy-id", "Left"))).toHaveText("73%");
-    await expect(page.getByLabel("Disconnected")).toBeVisible();
-  });
-});
-
-test("notification monitor status event updates disconnected badge", async ({ page }) => {
-  await addFirstDevice(page);
-
   await page.evaluate(() => window.__e2eTauriMock.emitMonitorStatus("kbd-1", false));
   await expect(page.getByLabel("Disconnected")).toBeVisible();
 
@@ -181,52 +59,41 @@ test("notification monitor status event updates disconnected badge", async ({ pa
   await expect(page.getByLabel("Disconnected")).toHaveCount(0);
 });
 
-test("adding same device twice does not duplicate registered entry", async ({ page }) => {
+test("remove device uses the canonical monitor command", async ({ page }) => {
   await addFirstDevice(page);
-  await page.getByLabel("Add Device").click();
-  await expect(page.getByText("No devices found")).toBeVisible();
+  await openDeviceMenu(page, "MockBoard One");
+  await page.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByRole("heading", { name: "No devices registered" })).toBeVisible();
 
-  await expect
-    .poll(async () => {
-      return page.evaluate(() => {
-        return window.__e2eTauriMock.readStore("devices.json").devices?.length ?? 0;
-      });
-    })
-    .toBe(1);
+  const removeCalls = await page.evaluate(() =>
+    window.__e2eTauriMock.getInvocations().filter((entry) => entry.cmd === "monitor_remove_device"),
+  );
+  expect(removeCalls).toHaveLength(1);
+  expect(removeCalls[0]?.args?.id).toBe("kbd-1");
 });
 
-test.describe("monitor startup with empty initial battery info", () => {
-  test.use({
-    seed: {
-      platform: "windows",
-      config: { fetchInterval: "auto" },
-      availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
-      batteryById: { "kbd-1": [] },
+test("collapsed state is restored from the monitor snapshot", async ({ page, context }) => {
+  await addFirstDevice(page);
+  await page.getByRole("button", { name: "Collapse device" }).click();
+  await expect(page.getByRole("button", { name: "Expand device" })).toBeVisible();
+
+  const reloadedPage = await createSeededPage(context, {
+    platform: "windows",
+    availableDevices: [{ id: "kbd-1", name: "MockBoard One" }],
+    batteryById: {
+      "kbd-1": [{ battery_level: 87, user_description: "Central" }],
     },
   });
-
-  test("marks device disconnected until first event", async ({ page }) => {
-    await addFirstDevice(page);
-    await expect(page.getByLabel("Disconnected")).toBeVisible();
-
-    await page.evaluate(() => {
-      return window.__e2eTauriMock.emitBatteryInfo("kbd-1", {
-        battery_level: 51,
-        user_description: "Central",
-      });
-    });
-    await expect(page.getByLabel("Disconnected")).toHaveCount(0);
-    await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("51%");
-  });
+  await expect(reloadedPage.getByText("MockBoard One")).toBeVisible();
+  await expect(reloadedPage.getByRole("button", { name: "Expand device" })).toBeVisible();
+  await reloadedPage.close();
 });
 
-test.describe("polling mode refresh", () => {
+test.describe("numeric monitor reload", () => {
   test.use({
     seed: {
       ...baseSeed,
-      config: {
-        fetchInterval: 200,
-      },
+      config: { fetchInterval: 200 },
       registeredDevices: [
         {
           id: "kbd-1",
@@ -238,20 +105,25 @@ test.describe("polling mode refresh", () => {
     },
   });
 
-  test("updates battery level on interval", async ({ page }) => {
+  test("refreshes battery info without frontend polling", async ({ page }) => {
     await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");
     await page.evaluate(() => {
       window.__e2eTauriMock.setBatteryInfo("kbd-1", [
         { battery_level: 63, user_description: "Central" },
       ]);
     });
+    await page.getByRole("button", { name: "Reload" }).click();
     await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("63%");
+
+    const reloadCalls = await page.evaluate(() =>
+      window.__e2eTauriMock.getInvocations().filter((entry) => entry.cmd === "monitor_reload"),
+    );
+    expect(reloadCalls).toHaveLength(1);
   });
 });
 
-test("battery history event refreshes chart after new reading", async ({ page }) => {
+test("battery history chart accepts backend history events", async ({ page }) => {
   await addFirstDevice(page);
-
   await page
     .locator("div.group")
     .filter({ has: page.getByText("MockBoard One") })
@@ -260,11 +132,16 @@ test("battery history event refreshes chart after new reading", async ({ page })
   await expect(page.getByText("No history recorded yet")).toBeVisible();
 
   await page.evaluate(() => {
-    return window.__e2eTauriMock.emitBatteryInfo("kbd-1", {
-      battery_level: 48,
-      user_description: "Central",
+    return window.__e2eTauriMock.emit("battery-history-updated", {
+      deviceId: "kbd-1",
+      records: [
+        {
+          timestamp: new Date().toISOString(),
+          user_description: "Central",
+          battery_level: 48,
+        },
+      ],
     });
   });
-
   await expect(page.getByText("No history recorded yet")).toHaveCount(0);
 });

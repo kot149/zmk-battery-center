@@ -1,3 +1,4 @@
+use crate::monitor::MonitorSnapshot;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -65,6 +66,89 @@ fn unix_now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+fn stable_hex_key(prefix: &str, value: &str) -> String {
+    let mut result = String::from(prefix);
+    for byte in value.as_bytes() {
+        result.push_str(&format!("{byte:02x}"));
+    }
+    result
+}
+
+fn part_display_name(
+    labels: Option<&std::collections::HashMap<String, String>>,
+    description: Option<&str>,
+) -> String {
+    let key = description.unwrap_or("Central");
+    labels
+        .and_then(|labels| labels.get(key))
+        .map(|label| label.trim())
+        .filter(|label| !label.is_empty())
+        .unwrap_or(key)
+        .to_string()
+}
+
+fn external_devices(snapshot: &MonitorSnapshot) -> Vec<ExternalBatteryDevicePayload> {
+    snapshot
+        .devices
+        .iter()
+        .map(|device| {
+            let connection_status = if device.connection_status_known != Some(true) {
+                "unknown"
+            } else if device.is_disconnected {
+                "disconnected"
+            } else {
+                "connected"
+            };
+            let battery_parts = device
+                .battery_infos
+                .iter()
+                .map(|info| {
+                    let description = info.user_description.as_deref();
+                    let level = info.battery_level;
+                    let value_status = if level.is_none() {
+                        "unavailable"
+                    } else if connection_status != "connected" || !info.last_read_succeeded {
+                        "stale"
+                    } else {
+                        "current"
+                    };
+                    ExternalBatteryPartPayload {
+                        id: description
+                            .map(|description| stable_hex_key("part", description))
+                            .unwrap_or_else(|| "central".to_string()),
+                        source_description: info.user_description.clone(),
+                        display_name: part_display_name(
+                            device.battery_part_labels.as_ref(),
+                            description,
+                        ),
+                        level_percent: level,
+                        observed_at_unix_ms: info.observed_at_unix_ms,
+                        value_status: value_status.to_string(),
+                    }
+                })
+                .collect();
+            ExternalBatteryDevicePayload {
+                id: device.id.clone(),
+                key: stable_hex_key("device", &device.id),
+                name: device.name.clone(),
+                display_name: device
+                    .display_name
+                    .as_deref()
+                    .filter(|name| !name.trim().is_empty())
+                    .unwrap_or(&device.name)
+                    .to_string(),
+                connection_status: connection_status.to_string(),
+                connection_observed_at_unix_ms: if connection_status == "unknown" {
+                    None
+                } else {
+                    device.connection_observed_at_unix_ms
+                },
+                battery_parts,
+            }
+        })
+        .collect()
 }
 
 #[cfg(debug_assertions)]
@@ -222,6 +306,34 @@ pub async fn publish_external_battery_snapshot(
     };
     write_json_atomically(&external_dir.join(BATTERY_STATE_FILENAME), &snapshot)?;
     inner.current_source_revision = source_revision;
+    Ok(())
+}
+
+pub async fn publish_monitor_snapshot(
+    app: &AppHandle,
+    snapshot: &MonitorSnapshot,
+) -> Result<(), String> {
+    let external_dir = resolve_external_dir(app)?;
+    let state = app.state::<ExternalIntegrationState>();
+    let devices = external_devices(snapshot);
+    let mut inner = state.inner.lock().await;
+    if inner.current_source_generation == 0 {
+        inner.next_source_generation = inner.next_source_generation.saturating_add(1);
+        inner.current_source_generation = inner.next_source_generation;
+        inner.current_source_revision = 0;
+    }
+    if snapshot.revision < inner.current_source_revision {
+        return Ok(());
+    }
+    inner.public_revision = inner.public_revision.saturating_add(1);
+    let output = BatterySnapshot {
+        schema_version: 1,
+        revision: inner.public_revision,
+        generated_at_unix_ms: unix_now_ms(),
+        devices,
+    };
+    write_json_atomically(&external_dir.join(BATTERY_STATE_FILENAME), &output)?;
+    inner.current_source_revision = snapshot.revision;
     Ok(())
 }
 

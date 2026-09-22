@@ -14,6 +14,7 @@
     "windows": [
       {
         "title": "zmk-battery-center",
+        "create": false,
         "width": 300,
         "height": 300,
         "visible": false,

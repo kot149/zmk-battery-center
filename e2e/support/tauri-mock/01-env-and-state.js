@@ -5,6 +5,7 @@
       : {};
 
   const STORAGE_PREFIX = "__e2e_tauri_store__";
+  const MONITOR_STATE_KEY = "__e2e_monitor_state__";
 
   function clone(value) {
     return structuredClone(value);
@@ -28,6 +29,16 @@
     window.localStorage.setItem(localStorageKey(path), JSON.stringify(data));
   }
 
+  function readSavedMonitorState() {
+    const raw = window.localStorage.getItem(MONITOR_STATE_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+
   if (typeof window.Notification !== "function") {
     class MockNotification {
       static permission = "granted";
@@ -36,9 +47,7 @@
         return Promise.resolve("granted");
       }
 
-      constructor() {
-        // no-op
-      }
+      constructor() {}
     }
     window.Notification = MockNotification;
   } else {
@@ -49,9 +58,7 @@
           return "granted";
         },
       });
-    } catch {
-      // no-op
-    }
+    } catch {}
     window.Notification.requestPermission = () => Promise.resolve("granted");
   }
 
@@ -65,12 +72,40 @@
     exe_extension: "exe",
   };
 
+  const saved = readSavedMonitorState();
+  const defaultConfig = {
+    theme: "dark",
+    fetchInterval: 60_000,
+    autoStart: false,
+    autoCollapseDisconnectedDevices: false,
+    pushNotification: false,
+    pushNotificationWhen: {
+      low_battery: true,
+      high_battery: true,
+      connected: true,
+      disconnected: true,
+    },
+    lowBatteryThreshold: 20,
+    ignoreZeroPercent: true,
+    highBatteryThreshold: 80,
+    manualWindowPositioning: false,
+    pinWindow: false,
+    windowPosition: { x: 0, y: 0 },
+    chartRangeMs: 0,
+    chartSmoothingWindowSize: 1_800_000,
+    chartCustomRange: null,
+    trayIconComponents: ["roleLabel", "batteryIcon", "batteryPercent"],
+  };
+
   const state = {
     nextRid: 1,
     nextEventId: 1,
     ridToPath: new Map(),
     monitors: new Set(),
     invocations: [],
+    revision: saved?.revision ?? 0,
+    config: clone(saved?.config ?? { ...defaultConfig, ...seed.config }),
+    registeredDevices: clone(saved?.devices ?? seed.registeredDevices ?? []),
     devices: clone(
       seed.availableDevices ?? [
         { id: "kbd-1", name: "MockBoard One" },
@@ -86,16 +121,23 @@
     historyByKey: clone(seed.historyByKey ?? {}),
   };
 
-  if (seed.config !== undefined) {
-    writeStoreData("config.json", { config: clone(seed.config) });
-  }
-
-  if (seed.registeredDevices !== undefined) {
-    writeStoreData("devices.json", { devices: clone(seed.registeredDevices) });
-  }
-
   function historyKey(deviceName, bleId) {
     return `${deviceName}::${bleId}`;
+  }
+
+  function writeSnapshotToStorage() {
+    window.localStorage.setItem(
+      MONITOR_STATE_KEY,
+      JSON.stringify({
+        revision: state.revision,
+        config: state.config,
+        devices: state.registeredDevices,
+      }),
+    );
+  }
+
+  if (seed.config !== undefined) {
+    writeStoreData("config.json", { config: clone(seed.config) });
   }
 
   window.__E2E_TAURI_MOCK_BUILD__ = {
@@ -105,5 +147,6 @@
     writeStoreData,
     localStorageKey,
     historyKey,
+    writeSnapshotToStorage,
   };
 })();

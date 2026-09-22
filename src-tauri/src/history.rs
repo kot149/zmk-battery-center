@@ -50,18 +50,18 @@ fn safe_filename(device_name: &str, ble_id: &str) -> String {
     format!("{}_{}.csv", sanitize(device_name), sanitize(ble_id))
 }
 
-fn csv_record_line(timestamp: &str, user_description: &str, battery_level: i32) -> Result<String, String> {
+fn csv_record_line(
+    timestamp: &str,
+    user_description: &str,
+    battery_level: i32,
+) -> Result<String, String> {
     let mut buf = Vec::new();
     {
         let mut wtr = WriterBuilder::new()
             .has_headers(false)
             .from_writer(&mut buf);
-        wtr.write_record([
-            timestamp,
-            user_description,
-            &battery_level.to_string(),
-        ])
-        .map_err(|e| e.to_string())?;
+        wtr.write_record([timestamp, user_description, &battery_level.to_string()])
+            .map_err(|e| e.to_string())?;
         wtr.flush().map_err(|e| e.to_string())?;
     }
     let mut line = String::from_utf8(buf).map_err(|e| e.to_string())?;
@@ -199,6 +199,23 @@ fn cutoff_timestamp_n_days_ago(days: u64) -> Result<String, String> {
     Ok(rfc3339_date_n_days_ago(now_secs, days))
 }
 
+pub fn current_timestamp_rfc3339() -> Result<String, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?;
+    let total_seconds = now.as_secs();
+    let days = (total_seconds / 86_400) as i64;
+    let seconds_today = total_seconds % 86_400;
+    let (year, month, day) = civil_date_from_days(days);
+    let hour = seconds_today / 3_600;
+    let minute = (seconds_today % 3_600) / 60;
+    let second = seconds_today % 60;
+    let millis = now.subsec_millis();
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
+    ))
+}
+
 fn read_battery_history_from_dir(
     dir: &std::path::Path,
     device_name: &str,
@@ -295,6 +312,52 @@ pub struct BatteryHistoryRecord {
     pub battery_level: i32,
 }
 
+pub fn append_battery_history_record(
+    app: &tauri::AppHandle,
+    device_name: &str,
+    ble_id: &str,
+    timestamp: &str,
+    user_description: &str,
+    battery_level: i32,
+) -> Result<(), String> {
+    let _guard = HISTORY_FILE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let dir = history_dir(app);
+
+    let filename = safe_filename(device_name, ble_id);
+    let path = dir.join(&filename);
+    {
+        let today_epoch_day = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_secs()
+            / 86400;
+        let mut pruned = PRUNED_FILES.lock().unwrap_or_else(|p| p.into_inner());
+        if should_prune_today(&mut pruned, &path, today_epoch_day) {
+            let cutoff = match cutoff_timestamp_n_days_ago(HISTORY_RETENTION_DAYS) {
+                Ok(cutoff) => cutoff,
+                Err(error) => {
+                    pruned.remove(&path);
+                    return Err(error);
+                }
+            };
+            if let Err(error) = prune_battery_history_at_dir(&dir, device_name, ble_id, &cutoff) {
+                pruned.remove(&path);
+                return Err(error);
+            }
+        }
+    }
+
+    append_battery_history_at_dir(
+        &dir,
+        device_name,
+        ble_id,
+        timestamp,
+        user_description,
+        battery_level,
+    )
+}
+
 /// Append battery history to CSV
 #[tauri::command]
 pub fn append_battery_history(
@@ -305,31 +368,8 @@ pub fn append_battery_history(
     user_description: String,
     battery_level: i32,
 ) -> Result<(), String> {
-    let _guard = HISTORY_FILE_LOCK
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
-
-    let dir = history_dir(&app);
-
-    let filename = safe_filename(&device_name, &ble_id);
-    let path = dir.join(&filename);
-    {
-        let today_epoch_day = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| e.to_string())?
-            .as_secs()
-            / 86400;
-        let mut pruned = PRUNED_FILES
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
-        if should_prune_today(&mut pruned, &path, today_epoch_day) {
-            let cutoff = cutoff_timestamp_n_days_ago(HISTORY_RETENTION_DAYS)?;
-            prune_battery_history_at_dir(&dir, &device_name, &ble_id, &cutoff)?;
-        }
-    }
-
-    append_battery_history_at_dir(
-        &dir,
+    append_battery_history_record(
+        &app,
         &device_name,
         &ble_id,
         &timestamp,
@@ -346,9 +386,7 @@ pub fn read_battery_history(
     ble_id: String,
     since: Option<String>,
 ) -> Result<Vec<BatteryHistoryRecord>, String> {
-    let _guard = HISTORY_FILE_LOCK
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
+    let _guard = HISTORY_FILE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
     let dir = history_dir(&app);
     read_battery_history_from_dir(&dir, &device_name, &ble_id, since.as_deref())
@@ -396,7 +434,8 @@ mod tests {
         );
         fs::write(&path, csv).expect("write csv");
 
-        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
+        let records =
+            read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].battery_level, 90);
         assert_eq!(records[1].battery_level, 75);
@@ -425,7 +464,8 @@ mod tests {
         assert_eq!(filtered[0].timestamp, "2026-06-01T00:00:00Z");
         assert_eq!(filtered[1].timestamp, "2026-07-01T00:00:00Z");
 
-        let all = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
+        let all =
+            read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
         assert_eq!(all.len(), 3);
     }
 
@@ -442,7 +482,8 @@ mod tests {
             55,
         )
         .expect("append");
-        let records = read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
+        let records =
+            read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None).expect("read");
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].user_description, desc);
         assert_eq!(records[0].battery_level, 55);
@@ -530,7 +571,8 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn resolve_dev_history_dir_uses_relative_env_under_project_root() {
-        let path = resolve_dev_history_dir(Some("/repo/src-tauri"), Some("local-data")).expect("path");
+        let path =
+            resolve_dev_history_dir(Some("/repo/src-tauri"), Some("local-data")).expect("path");
         let expected = PathBuf::from("/repo")
             .join("local-data")
             .join("battery_history");
@@ -540,7 +582,8 @@ mod tests {
     #[cfg(debug_assertions)]
     #[test]
     fn resolve_dev_history_dir_uses_absolute_env_path() {
-        let path = resolve_dev_history_dir(Some("/repo/src-tauri"), Some("/tmp/dev-data")).expect("path");
+        let path =
+            resolve_dev_history_dir(Some("/repo/src-tauri"), Some("/tmp/dev-data")).expect("path");
         let expected = PathBuf::from("/tmp/dev-data").join("battery_history");
         assert_eq!(path, expected);
     }

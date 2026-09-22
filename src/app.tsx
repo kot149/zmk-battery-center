@@ -1,14 +1,14 @@
 import "./app.css";
+import { listBatteryDevices, type BleDeviceInfo } from "./utils/ble";
 import {
-  listBatteryDevices,
-  getBatteryInfo,
-  startBatteryNotificationMonitor,
-  stopBatteryNotificationMonitor,
-  BleDeviceInfo,
-  BatteryInfoNotificationEvent,
-  BatteryMonitorStatusEvent,
-} from "./utils/ble";
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import Button from "./components/button";
 import RegisteredDevicesPanel from "./components/registered-devices-panel";
 import { logger } from "./utils/log";
@@ -19,31 +19,11 @@ import PushPinIcon from "./components/push-pin-icon";
 import Modal from "./components/modal";
 import { useConfigContext } from "@/providers/config-provider";
 import Settings from "@/components/settings";
-import { sendNotification } from "./utils/notification";
-import { FETCH_INTERVAL_AUTO, NotificationType } from "./utils/config";
-import { notifyBatteryEdgeTransitions } from "./utils/battery-edge-notification";
-import { fireAndForget, withTimeout } from "./utils/common";
 import { platform } from "@tauri-apps/plugin-os";
+import { invoke } from "@tauri-apps/api/core";
 import { useWindowEvents } from "@/hooks/use-window-events";
-import { useTrayEvents } from "@/hooks/use-tray-events";
-import { emit, listen } from "@tauri-apps/api/event";
-import { recordBatteryReadings } from "@/utils/battery-history";
-import {
-  annotateBatteryInfosFromRead,
-  markBatteryInfosReadFailed,
-  upsertBatteryInfo,
-  getRegisteredDeviceDisplayName,
-  type RegisteredDevice,
-} from "@/utils/app-helpers";
-import { syncTrayBatteryIcon } from "@/utils/tray-battery-icon";
-import {
-  useRegisteredDevices,
-  collapseIfDisconnected,
-  expandIfConnected,
-} from "@/hooks/use-registered-devices";
-import { useNotificationMonitors } from "@/hooks/use-notification-monitors";
-import { useBatteryPolling } from "@/hooks/use-battery-polling";
-import { useExternalBatteryIntegration } from "@/hooks/use-external-battery-integration";
+import type { RegisteredDevice } from "@/utils/app-helpers";
+import { withTimeout } from "@/utils/common";
 
 export type { RegisteredDevice };
 
@@ -57,84 +37,64 @@ enum State {
 }
 
 const DEVICE_FETCH_TIMEOUT_MS = 20_000;
+const EMPTY_DEVICES: RegisteredDevice[] = [];
+const NOOP_SET_DEVICES: Dispatch<SetStateAction<RegisteredDevice[]>> = () => undefined;
 
-const NOOP = () => {};
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function App() {
   const {
+    config,
+    setConfig,
+    isConfigLoaded,
+    isMonitorHydrationSettled,
+    monitorError,
     registeredDevices,
     isDeviceLoaded,
-    deviceList,
-    registeredDevicesRef,
-    registeredDeviceIds,
-    registeredDeviceIdsKey,
-    commitRegisteredDevices,
-    getRegisteredDevicesSnapshot,
-    setRegisteredDevicesForPanel,
-  } = useRegisteredDevices();
-
+    addDevice,
+    removeDevice,
+    setDeviceDisplayName,
+    setPartLabel,
+    setDeviceCollapsed,
+    reorderDevices,
+    reloadMonitor,
+  } = useConfigContext();
   const [devices, setDevices] = useState<BleDeviceInfo[]>([]);
   const [error, setError] = useState("");
-  const { config, setConfig, isConfigLoaded } = useConfigContext();
-
-  const pushNotificationRef = useRef(config.pushNotification);
-  const pushNotificationWhenRef = useRef(config.pushNotificationWhen);
-  const lowBatteryThresholdRef = useRef(config.lowBatteryThreshold);
-  const ignoreZeroPercentRef = useRef(config.ignoreZeroPercent);
-  const highBatteryThresholdRef = useRef(config.highBatteryThreshold);
-  useEffect(() => {
-    pushNotificationRef.current = config.pushNotification;
-    pushNotificationWhenRef.current = config.pushNotificationWhen;
-    lowBatteryThresholdRef.current = config.lowBatteryThreshold;
-    ignoreZeroPercentRef.current = config.ignoreZeroPercent;
-    highBatteryThresholdRef.current = config.highBatteryThreshold;
-  }, [
-    config.pushNotification,
-    config.pushNotificationWhen,
-    config.lowBatteryThreshold,
-    config.ignoreZeroPercent,
-    config.highBatteryThreshold,
-  ]);
-
   const [state, setState] = useState<State>(State.main);
   const [panelLayoutRevision, setPanelLayoutRevision] = useState(0);
-  const isPollingMode = config.fetchInterval !== FETCH_INTERVAL_AUTO;
-  const isNotificationMonitorMode = !isPollingMode;
+  const windowReadyRef = useRef(false);
+  const isPollingMode = config.fetchInterval !== "auto";
+  const deviceList = registeredDevices ?? EMPTY_DEVICES;
 
+  const registeredDeviceIds = useMemo(
+    () => new Set(deviceList.map((device) => device.id)),
+    [deviceList],
+  );
   const availableDevices = useMemo(
-    () => devices.filter((d) => !registeredDeviceIds.has(d.id)),
+    () => devices.filter((device) => !registeredDeviceIds.has(device.id)),
     [devices, registeredDeviceIds],
   );
 
   const deviceLayoutKey = useMemo(
     () =>
       deviceList
-        .map((d) => `${d.id}:${d.isCollapsed}:${d.isDisconnected}:${d.batteryInfos.length}`)
+        .map(
+          (device) =>
+            `${device.id}:${device.isCollapsed}:${device.isDisconnected}:${device.batteryInfos.length}`,
+        )
         .join(","),
     [deviceList],
   );
 
-  // Initialize window and tray event listeners
-  const handleWindowPositionChange = useCallback((position: { x: number; y: number }) => {
-    fireAndForget(
-      emit("update-config", { windowPosition: position }),
-      "Failed to emit window position update",
-    );
-  }, []);
-
-  const handleManualWindowPositioningChange = useCallback((enabled: boolean) => {
-    fireAndForget(
-      emit("update-config", { manualWindowPositioning: enabled }),
-      "Failed to emit manual window positioning update",
-    );
-  }, []);
-
-  const handlePinWindowChange = useCallback((enabled: boolean) => {
-    fireAndForget(
-      emit("update-config", { pinWindow: enabled }),
-      "Failed to emit pin window update",
-    );
-  }, []);
+  const handleWindowPositionChange = useCallback(
+    (position: { x: number; y: number }) => {
+      setConfig((current) => ({ ...current, windowPosition: position }));
+    },
+    [setConfig],
+  );
 
   useWindowEvents({
     config,
@@ -142,37 +102,17 @@ function App() {
     onWindowPositionChange: handleWindowPositionChange,
   });
 
-  useTrayEvents({
-    config,
-    isConfigLoaded,
-    onManualWindowPositioningChange: handleManualWindowPositioningChange,
-    onPinWindowChange: handlePinWindowChange,
-  });
-
-  useEffect(() => {
-    if (registeredDevices === undefined) return;
-    if (!isConfigLoaded) return;
-    if (platform() !== "macos") return;
-    const id = window.setTimeout(() => {
-      fireAndForget(
-        syncTrayBatteryIcon(registeredDevices, config.trayIconComponents),
-        "Failed to sync tray battery icon",
-      );
-    }, 60);
-    return () => clearTimeout(id);
-  }, [registeredDevices, config.trayIconComponents, isConfigLoaded]);
-
-  async function fetchDevices() {
+  const fetchDevices = useCallback(async () => {
     setState(State.fetchingDevices);
     setError("");
 
     const isMac = platform() === "macos";
     const createTimeoutError = () => {
-      let msg = "Failed to fetch devices.";
+      let message = "Failed to fetch devices.";
       if (isMac) {
-        msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
+        message += " If you are using macOS, please make sure Bluetooth permission is granted.";
       }
-      return new Error(msg);
+      return new Error(message);
     };
 
     try {
@@ -183,332 +123,170 @@ function App() {
       );
       setDevices(result);
       setState(State.addDeviceModal);
-    } catch (e: unknown) {
-      let msg = e instanceof Error ? e.message : String(e);
-      if (isMac && !msg.includes("Bluetooth permission")) {
-        msg += " If you are using macOS, please make sure Bluetooth permission is granted.";
+    } catch (caughtError: unknown) {
+      let message = errorMessage(caughtError);
+      if (isMac && !message.includes("Bluetooth permission")) {
+        message += " If you are using macOS, please make sure Bluetooth permission is granted.";
       }
-      setError(msg);
+      setError(message);
       setState(State.addDeviceModal);
     }
-  }
+  }, []);
 
-  const handleAddDevice = async (id: string) => {
-    if (!isDeviceLoaded) {
-      return;
-    }
-    if (registeredDeviceIds.has(id)) {
-      handleCloseModal();
-      return;
-    }
-
-    const device = devices.find((d) => d.id === id);
-    if (!device) return;
-
-    setState(State.fetchingBatteryInfo);
-    setError("");
-    try {
-      const info = isNotificationMonitorMode
-        ? await startBatteryNotificationMonitor(id)
-        : await getBatteryInfo(id);
-      const infoArray = Array.isArray(info) ? info : [info];
-      const now = Date.now();
-      const annotatedInfos = annotateBatteryInfosFromRead(infoArray, now);
-      if (isNotificationMonitorMode) {
-        activeNotificationMonitorsRef.current.add(id);
-      }
-      const isDisconnected = isNotificationMonitorMode && annotatedInfos.length === 0;
-      const newDevice: RegisteredDevice = {
-        id: device.id,
-        name: device.name,
-        batteryInfos: annotatedInfos,
-        isDisconnected,
-        isCollapsed: isDisconnected && config.autoCollapseDisconnectedDevices,
-        connectionStatusKnown: true,
-        connectionObservedAtUnixMs: now,
-      };
-      commitRegisteredDevices((prev) => [...prev, newDevice]);
-      handleCloseModal();
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(`Failed to add device: ${msg}`);
-      setState(State.addDeviceModal);
-    }
-  };
-
-  const { reloadAll, autoCollapseDisconnectedDevicesRef } = useBatteryPolling({
-    isPollingMode,
-    isConfigLoaded,
-    isDeviceLoaded,
-    fetchInterval: config.fetchInterval,
-    registeredDevicesRef,
-    commitRegisteredDevices,
-    pushNotification: config.pushNotification,
-    pushNotificationWhen: config.pushNotificationWhen,
-    lowBatteryThreshold: config.lowBatteryThreshold,
-    ignoreZeroPercent: config.ignoreZeroPercent,
-    highBatteryThreshold: config.highBatteryThreshold,
-    autoCollapseDisconnectedDevices: config.autoCollapseDisconnectedDevices,
-  });
-
-  const { activeNotificationMonitorsRef } = useNotificationMonitors({
-    isNotificationMonitorMode,
-    isConfigLoaded,
-    isDeviceLoaded,
-    registeredDeviceIdsKey,
-    autoCollapseDisconnectedDevicesRef,
-    commitRegisteredDevices,
-  });
-
-  useExternalBatteryIntegration({
-    isDeviceLoaded,
-    registeredDevices,
-    getRegisteredDevicesSnapshot,
-  });
-
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     setState(State.main);
     setError("");
-  };
+  }, []);
 
-  const handleOpenModal = async () => {
-    if (!isDeviceLoaded) {
-      return;
-    }
+  const handleAddDevice = useCallback(
+    async (id: string) => {
+      if (!isDeviceLoaded) return;
+      if (registeredDeviceIds.has(id)) {
+        handleCloseModal();
+        return;
+      }
+
+      const device = devices.find((candidate) => candidate.id === id);
+      if (!device) return;
+
+      setState(State.fetchingBatteryInfo);
+      setError("");
+      try {
+        await addDevice(device);
+        handleCloseModal();
+      } catch (caughtError: unknown) {
+        setError(`Failed to add device: ${errorMessage(caughtError)}`);
+        setState(State.addDeviceModal);
+      }
+    },
+    [addDevice, devices, handleCloseModal, isDeviceLoaded, registeredDeviceIds],
+  );
+
+  const handleOpenModal = useCallback(async () => {
+    if (!isDeviceLoaded) return;
     setState(State.addDeviceModal);
     await fetchDevices();
-  };
+  }, [fetchDevices, isDeviceLoaded]);
 
   const handleRemoveDevice = useCallback(
     async (device: RegisteredDevice) => {
-      commitRegisteredDevices((prev) => prev.filter((d) => d.id !== device.id));
-      if (!isNotificationMonitorMode) {
-        return;
-      }
+      setError("");
       try {
-        await stopBatteryNotificationMonitor(device.id);
-      } catch (e) {
-        logger.warn(`Failed to stop notification monitor for ${device.id}: ${String(e)}`);
-      } finally {
-        activeNotificationMonitorsRef.current.delete(device.id);
+        await removeDevice(device.id);
+      } catch (caughtError: unknown) {
+        setError(`Failed to remove device: ${errorMessage(caughtError)}`);
       }
     },
-    [isNotificationMonitorMode, commitRegisteredDevices, activeNotificationMonitorsRef],
+    [removeDevice],
   );
 
-  const handleReload = async () => {
-    if (!isPollingMode || !isDeviceLoaded) {
-      return;
-    }
+  const handleReload = useCallback(async () => {
+    if (!isPollingMode || !isDeviceLoaded) return;
     setState(State.fetchingBatteryInfo);
-    await reloadAll();
-    setState(State.main);
-  };
+    setError("");
+    try {
+      await reloadMonitor();
+      setState(State.main);
+    } catch (caughtError: unknown) {
+      setError(`Failed to reload devices: ${errorMessage(caughtError)}`);
+      setState(State.main);
+    }
+  }, [isDeviceLoaded, isPollingMode, reloadMonitor]);
 
-  // Handle window size change
+  const runDeviceMutation = useCallback(async (operation: () => Promise<void>, message: string) => {
+    try {
+      await operation();
+    } catch (caughtError: unknown) {
+      setError(`${message}: ${errorMessage(caughtError)}`);
+    }
+  }, []);
+
+  const handleSetDeviceDisplayName = useCallback(
+    (id: string, displayName: string | null) =>
+      runDeviceMutation(
+        () => setDeviceDisplayName(id, displayName),
+        "Failed to save device display name",
+      ),
+    [runDeviceMutation, setDeviceDisplayName],
+  );
+
+  const handleSetPartLabel = useCallback(
+    (id: string, sourceDescription: string | null, label: string | null) =>
+      runDeviceMutation(
+        () => setPartLabel(id, sourceDescription, label),
+        "Failed to save battery part label",
+      ),
+    [runDeviceMutation, setPartLabel],
+  );
+
+  const handleSetDeviceCollapsed = useCallback(
+    (id: string, collapsed: boolean) =>
+      runDeviceMutation(
+        () => setDeviceCollapsed(id, collapsed),
+        "Failed to save device collapse state",
+      ),
+    [runDeviceMutation, setDeviceCollapsed],
+  );
+
+  const handleReorderDevices = useCallback(
+    (ids: string[]) => runDeviceMutation(() => reorderDevices(ids), "Failed to reorder devices"),
+    [reorderDevices, runDeviceMutation],
+  );
+
   useEffect(() => {
     let cancelled = false;
-    const timeoutIds: Array<ReturnType<typeof setTimeout>> = [];
-    resizeWindowToContent().then(() => {
-      if (cancelled) return;
-      if (isConfigLoaded && !config.manualWindowPositioning) {
-        moveWindowToTrayCenter();
-        timeoutIds.push(
-          setTimeout(() => {
-            moveWindowToTrayCenter();
-          }, 50),
-        );
-        timeoutIds.push(
-          setTimeout(() => {
-            moveWindowToTrayCenter();
-          }, 100),
-        );
+    const resizeAndReady = async () => {
+      if (!isMonitorHydrationSettled) return;
+
+      try {
+        await resizeWindowToContent();
+      } catch (caughtError: unknown) {
+        logger.error(`Failed to resize main window: ${errorMessage(caughtError)}`);
       }
-    });
+      if (cancelled) return;
+
+      if (isConfigLoaded && isDeviceLoaded && !config.manualWindowPositioning) {
+        try {
+          await moveWindowToTrayCenter();
+        } catch (caughtError: unknown) {
+          logger.error(`Failed to position main window: ${errorMessage(caughtError)}`);
+        }
+      }
+
+      if (cancelled || windowReadyRef.current) return;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        if (cancelled) return;
+        try {
+          await invoke("window_ready");
+          windowReadyRef.current = true;
+          return;
+        } catch (caughtError: unknown) {
+          logger.error(`Failed to signal main window readiness: ${errorMessage(caughtError)}`);
+        }
+      }
+    };
+
+    void resizeAndReady();
     return () => {
       cancelled = true;
-      for (const id of timeoutIds) clearTimeout(id);
-    };
-  }, [deviceLayoutKey, state, panelLayoutRevision, config.manualWindowPositioning, isConfigLoaded]);
-
-  useEffect(() => {
-    if (!isDeviceLoaded) {
-      return;
-    }
-    const unlistenPromise = listen<BatteryInfoNotificationEvent>(
-      "battery-info-notification",
-      (event) => {
-        const payload = event.payload;
-        const device = registeredDevicesRef.current.find((d) => d.id === payload.id);
-        if (!device) return;
-
-        // Side effects stay outside the state updater: React may invoke
-        // updater recipes more than once (StrictMode, concurrent replays).
-        const now = Date.now();
-        const annotatedInfo = annotateBatteryInfosFromRead([payload.battery_info], now)[0];
-        recordBatteryReadings(device, [annotatedInfo]);
-
-        const newBatteryInfos = upsertBatteryInfo(device.batteryInfos, annotatedInfo);
-        notifyBatteryEdgeTransitions({
-          deviceDisplayName: getRegisteredDeviceDisplayName(device),
-          deviceId: device.id,
-          prevBatteryInfos: device.batteryInfos,
-          newBatteryInfos,
-          batteryPartLabels: device.batteryPartLabels,
-          lowBatteryThreshold: lowBatteryThresholdRef.current,
-          ignoreZeroPercent: ignoreZeroPercentRef.current,
-          highBatteryThreshold: highBatteryThresholdRef.current,
-          pushNotification: pushNotificationRef.current,
-          pushNotificationWhen: pushNotificationWhenRef.current,
-        });
-
-        commitRegisteredDevices((prev) =>
-          prev.map((d) =>
-            d.id !== payload.id
-              ? d
-              : expandIfConnected(
-                  {
-                    ...d,
-                    batteryInfos: upsertBatteryInfo(d.batteryInfos, annotatedInfo),
-                    isDisconnected: false,
-                    connectionStatusKnown: true,
-                    connectionObservedAtUnixMs: now,
-                  },
-                  autoCollapseDisconnectedDevicesRef.current,
-                ),
-          ),
-        );
-      },
-    );
-
-    return () => {
-      fireAndForget(
-        unlistenPromise.then((unlisten) => unlisten()),
-        "Failed to clean up battery info listener",
-      );
     };
   }, [
+    config.manualWindowPositioning,
+    deviceLayoutKey,
+    isConfigLoaded,
     isDeviceLoaded,
-    commitRegisteredDevices,
-    autoCollapseDisconnectedDevicesRef,
-    registeredDevicesRef,
+    isMonitorHydrationSettled,
+    panelLayoutRevision,
+    state,
   ]);
 
-  const previousAutoCollapseDisconnectedDevicesRef = useRef(config.autoCollapseDisconnectedDevices);
-  useEffect(() => {
-    if (!isDeviceLoaded) {
-      previousAutoCollapseDisconnectedDevicesRef.current = config.autoCollapseDisconnectedDevices;
-      return;
-    }
-
-    const wasEnabled = previousAutoCollapseDisconnectedDevicesRef.current;
-    previousAutoCollapseDisconnectedDevicesRef.current = config.autoCollapseDisconnectedDevices;
-    if (wasEnabled || !config.autoCollapseDisconnectedDevices) {
-      return;
-    }
-
-    commitRegisteredDevices((prev) => prev.map((device) => collapseIfDisconnected(device, true)));
-  }, [isDeviceLoaded, config.autoCollapseDisconnectedDevices, commitRegisteredDevices]);
-
-  useEffect(() => {
-    if (!isDeviceLoaded) {
-      return;
-    }
-    const unlistenPromise = listen<BatteryMonitorStatusEvent>("battery-monitor-status", (event) => {
-      const payload = event.payload;
-      let notificationMessage: string | null = null;
-      const now = Date.now();
-
-      commitRegisteredDevices((prev) =>
-        prev.map((device) => {
-          if (device.id !== payload.id) {
-            return device;
-          }
-
-          const nextDisconnected = !payload.connected;
-          const nextBatteryInfos =
-            nextDisconnected &&
-            device.batteryInfos.some((info) => info.last_read_succeeded === true)
-              ? markBatteryInfosReadFailed(device.batteryInfos)
-              : device.batteryInfos;
-          if (device.isDisconnected === nextDisconnected && device.connectionStatusKnown === true) {
-            return { ...device, batteryInfos: nextBatteryInfos, connectionObservedAtUnixMs: now };
-          }
-
-          if (payload.connected) {
-            if (
-              config.pushNotification &&
-              config.pushNotificationWhen[NotificationType.Connected]
-            ) {
-              notificationMessage = `${getRegisteredDeviceDisplayName(device)} has been connected.`;
-            }
-          } else if (
-            config.pushNotification &&
-            config.pushNotificationWhen[NotificationType.Disconnected]
-          ) {
-            notificationMessage = `${getRegisteredDeviceDisplayName(device)} has been disconnected.`;
-          }
-
-          return nextDisconnected
-            ? collapseIfDisconnected(
-                {
-                  ...device,
-                  batteryInfos: nextBatteryInfos,
-                  isDisconnected: true,
-                  connectionStatusKnown: true,
-                  connectionObservedAtUnixMs: now,
-                },
-                autoCollapseDisconnectedDevicesRef.current,
-              )
-            : expandIfConnected(
-                {
-                  ...device,
-                  isDisconnected: false,
-                  connectionStatusKnown: true,
-                  connectionObservedAtUnixMs: now,
-                },
-                autoCollapseDisconnectedDevicesRef.current,
-              );
-        }),
-      );
-
-      if (notificationMessage) {
-        fireAndForget(
-          sendNotification(notificationMessage),
-          "Failed to send monitor status notification",
-        );
-      }
-    });
-
-    return () => {
-      fireAndForget(
-        unlistenPromise.then((unlisten) => unlisten()),
-        "Failed to clean up battery monitor status listener",
-      );
-    };
-  }, [
-    isDeviceLoaded,
-    config.autoCollapseDisconnectedDevices,
-    config.pushNotification,
-    config.pushNotificationWhen,
-    commitRegisteredDevices,
-    autoCollapseDisconnectedDevicesRef,
-  ]);
-
-  const handleExitSettings = useCallback(() => {
-    setState(State.main);
-  }, []);
-
-  const handleOpenSettings = useCallback(() => {
-    setState(State.settings);
-  }, []);
-
+  const handleExitSettings = useCallback(() => setState(State.main), []);
+  const handleOpenSettings = useCallback(() => setState(State.settings), []);
   const handleChartOpenChange = useCallback((isOpen: boolean) => {
     setState(isOpen ? State.chart : State.main);
   }, []);
-
   const handlePanelLayoutChange = useCallback(() => {
-    setPanelLayoutRevision((prev) => prev + 1);
+    setPanelLayoutRevision((revision) => revision + 1);
   }, []);
 
   return (
@@ -531,7 +309,6 @@ function App() {
       ) : (
         <>
           <div>
-            {/* Drag area */}
             {config.manualWindowPositioning && (
               <div
                 data-tauri-drag-region
@@ -540,11 +317,12 @@ function App() {
             )}
 
             <div className="flex flex-row items-start">
-              {/* Pin window */}
               <div className="pl-2 pt-0.5">
                 <Button
                   className="w-10 h-10 rounded-lg bg-transparent hover:bg-secondary flex items-center justify-center text-2xl p-0! text-foreground relative z-10"
-                  onClick={() => setConfig((c) => ({ ...c, pinWindow: !c.pinWindow }))}
+                  onClick={() =>
+                    setConfig((current) => ({ ...current, pinWindow: !current.pinWindow }))
+                  }
                   aria-label={config.pinWindow ? "Unpin window" : "Pin window"}
                   aria-pressed={config.pinWindow}
                 >
@@ -552,7 +330,6 @@ function App() {
                 </Button>
               </div>
 
-              {/* Top-right buttons */}
               <TopRightButtons
                 buttons={[
                   {
@@ -580,7 +357,18 @@ function App() {
             </div>
           </div>
 
-          {/* Modal (device selection) */}
+          {error && state === State.main && (
+            <div role="alert" className="px-2 py-1 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+
+          {monitorError && (
+            <div role="alert" className="px-2 py-1 text-sm text-destructive">
+              {monitorError}
+            </div>
+          )}
+
           {(state === State.addDeviceModal || state === State.fetchingDevices) && (
             <Modal
               open={true}
@@ -595,13 +383,13 @@ function App() {
                   {availableDevices.length === 0 ? (
                     <li className="text-muted-foreground">No devices found</li>
                   ) : (
-                    availableDevices.map((d) => (
-                      <li key={d.id}>
+                    availableDevices.map((device) => (
+                      <li key={device.id}>
                         <Button
                           className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-muted transition-colors duration-300 p-2!"
-                          onClick={() => handleAddDevice(d.id)}
+                          onClick={() => handleAddDevice(device.id)}
                         >
-                          {d.name}
+                          {device.name}
                         </Button>
                       </li>
                     ))
@@ -611,13 +399,16 @@ function App() {
             </Modal>
           )}
 
-          {/* Devices content */}
           {deviceList.length > 0 ? (
             <main className="container mx-auto">
               <RegisteredDevicesPanel
                 registeredDevices={deviceList}
-                setRegisteredDevices={setRegisteredDevicesForPanel}
+                setRegisteredDevices={NOOP_SET_DEVICES}
                 onRemoveDevice={handleRemoveDevice}
+                onSetDeviceDisplayName={handleSetDeviceDisplayName}
+                onSetPartLabel={handleSetPartLabel}
+                onSetDeviceCollapsed={handleSetDeviceCollapsed}
+                onReorderDevices={handleReorderDevices}
                 onChartOpenChange={handleChartOpenChange}
                 onLayoutChange={handlePanelLayoutChange}
               />
@@ -635,10 +426,9 @@ function App() {
             </div>
           )}
 
-          {/* Loading after device selection */}
           <Modal
             open={state === State.fetchingBatteryInfo}
-            onClose={NOOP}
+            onClose={() => undefined}
             isLoading={true}
             loadingText="Fetching battery info..."
             showCloseButton={false}

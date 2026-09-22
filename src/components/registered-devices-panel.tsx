@@ -63,6 +63,14 @@ interface DeviceListProps {
   registeredDevices: RegisteredDevice[];
   setRegisteredDevices: React.Dispatch<React.SetStateAction<RegisteredDevice[]>>;
   onRemoveDevice?: (device: RegisteredDevice) => void | Promise<void>;
+  onSetDeviceDisplayName?: (id: string, displayName: string | null) => void | Promise<void>;
+  onSetPartLabel?: (
+    id: string,
+    sourceDescription: string | null,
+    label: string | null,
+  ) => void | Promise<void>;
+  onSetDeviceCollapsed?: (id: string, collapsed: boolean) => void | Promise<void>;
+  onReorderDevices?: (ids: string[]) => void | Promise<void>;
   onChartOpenChange?: (isOpen: boolean) => void;
   onLayoutChange?: () => void;
 }
@@ -332,6 +340,10 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
   registeredDevices,
   setRegisteredDevices,
   onRemoveDevice,
+  onSetDeviceDisplayName,
+  onSetPartLabel,
+  onSetDeviceCollapsed,
+  onReorderDevices,
   onChartOpenChange,
   onLayoutChange,
 }) => {
@@ -375,6 +387,14 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
     const partKey = batteryPartLabelStorageKey(userDescription);
     const defaultName = defaultBatteryPartDisplayName(userDescription);
     const trimmed = value.trim();
+    if (onSetPartLabel) {
+      void onSetPartLabel(
+        deviceId,
+        userDescription,
+        trimmed === "" || trimmed === defaultName ? null : trimmed,
+      );
+      return;
+    }
     setRegisteredDevices((prev) =>
       prev.map((d) => {
         if (d.id !== deviceId) {
@@ -397,6 +417,14 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
 
   const commitDeviceDisplayName = (deviceId: string, value: string) => {
     const trimmed = value.trim();
+    if (onSetDeviceDisplayName) {
+      const device = registeredDevices.find((candidate) => candidate.id === deviceId);
+      void onSetDeviceDisplayName(
+        deviceId,
+        trimmed === "" || trimmed === device?.name ? null : trimmed,
+      );
+      return;
+    }
     setRegisteredDevices((prev) =>
       prev.map((d) => {
         if (d.id !== deviceId) {
@@ -430,16 +458,22 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
   };
 
   const toggleCollapse = (deviceId: string) => {
-    setRegisteredDevices((prev) =>
-      prev.map((device) =>
-        device.id === deviceId
-          ? {
-              ...device,
-              isCollapsed: !device.isCollapsed,
-            }
-          : device,
-      ),
-    );
+    const device = registeredDevices.find((candidate) => candidate.id === deviceId);
+    if (!device) return;
+    if (onSetDeviceCollapsed) {
+      void onSetDeviceCollapsed(deviceId, !device.isCollapsed);
+    } else {
+      setRegisteredDevices((prev) =>
+        prev.map((current) =>
+          current.id === deviceId
+            ? {
+                ...current,
+                isCollapsed: !current.isCollapsed,
+              }
+            : current,
+        ),
+      );
+    }
     onLayoutChange?.();
   };
 
@@ -544,27 +578,45 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
                     onOpenMenu={() => setMenuOpen(device.id)}
                     onMoveUp={() => {
                       if (deviceIdx > 0) {
-                        setRegisteredDevices((prev) => {
-                          const arr = [...prev];
-                          [arr[deviceIdx - 1], arr[deviceIdx]] = [
-                            arr[deviceIdx],
-                            arr[deviceIdx - 1],
+                        if (onReorderDevices) {
+                          const ids = registeredDevices.map((current) => current.id);
+                          [ids[deviceIdx - 1], ids[deviceIdx]] = [
+                            ids[deviceIdx],
+                            ids[deviceIdx - 1],
                           ];
-                          return arr;
-                        });
+                          void onReorderDevices(ids);
+                        } else {
+                          setRegisteredDevices((prev) => {
+                            const arr = [...prev];
+                            [arr[deviceIdx - 1], arr[deviceIdx]] = [
+                              arr[deviceIdx],
+                              arr[deviceIdx - 1],
+                            ];
+                            return arr;
+                          });
+                        }
                       }
                       handleMenuClose();
                     }}
                     onMoveDown={() => {
                       if (deviceIdx < n - 1) {
-                        setRegisteredDevices((prev) => {
-                          const arr = [...prev];
-                          [arr[deviceIdx + 1], arr[deviceIdx]] = [
-                            arr[deviceIdx],
-                            arr[deviceIdx + 1],
+                        if (onReorderDevices) {
+                          const ids = registeredDevices.map((current) => current.id);
+                          [ids[deviceIdx + 1], ids[deviceIdx]] = [
+                            ids[deviceIdx],
+                            ids[deviceIdx + 1],
                           ];
-                          return arr;
-                        });
+                          void onReorderDevices(ids);
+                        } else {
+                          setRegisteredDevices((prev) => {
+                            const arr = [...prev];
+                            [arr[deviceIdx + 1], arr[deviceIdx]] = [
+                              arr[deviceIdx],
+                              arr[deviceIdx + 1],
+                            ];
+                            return arr;
+                          });
+                        }
                       }
                       handleMenuClose();
                     }}

@@ -4,123 +4,258 @@ import {
   Dispatch,
   SetStateAction,
   ReactNode,
-  useState,
-  useEffect,
   useCallback,
-  useRef,
+  useEffect,
   useMemo,
+  useRef,
+  useState,
 } from "react";
-import {
-  defaultConfig,
-  loadSavedConfig,
-  setConfig as storeSetConfig,
-  type Config,
-} from "../utils/config";
+import { listen } from "@tauri-apps/api/event";
 import { useTheme, type Theme } from "@/providers/theme-provider";
+import { defaultConfig, type Config } from "@/utils/config";
+import type { BleDeviceInfo } from "@/utils/ble";
+import type { RegisteredDevice } from "@/utils/app-helpers";
+import {
+  addMonitorDevice,
+  getMonitorState,
+  reloadMonitor as reloadMonitorState,
+  removeMonitorDevice,
+  reorderMonitorDevices,
+  setMonitorDeviceCollapsed,
+  setMonitorDeviceDisplayName,
+  setMonitorPartLabel,
+  type MonitorConfigPatch,
+  type MonitorSnapshot,
+  updateMonitorConfig,
+} from "@/utils/monitor";
 import { logger } from "@/utils/log";
-import { listen, emit } from "@tauri-apps/api/event";
 
 type ConfigContextType = {
   config: Config;
   setConfig: Dispatch<SetStateAction<Config>>;
   isConfigLoaded: boolean;
+  isMonitorHydrationSettled: boolean;
+  monitorError: string | null;
+  registeredDevices: RegisteredDevice[] | undefined;
+  isDeviceLoaded: boolean;
+  addDevice: (device: BleDeviceInfo) => Promise<void>;
+  removeDevice: (id: string) => Promise<void>;
+  setDeviceDisplayName: (id: string, displayName: string | null) => Promise<void>;
+  setPartLabel: (
+    id: string,
+    sourceDescription: string | null,
+    label: string | null,
+  ) => Promise<void>;
+  setDeviceCollapsed: (id: string, collapsed: boolean) => Promise<void>;
+  reorderDevices: (ids: string[]) => Promise<void>;
+  reloadMonitor: () => Promise<void>;
 };
 
 const ConfigContext = createContext<ConfigContextType | undefined>(undefined);
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function configPatch(previous: Config, next: Config): MonitorConfigPatch {
+  const patch: MonitorConfigPatch = {};
+  for (const key of Object.keys(next) as Array<keyof Config>) {
+    if (!Object.is(previous[key], next[key])) {
+      patch[key] = next[key] as never;
+    }
+  }
+  return patch;
+}
+
 export const ConfigProvider = ({ children }: { children: ReactNode }) => {
-  const [config, setConfig] = useState<Config>(defaultConfig);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+  const [snapshot, setSnapshot] = useState<MonitorSnapshot | null>(null);
+  const [isMonitorHydrationSettled, setIsMonitorHydrationSettled] = useState(false);
+  const [monitorError, setMonitorError] = useState<string | null>(null);
+  const snapshotRef = useRef<MonitorSnapshot | null>(null);
   const { setTheme } = useTheme();
 
-  // Latest refs so stable callbacks read fresh values without re-subscribing effects.
-  const setThemeRef = useRef(setTheme);
-  const configRef = useRef(config);
-  const isConfigLoadedRef = useRef(isConfigLoaded);
-
-  useEffect(() => {
-    setThemeRef.current = setTheme;
-    configRef.current = config;
-    isConfigLoadedRef.current = isConfigLoaded;
-  });
-
-  const updateConfigWithPersistence = useCallback(async (newConfig: Config, skipEmit = false) => {
-    await storeSetConfig(newConfig);
-    // Only emit config-changed if this is a user-initiated change, not from an event
-    if (!skipEmit) {
-      await emit<Config>("config-changed", newConfig);
-    }
-  }, []);
-
-  // Compute the next config outside the state updater so the updater stays
-  // pure (React may re-invoke updaters). configRef is kept in sync above and
-  // updated synchronously here so back-to-back calls observe the latest value.
-  const updateConfig = useCallback(
-    (updates: SetStateAction<Config>, skipEmit = false) => {
-      const newConfig =
-        typeof updates === "function"
-          ? (updates as (prev: Config) => Config)(configRef.current)
-          : updates;
-      configRef.current = newConfig;
-      setConfig(newConfig);
-      if (isConfigLoadedRef.current) {
-        void updateConfigWithPersistence(newConfig, skipEmit);
+  const applySnapshot = useCallback(
+    (next: MonitorSnapshot, allowSameRevision = false) => {
+      const previous = snapshotRef.current;
+      if (
+        previous &&
+        (next.revision < previous.revision ||
+          (next.revision === previous.revision && !allowSameRevision))
+      ) {
+        return;
       }
+      snapshotRef.current = next;
+      setSnapshot(next);
+      setIsMonitorHydrationSettled(true);
+      setMonitorError(null);
+      setTheme(next.config.theme as Theme);
     },
-    [updateConfigWithPersistence],
+    [setTheme],
   );
 
-  // rerender-dependencies: Use ref for setTheme so init effect runs only once on mount
-  useEffect(() => {
-    let isMounted = true;
-    (async () => {
-      const loaded = await loadSavedConfig();
-      if (isMounted) {
-        // Sync refs here (not only in the passive effect below) so updates
-        // triggered before the next effect flush still observe loaded state.
-        configRef.current = loaded;
-        isConfigLoadedRef.current = true;
-        setConfig(loaded);
-        setIsConfigLoaded(true);
-        setThemeRef.current(loaded.theme as Theme);
-        await emit<Config>("config-changed", loaded);
-        logger.info(`Loaded config: ${JSON.stringify(loaded, null, 4)}`);
-        logger.info(`Theme set to: ${loaded.theme}`);
+  const runMonitorCommand = useCallback(
+    async (command: () => Promise<MonitorSnapshot>): Promise<void> => {
+      try {
+        const next = await command();
+        applySnapshot(next);
+      } catch (error) {
+        logger.error(`Monitor command failed: ${String(error)}`);
+        throw error;
       }
-    })();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    },
+    [applySnapshot],
+  );
 
   useEffect(() => {
-    const unlistenPromise = listen<Partial<Config>>("update-config", (event) => {
-      const updates = event.payload;
-      logger.info(`Received update-config event: ${JSON.stringify(updates)}`);
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
 
-      updateConfig(
-        (prevConfig) => ({
-          ...prevConfig,
-          ...updates,
-        }),
-        true,
-      ); // Skip emitting config-changed to prevent loop
-    });
+    const subscribeAndHydrate = async () => {
+      let subscriptionError: string | null = null;
 
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
+      try {
+        const registeredUnlisten = await listen<MonitorSnapshot>(
+          "monitor-state-changed",
+          (event) => {
+            if (!cancelled) {
+              applySnapshot(event.payload);
+            }
+          },
+        );
+
+        if (cancelled) {
+          registeredUnlisten();
+          return;
+        }
+        unlisten = registeredUnlisten;
+      } catch (error) {
+        subscriptionError = `Failed to subscribe to monitor state: ${errorMessage(error)}`;
+        logger.error(subscriptionError);
+      }
+
+      try {
+        const initial = await getMonitorState();
+        if (!cancelled) {
+          applySnapshot(initial);
+          if (subscriptionError) {
+            setMonitorError(subscriptionError);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          const message = `Failed to load monitor state: ${errorMessage(error)}`;
+          logger.error(message);
+          setMonitorError(message);
+          setIsMonitorHydrationSettled(true);
+        }
+      }
     };
-  }, [updateConfig]);
 
-  // rerender-memo-with-default-value: Memoize context value to prevent
-  // unnecessary re-renders of all consumers on every provider render
-  const contextValue = useMemo(
+    void subscribeAndHydrate();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [applySnapshot]);
+
+  const setConfig = useCallback<Dispatch<SetStateAction<Config>>>(
+    (updates) => {
+      const currentSnapshot = snapshotRef.current;
+      if (!currentSnapshot) {
+        return;
+      }
+
+      const previous = currentSnapshot.config;
+      const next = typeof updates === "function" ? updates(previous) : updates;
+      const patch = configPatch(previous, next);
+      if (Object.keys(patch).length === 0) {
+        return;
+      }
+
+      const optimisticConfig: Config = { ...previous, ...next };
+      const optimistic: MonitorSnapshot = {
+        ...currentSnapshot,
+        config: optimisticConfig,
+      };
+      snapshotRef.current = optimistic;
+      setSnapshot(optimistic);
+      setTheme(optimisticConfig.theme as Theme);
+      void runMonitorCommand(() => updateMonitorConfig(patch)).catch(async () => {
+        try {
+          const latest = await getMonitorState();
+          applySnapshot(latest, true);
+        } catch (rollbackError) {
+          logger.error(
+            `Failed to recover monitor state after config update: ${String(rollbackError)}`,
+          );
+        }
+      });
+    },
+    [applySnapshot, runMonitorCommand, setTheme],
+  );
+
+  const addDevice = useCallback(
+    (device: BleDeviceInfo) => runMonitorCommand(() => addMonitorDevice(device)),
+    [runMonitorCommand],
+  );
+  const removeDevice = useCallback(
+    (id: string) => runMonitorCommand(() => removeMonitorDevice(id)),
+    [runMonitorCommand],
+  );
+  const setDeviceDisplayName = useCallback(
+    (id: string, displayName: string | null) =>
+      runMonitorCommand(() => setMonitorDeviceDisplayName(id, displayName)),
+    [runMonitorCommand],
+  );
+  const setPartLabel = useCallback(
+    (id: string, sourceDescription: string | null, label: string | null) =>
+      runMonitorCommand(() => setMonitorPartLabel(id, sourceDescription, label)),
+    [runMonitorCommand],
+  );
+  const setDeviceCollapsed = useCallback(
+    (id: string, collapsed: boolean) =>
+      runMonitorCommand(() => setMonitorDeviceCollapsed(id, collapsed)),
+    [runMonitorCommand],
+  );
+  const reorderDevices = useCallback(
+    (ids: string[]) => runMonitorCommand(() => reorderMonitorDevices(ids)),
+    [runMonitorCommand],
+  );
+  const reloadMonitor = useCallback(
+    () => runMonitorCommand(() => reloadMonitorState()),
+    [runMonitorCommand],
+  );
+
+  const contextValue = useMemo<ConfigContextType>(
     () => ({
-      config,
-      setConfig: updateConfig,
-      isConfigLoaded,
+      config: snapshot?.config ?? defaultConfig,
+      setConfig,
+      isConfigLoaded: snapshot !== null,
+      isMonitorHydrationSettled,
+      monitorError,
+      registeredDevices: snapshot?.devices,
+      isDeviceLoaded: snapshot !== null,
+      addDevice,
+      removeDevice,
+      setDeviceDisplayName,
+      setPartLabel,
+      setDeviceCollapsed,
+      reorderDevices,
+      reloadMonitor,
     }),
-    [config, updateConfig, isConfigLoaded],
+    [
+      addDevice,
+      reloadMonitor,
+      removeDevice,
+      reorderDevices,
+      setConfig,
+      isMonitorHydrationSettled,
+      monitorError,
+      setDeviceCollapsed,
+      setDeviceDisplayName,
+      setPartLabel,
+      snapshot,
+    ],
   );
 
   return <ConfigContext.Provider value={contextValue}>{children}</ConfigContext.Provider>;

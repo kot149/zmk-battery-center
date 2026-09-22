@@ -69,7 +69,9 @@ export function showWindow() {
 }
 
 export function hideWindow() {
-  appWindow.hide();
+  return invoke("dismiss_main_window").catch((error) => {
+    logger.error(`Failed to dismiss main window: ${error}`);
+  });
 }
 
 export function setWindowFocus() {
@@ -81,14 +83,16 @@ export function setWindowAlwaysOnTop(alwaysOnTop: boolean) {
 }
 
 export async function moveWindowToTrayCenter() {
-  if (isTrayPositionSet) {
-    await waitForWindowMoveEnd();
-    logger.debug(`Moving window to tray center`);
-    isWindowMovingByPlugin = true;
-    await moveWindow(Position.TrayCenter);
+  await waitForWindowMoveEnd();
+  isWindowMovingByPlugin = true;
+  try {
+    if (isTrayPositionSet) {
+      await moveWindow(Position.TrayCenter);
+    } else {
+      await invoke("position_main_window_at_tray");
+    }
+  } finally {
     isWindowMovingByPlugin = false;
-  } else {
-    logger.warn(`Skipped moving window to tray center because tray position is not set`);
   }
 }
 
