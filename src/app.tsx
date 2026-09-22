@@ -6,6 +6,8 @@ import {
   useCallback,
   useRef,
   useMemo,
+  lazy,
+  Suspense,
   type Dispatch,
   type SetStateAction,
 } from "react";
@@ -18,7 +20,6 @@ import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outl
 import PushPinIcon from "./components/push-pin-icon";
 import Modal from "./components/modal";
 import { useConfigContext } from "@/providers/config-provider";
-import Settings from "@/components/settings";
 import { platform } from "@tauri-apps/plugin-os";
 import { invoke } from "@tauri-apps/api/core";
 import { useWindowEvents } from "@/hooks/use-window-events";
@@ -39,6 +40,7 @@ enum State {
 const DEVICE_FETCH_TIMEOUT_MS = 20_000;
 const EMPTY_DEVICES: RegisteredDevice[] = [];
 const NOOP_SET_DEVICES: Dispatch<SetStateAction<RegisteredDevice[]>> = () => undefined;
+const LazySettings = lazy(() => import("@/components/settings"));
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -311,7 +313,9 @@ function App() {
       }`}
     >
       {state === State.settings ? (
-        <Settings onExit={handleExitSettings} />
+        <Suspense fallback={null}>
+          <LazySettings onExit={handleExitSettings} />
+        </Suspense>
       ) : (
         <>
           <div>

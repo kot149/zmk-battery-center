@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { RegisteredDevice } from "@/utils/app-helpers";
@@ -241,7 +241,9 @@ describe("RegisteredDevicesPanel", () => {
     await user.hover(row!);
     await user.click(screen.getByRole("button", { name: "Show battery history chart" }));
 
-    expect(screen.getByRole("button", { name: "Close mocked chart" })).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Close mocked chart" })).toBeTruthy();
+    });
     expect(onChartOpenChange).toHaveBeenCalledWith(true);
 
     await user.click(screen.getByRole("button", { name: "Close mocked chart" }));

@@ -1,6 +1,13 @@
-import React, { useState, useRef, useEffect, type RefObject, type MutableRefObject } from "react";
+import React, {
+  lazy,
+  Suspense,
+  useState,
+  useRef,
+  useEffect,
+  type RefObject,
+  type MutableRefObject,
+} from "react";
 import BatteryIcon from "@/components/battery-icon";
-import BatteryHistoryChart from "@/components/battery-history-chart";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 import { Button } from "@/components/button";
 import {
@@ -18,6 +25,8 @@ import {
 } from "@/utils/battery-labels";
 import { getRegisteredDeviceDisplayName } from "@/utils/app-helpers";
 import { cn } from "@/utils/cn";
+
+const LazyBatteryHistoryChart = lazy(() => import("@/components/battery-history-chart"));
 
 const WifiOffIcon: React.FC<{ className?: string }> = ({ className }) => (
   <span
@@ -333,7 +342,11 @@ const OpenChartOverlay: React.FC<OpenChartOverlayProps> = ({ chartOpenId, device
   if (chartOpenId == null) return null;
   const chartDevice = devices.find((d) => d.id === chartOpenId);
   if (!chartDevice) return null;
-  return <BatteryHistoryChart device={chartDevice} onClose={onClose} />;
+  return (
+    <Suspense fallback={null}>
+      <LazyBatteryHistoryChart device={chartDevice} onClose={onClose} />
+    </Suspense>
+  );
 };
 
 const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({

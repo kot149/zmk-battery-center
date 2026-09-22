@@ -115,6 +115,17 @@ describe("App", () => {
     expect(mocks.moveWindowToTrayCenter).not.toHaveBeenCalled();
   });
 
+  it("loads settings when opened", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto start at login")).toBeTruthy();
+    });
+  });
+
   it("reveals the window when monitor hydration fails", async () => {
     mocks.context.isConfigLoaded = false;
     mocks.context.isDeviceLoaded = false;
