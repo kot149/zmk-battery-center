@@ -144,6 +144,7 @@ fn default_config() -> Value {
         "fetchInterval": DEFAULT_FETCH_INTERVAL_MS,
         "autoStart": false,
         "autoCollapseDisconnectedDevices": false,
+        "externalBatterySnapshot": false,
         "pushNotification": false,
         "pushNotificationWhen": {
             "low_battery": true,

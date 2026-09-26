@@ -33,6 +33,7 @@ export type Config = {
   fetchInterval: FetchInterval;
   autoStart: boolean;
   autoCollapseDisconnectedDevices: boolean;
+  externalBatterySnapshot: boolean;
   pushNotification: boolean;
   pushNotificationWhen: Record<NotificationType, boolean>;
   lowBatteryThreshold: number;
@@ -55,6 +56,7 @@ export const defaultConfig: Config = {
   fetchInterval: 60_000,
   autoStart: false,
   autoCollapseDisconnectedDevices: false,
+  externalBatterySnapshot: false,
   pushNotification: false,
   pushNotificationWhen: {
     [NotificationType.LowBattery]: true,

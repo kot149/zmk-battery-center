@@ -2,6 +2,8 @@
 
 zmk-battery-center publishes cached battery state for local integrations. Consumers read the snapshot file only. The app does not open an HTTP server, socket, D-Bus service, named pipe, or WebSocket.
 
+Publishing is disabled by default. Enable **External battery snapshot** in Settings to publish `battery-state-v1.json`. Disabling it removes the existing snapshot file and stops further publishing.
+
 ## Path
 
 Production files are stored in the app data directory:
@@ -70,7 +72,7 @@ This is the common snapshot consumed by file-based integrations.
 - `batteryParts[].displayName`: the custom part label, or the source description, or `Central`.
 - `levelPercent`: an integer from `0` through `100`, or `null`.
 - `observedAtUnixMs`: the last successful observation time for the level. Reusing a last-known value does not change it.
-- `valueStatus`: `current`, `stale`, or `unavailable`. Numeric values are stale when disconnected, unknown, or the latest read did not succeed. A missing numeric value is unavailable. This describes freshness at `generatedAtUnixMs`; it does not indicate that zmk-battery-center is currently running. The last snapshot remains on disk after the app exits.
+- `valueStatus`: `current`, `stale`, or `unavailable`. Numeric values are stale when disconnected, unknown, or the latest read did not succeed. A missing numeric value is unavailable. This describes freshness at `generatedAtUnixMs`; it does not indicate that zmk-battery-center is currently running. While publishing is enabled, the last snapshot remains on disk after the app exits.
 
 ## Atomic access
 

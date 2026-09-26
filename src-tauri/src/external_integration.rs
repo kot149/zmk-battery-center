@@ -204,6 +204,14 @@ fn ensure_external_dir(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn remove_battery_snapshot(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 pub fn write_json_atomically<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let parent = path
         .parent()
@@ -291,6 +299,17 @@ pub async fn publish_external_battery_snapshot(
     source_revision: u64,
     devices: Vec<ExternalBatteryDevicePayload>,
 ) -> Result<(), String> {
+    let enabled = crate::monitor::current_snapshot().is_some_and(|snapshot| {
+        snapshot
+            .config
+            .get("externalBatterySnapshot")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    });
+    if !enabled {
+        return Ok(());
+    }
+
     let external_dir = resolve_external_dir(&app)?;
     let mut inner = state.inner.lock().await;
     if is_stale_source_publish(&inner, source_generation, source_revision) {
@@ -314,8 +333,8 @@ pub async fn publish_monitor_snapshot(
     snapshot: &MonitorSnapshot,
 ) -> Result<(), String> {
     let external_dir = resolve_external_dir(app)?;
+    let snapshot_path = external_dir.join(BATTERY_STATE_FILENAME);
     let state = app.state::<ExternalIntegrationState>();
-    let devices = external_devices(snapshot);
     let mut inner = state.inner.lock().await;
     if inner.current_source_generation == 0 {
         inner.next_source_generation = inner.next_source_generation.saturating_add(1);
@@ -325,6 +344,17 @@ pub async fn publish_monitor_snapshot(
     if snapshot.revision < inner.current_source_revision {
         return Ok(());
     }
+    if !snapshot
+        .config
+        .get("externalBatterySnapshot")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false)
+    {
+        inner.current_source_revision = snapshot.revision;
+        return remove_battery_snapshot(&snapshot_path);
+    }
+
+    let devices = external_devices(snapshot);
     inner.public_revision = inner.public_revision.saturating_add(1);
     let output = BatterySnapshot {
         schema_version: 1,
@@ -332,7 +362,7 @@ pub async fn publish_monitor_snapshot(
         generated_at_unix_ms: unix_now_ms(),
         devices,
     };
-    write_json_atomically(&external_dir.join(BATTERY_STATE_FILENAME), &output)?;
+    write_json_atomically(&snapshot_path, &output)?;
     inner.current_source_revision = snapshot.revision;
     Ok(())
 }

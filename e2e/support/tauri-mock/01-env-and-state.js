@@ -78,6 +78,7 @@
     fetchInterval: 60_000,
     autoStart: false,
     autoCollapseDisconnectedDevices: false,
+    externalBatterySnapshot: false,
     pushNotification: false,
     pushNotificationWhen: {
       low_battery: true,

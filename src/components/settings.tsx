@@ -458,6 +458,19 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
               </li>
             </ul>
           </SettingsGroup>
+
+          {/* External battery snapshot */}
+          <SettingsGroup>
+            <div className="flex items-center justify-between gap-3">
+              <span className="shrink-0">External battery snapshot</span>
+              <Switch
+                checked={config.externalBatterySnapshot}
+                onCheckedChange={(checked) =>
+                  setConfig((c) => ({ ...c, externalBatterySnapshot: checked }))
+                }
+              />
+            </div>
+          </SettingsGroup>
         </div>
       </div>
     </div>
