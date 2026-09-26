@@ -19,12 +19,19 @@ import { moveWindowToTrayCenter, resizeWindowToContent } from "./utils/window";
 import { PlusIcon, ArrowPathIcon, Cog8ToothIcon } from "@heroicons/react/24/outline";
 import PushPinIcon from "./components/push-pin-icon";
 import Modal from "./components/modal";
+import UpdateBanner from "./components/update-banner";
 import { useConfigContext } from "@/providers/config-provider";
 import { platform } from "@tauri-apps/plugin-os";
 import { invoke } from "@tauri-apps/api/core";
 import { useWindowEvents } from "@/hooks/use-window-events";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 import { withTimeout } from "@/utils/common";
+import {
+  checkForUpdate,
+  dismissUpdateVersion,
+  isUpdateDismissed,
+  type UpdateInfo,
+} from "@/utils/update";
 
 export type { RegisteredDevice };
 
@@ -67,6 +74,9 @@ function App() {
   const [error, setError] = useState("");
   const [state, setState] = useState<State>(State.main);
   const [panelLayoutRevision, setPanelLayoutRevision] = useState(0);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const updateChecksEnabled = isConfigLoaded && config.updateCheckEnabled === true;
+  const visibleUpdateInfo = updateChecksEnabled ? updateInfo : null;
   const windowReadyRef = useRef(false);
   const isPollingMode = config.fetchInterval !== "auto";
   const deviceList = registeredDevices ?? EMPTY_DEVICES;
@@ -236,6 +246,40 @@ function App() {
   );
 
   useEffect(() => {
+    if (!updateChecksEnabled) {
+      setUpdateInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    void checkForUpdate()
+      .then(async (update) => {
+        if (!update) return;
+        let dismissed = false;
+        try {
+          dismissed = await isUpdateDismissed(update.version);
+        } catch (caughtError: unknown) {
+          logger.warn(`Failed to read dismissed updates: ${errorMessage(caughtError)}`);
+        }
+        if (!cancelled && !dismissed) setUpdateInfo(update);
+      })
+      .catch((caughtError: unknown) => {
+        logger.warn(`Failed to check for updates: ${errorMessage(caughtError)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [updateChecksEnabled]);
+
+  const handleDismissUpdate = useCallback(() => {
+    if (!updateInfo) return;
+    setUpdateInfo(null);
+    void dismissUpdateVersion(updateInfo.version).catch((caughtError: unknown) => {
+      logger.warn(`Failed to dismiss update: ${errorMessage(caughtError)}`);
+    });
+  }, [updateInfo]);
+
+  useEffect(() => {
     let cancelled = false;
     const resizeAndReady = async () => {
       if (!isMonitorHydrationSettled) return;
@@ -286,6 +330,7 @@ function App() {
     isMonitorHydrationSettled,
     panelLayoutRevision,
     state,
+    visibleUpdateInfo?.version,
   ]);
 
   const handleExitSettings = useCallback(() => setState(State.main), []);
@@ -312,6 +357,11 @@ function App() {
                 : "w-90 min-h-90"
       }`}
     >
+      <div role="status" aria-atomic="true" className="sr-only">
+        {visibleUpdateInfo
+          ? `Update available: zmk-battery-center v${visibleUpdateInfo.version}.`
+          : ""}
+      </div>
       {state === State.settings ? (
         <Suspense fallback={null}>
           <LazySettings onExit={handleExitSettings} />
@@ -366,6 +416,10 @@ function App() {
               />
             </div>
           </div>
+
+          {visibleUpdateInfo && (
+            <UpdateBanner update={visibleUpdateInfo} onDismiss={handleDismissUpdate} />
+          )}
 
           {error && state === State.main && (
             <div role="alert" className="px-2 py-1 text-sm text-destructive">

@@ -7,10 +7,12 @@ import { defaultConfig, type Config } from "@/utils/config";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 
 const mocks = vi.hoisted(() => ({
-  invoke: vi.fn(async (..._args: unknown[]) => undefined),
+  invoke: vi.fn(async (..._args: unknown[]): Promise<unknown> => undefined),
   resizeWindowToContent: vi.fn(async () => undefined),
   moveWindowToTrayCenter: vi.fn(async () => undefined),
   listBatteryDevices: vi.fn(async () => [{ id: "kbd-2", name: "Available Keyboard" }]),
+  isUpdateDismissed: vi.fn(async (_version: string) => false),
+  dismissUpdateVersion: vi.fn(async (_version: string) => undefined),
   context: {
     config: null as unknown as Config,
     setConfig: vi.fn(),
@@ -52,6 +54,12 @@ vi.mock("@/hooks/use-window-events", () => ({
 vi.mock("@/utils/window", () => ({
   resizeWindowToContent: () => mocks.resizeWindowToContent(),
   moveWindowToTrayCenter: () => mocks.moveWindowToTrayCenter(),
+}));
+
+vi.mock("@/utils/update", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/update")>()),
+  isUpdateDismissed: mocks.isUpdateDismissed,
+  dismissUpdateVersion: mocks.dismissUpdateVersion,
 }));
 
 function device(id: string, name: string): RegisteredDevice {
@@ -96,11 +104,17 @@ describe("App", () => {
     mocks.context.reloadMonitor.mockReset();
     mocks.context.reloadMonitor.mockResolvedValue(undefined);
     mocks.invoke.mockReset();
-    mocks.invoke.mockResolvedValue(undefined);
+    mocks.invoke.mockImplementation(async (command: unknown) =>
+      command === "check_for_update" ? null : undefined,
+    );
     mocks.resizeWindowToContent.mockClear();
     mocks.moveWindowToTrayCenter.mockClear();
     mocks.listBatteryDevices.mockReset();
     mocks.listBatteryDevices.mockResolvedValue([{ id: "kbd-2", name: "Available Keyboard" }]);
+    mocks.isUpdateDismissed.mockReset();
+    mocks.isUpdateDismissed.mockResolvedValue(false);
+    mocks.dismissUpdateVersion.mockReset();
+    mocks.dismissUpdateVersion.mockResolvedValue(undefined);
   });
 
   it("renders canonical devices and signals readiness after hydration", async () => {
@@ -124,6 +138,15 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("Auto start at login")).toBeTruthy();
     });
+    const updateSwitch = screen.getByRole("switch", {
+      name: "Check for zmk-battery-center update",
+    });
+    expect(updateSwitch.getAttribute("data-state")).toBe("unchecked");
+    await user.click(updateSwitch);
+    const updateConfig = mocks.context.setConfig.mock.calls[0]?.[0] as (
+      config: Config,
+    ) => Config;
+    expect(updateConfig(defaultConfig).updateCheckEnabled).toBe(true);
   });
 
   it("reveals the window when monitor hydration fails", async () => {
@@ -157,13 +180,19 @@ describe("App", () => {
   it("waits for hydration before signaling readiness", async () => {
     mocks.context.isMonitorHydrationSettled = false;
     renderApp();
-    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.invoke.mock.calls.filter(([command]) => command === "window_ready")).toHaveLength(
+      0,
+    );
   });
 
   it("resizes subsequent layouts without revealing the window again", async () => {
     const user = userEvent.setup();
     renderApp();
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(
+        mocks.invoke.mock.calls.filter(([command]) => command === "window_ready"),
+      ).toHaveLength(1),
+    );
 
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await waitFor(() => expect(mocks.resizeWindowToContent).toHaveBeenCalled());
@@ -173,13 +202,98 @@ describe("App", () => {
   });
 
   it("retries readiness after a native reveal error", async () => {
-    mocks.invoke.mockRejectedValueOnce(new Error("reveal failed")).mockResolvedValue(undefined);
+    let attempts = 0;
+    mocks.invoke.mockImplementation(async (command: unknown) => {
+      if (command === "check_for_update") return null;
+      if (command === "window_ready" && attempts++ === 0) throw new Error("reveal failed");
+      return undefined;
+    });
 
     renderApp();
 
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    expect(mocks.invoke.mock.calls[0]?.[0]).toBe("window_ready");
-    expect(mocks.invoke.mock.calls[1]?.[0]).toBe("window_ready");
+    await waitFor(() =>
+      expect(
+        mocks.invoke.mock.calls.filter(([command]) => command === "window_ready"),
+      ).toHaveLength(2),
+    );
+  });
+
+  it("shows an available update and resizes after it arrives", async () => {
+    mocks.context.config = { ...defaultConfig, updateCheckEnabled: true };
+    let resolveUpdate!: (value: { version: string; releaseUrl: string }) => void;
+    const update = new Promise<{ version: string; releaseUrl: string }>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    mocks.invoke.mockImplementation(async (command: unknown) =>
+      command === "check_for_update" ? update : undefined,
+    );
+    renderApp();
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("");
+
+    await waitFor(() =>
+      expect(
+        mocks.invoke.mock.calls.filter(([command]) => command === "window_ready"),
+      ).toHaveLength(1),
+    );
+    resolveUpdate({ version: "0.13.0", releaseUrl: "https://example.com/release" });
+
+    expect(await screen.findByRole("button", { name: "Open release v0.13.0" })).toBeTruthy();
+    expect(status.textContent).toBe("Update available: zmk-battery-center v0.13.0.");
+    await waitFor(() => expect(mocks.resizeWindowToContent).toHaveBeenCalled());
+    expect(
+      mocks.invoke.mock.calls.filter(([command]) => command === "check_for_update"),
+    ).toHaveLength(1);
+  });
+
+  it("dismisses an update and keeps that version hidden on the next mount", async () => {
+    mocks.context.config = { ...defaultConfig, updateCheckEnabled: true };
+    const user = userEvent.setup();
+    mocks.invoke.mockImplementation(async (command: unknown) =>
+      command === "check_for_update"
+        ? { version: "0.13.0", releaseUrl: "https://example.com/release" }
+        : undefined,
+    );
+    const first = renderApp();
+    await user.click(await screen.findByRole("button", { name: "Dismiss update v0.13.0" }));
+    expect(mocks.dismissUpdateVersion).toHaveBeenCalledWith("0.13.0");
+    expect(screen.queryByText("zmk-battery-center v0.13.0 is available")).toBeNull();
+
+    first.unmount();
+    mocks.isUpdateDismissed.mockResolvedValue(true);
+    renderApp();
+    await waitFor(() => expect(mocks.isUpdateDismissed).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("zmk-battery-center v0.13.0 is available")).toBeNull();
+  });
+
+  it("does not check for updates while disabled", async () => {
+    renderApp();
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("window_ready", { width: 0, height: 0 }),
+    );
+    expect(
+      mocks.invoke.mock.calls.filter(([command]) => command === "check_for_update"),
+    ).toHaveLength(0);
+    expect(screen.queryByText("zmk-battery-center v0.13.0 is available")).toBeNull();
+  });
+
+  it("hides an already fetched update when disabled", async () => {
+    mocks.context.config = { ...defaultConfig, updateCheckEnabled: true };
+    mocks.invoke.mockImplementation(async (command: unknown) =>
+      command === "check_for_update"
+        ? { version: "0.13.0", releaseUrl: "https://example.com/release" }
+        : undefined,
+    );
+    const view = renderApp();
+    expect(await screen.findByText("zmk-battery-center v0.13.0 is available")).toBeTruthy();
+
+    mocks.context.config = { ...defaultConfig, updateCheckEnabled: false };
+    view.rerender(
+      <ThemeProvider defaultTheme="dark">
+        <App />
+      </ThemeProvider>,
+    );
+    expect(screen.queryByText("zmk-battery-center v0.13.0 is available")).toBeNull();
   });
 
   it("adds a device through the narrow monitor command", async () => {

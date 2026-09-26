@@ -77,6 +77,7 @@
     theme: "dark",
     fetchInterval: 60_000,
     autoStart: false,
+    updateCheckEnabled: false,
     autoCollapseDisconnectedDevices: false,
     externalBatterySnapshot: false,
     pushNotification: false,

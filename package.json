@@ -17,6 +17,7 @@
     "test:app": "bun run build:app && bun run with:test-data bun scripts/smoke_launch_built_app.ts",
     "build": "tauri build",
     "preview": "vite preview",
+    "preview:update": "bun run build:ui && bun scripts/preview_update.ts",
     "test": "bun run test:frontend && bun run test:rust",
     "test:frontend": "bun run with:test-data vitest run",
     "test:rust": "cargo test",

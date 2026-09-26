@@ -13,6 +13,7 @@ mod tray;
 mod tray_battery_payload;
 #[cfg(target_os = "macos")]
 mod tray_native_macos;
+mod update;
 mod window;
 
 #[cfg(debug_assertions)] // for development
@@ -89,6 +90,8 @@ pub fn run() {
             window::position_main_window_at_tray,
             monitor::get_monitor_state,
             monitor::monitor_update_config,
+            monitor::monitor_is_update_dismissed,
+            monitor::monitor_dismiss_update,
             monitor::monitor_add_device,
             monitor::monitor_remove_device,
             monitor::monitor_set_device_display_name,
@@ -103,6 +106,7 @@ pub fn run() {
             tray::update_tray_battery_icon,
             tray::update_manual_positioning,
             tray::update_pin_window,
+            update::check_for_update,
         ])
         .setup(|app| {
             app.manage(tray::TrayState {

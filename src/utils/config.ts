@@ -32,6 +32,7 @@ export type Config = {
   theme: Theme;
   fetchInterval: FetchInterval;
   autoStart: boolean;
+  updateCheckEnabled: boolean;
   autoCollapseDisconnectedDevices: boolean;
   externalBatterySnapshot: boolean;
   pushNotification: boolean;
@@ -55,6 +56,7 @@ export const defaultConfig: Config = {
   theme: "dark" as Theme,
   fetchInterval: 60_000,
   autoStart: false,
+  updateCheckEnabled: false,
   autoCollapseDisconnectedDevices: false,
   externalBatterySnapshot: false,
   pushNotification: false,
