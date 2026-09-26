@@ -45,6 +45,7 @@ objc2-foundation = { version = "0.3", features = [
   "NSDictionary",
   "NSObject",
   "NSGeometry",
+  "NSProcessInfo",
 ] }
 objc2-app-kit = { version = "0.3.2", features = [
   "NSView",
@@ -89,4 +90,3 @@ features = [
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "test-util"] }
-

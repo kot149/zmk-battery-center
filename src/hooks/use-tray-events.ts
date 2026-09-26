@@ -162,6 +162,8 @@ export function useTrayEvents({
         );
       }
 
+      if (platform() === "macos") return;
+
       // Handle tray left click
       track(
         await listen("tray_left_click", async () => {

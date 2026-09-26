@@ -1,3 +1,5 @@
+#[cfg(target_os = "macos")]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_positioner::{Position, WindowExt};
@@ -6,12 +8,18 @@ use windows::UI::ViewManagement::UISettings;
 
 #[cfg(target_os = "windows")]
 mod suspension;
+#[cfg(target_os = "macos")]
+mod suspension_macos;
 
 #[derive(Default)]
 pub struct WindowState {
     requested_visible: AtomicBool,
     ready: AtomicBool,
     generation: AtomicU64,
+    #[cfg(target_os = "macos")]
+    detached_webview: AtomicUsize,
+    #[cfg(target_os = "macos")]
+    detached_ns_window: AtomicUsize,
     pub tray_position_known: AtomicBool,
 }
 
@@ -52,6 +60,8 @@ fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
     if let Err(error) = position_main_window(app, window) {
         log::warn!("Failed to position main window: {error}");
     }
+    #[cfg(target_os = "macos")]
+    suspension_macos::resume(window)?;
     window.show()?;
     if let Err(error) = window.set_focus() {
         log::warn!("Failed to focus main window: {error}");
@@ -85,6 +95,10 @@ pub fn show_main_window(app: &AppHandle) {
                 } else {
                     builder
                 };
+                #[cfg(target_os = "macos")]
+                let builder = builder.background_throttling(
+                    tauri::utils::config::BackgroundThrottlingPolicy::Suspend,
+                );
                 builder.visible(false).build()
             });
         if let Err(error) = result {
@@ -110,12 +124,14 @@ pub fn hide_main_window(app: &AppHandle) {
         state.generation.fetch_add(1, Ordering::SeqCst);
         #[cfg(target_os = "windows")]
         suspension::schedule(&handle);
+        #[cfg(target_os = "macos")]
+        suspension_macos::schedule(&handle);
     }) {
         log::error!("Failed to schedule main window dismissal: {error}");
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 fn should_suspend(
     scheduled_generation: u64,
     current_generation: u64,
@@ -130,6 +146,10 @@ pub fn on_main_destroyed(app: &AppHandle) {
     state.generation.fetch_add(1, Ordering::SeqCst);
     state.ready.store(false, Ordering::SeqCst);
     state.requested_visible.store(false, Ordering::SeqCst);
+    #[cfg(target_os = "macos")]
+    state.detached_webview.store(0, Ordering::SeqCst);
+    #[cfg(target_os = "macos")]
+    state.detached_ns_window.store(0, Ordering::SeqCst);
 }
 
 pub fn toggle_main_window(app: &AppHandle) {
@@ -149,6 +169,11 @@ pub fn refresh_main_window(app: &AppHandle) {
             state.requested_visible.store(true, Ordering::SeqCst);
             #[cfg(target_os = "windows")]
             suspension::resume(&window);
+            #[cfg(target_os = "macos")]
+            if let Err(error) = suspension_macos::resume(&window) {
+                log::error!("Failed to attach main WebView before reload: {error}");
+                return;
+            }
             let was_ready = state.ready.swap(false, Ordering::SeqCst);
             if let Err(error) = window.reload() {
                 state.ready.store(was_ready, Ordering::SeqCst);
@@ -215,6 +240,8 @@ pub async fn window_ready(
         } else {
             #[cfg(target_os = "windows")]
             suspension::schedule(&handle);
+            #[cfg(target_os = "macos")]
+            suspension_macos::schedule(&handle);
             Ok(())
         };
         let _ = reply.send(revealed);
