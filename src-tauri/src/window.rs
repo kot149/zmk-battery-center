@@ -6,6 +6,9 @@ use windows::UI::ViewManagement::UISettings;
 
 #[cfg(target_os = "windows")]
 mod suspension;
+#[cfg(target_os = "macos")]
+#[path = "window/suspension_macos.rs"]
+mod suspension;
 
 #[derive(Default)]
 pub struct WindowState {
@@ -43,7 +46,7 @@ pub fn main_window_requested(app: &AppHandle) -> bool {
 }
 
 fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<()> {
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     suspension::resume(window);
     let config = crate::monitor::current_config(app);
     if let Err(error) = window.set_always_on_top(config["pinWindow"].as_bool().unwrap_or(false)) {
@@ -108,14 +111,14 @@ pub fn hide_main_window(app: &AppHandle) {
         let state = handle.state::<WindowState>();
         state.requested_visible.store(false, Ordering::SeqCst);
         state.generation.fetch_add(1, Ordering::SeqCst);
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         suspension::schedule(&handle);
     }) {
         log::error!("Failed to schedule main window dismissal: {error}");
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 fn should_suspend(
     scheduled_generation: u64,
     current_generation: u64,
@@ -147,7 +150,7 @@ pub fn refresh_main_window(app: &AppHandle) {
             let state = handle.state::<WindowState>();
             state.generation.fetch_add(1, Ordering::SeqCst);
             state.requested_visible.store(true, Ordering::SeqCst);
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             suspension::resume(&window);
             let was_ready = state.ready.swap(false, Ordering::SeqCst);
             if let Err(error) = window.reload() {
@@ -213,7 +216,7 @@ pub async fn window_ready(
         let revealed = if state.requested_visible.load(Ordering::SeqCst) {
             reveal_main_window(&handle, &window).map_err(|error| error.to_string())
         } else {
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             suspension::schedule(&handle);
             Ok(())
         };

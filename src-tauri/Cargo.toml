@@ -61,6 +61,7 @@ objc2-app-kit = { version = "0.3.2", features = [
   "NSStringDrawing",
   "NSAttributedString",
 ] }
+block2 = "0.6.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"

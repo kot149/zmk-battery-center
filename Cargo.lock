@@ -5938,6 +5938,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 name = "zmk-battery-center"
 version = "0.12.0"
 dependencies = [
+ "block2",
  "bluest",
  "csv",
  "futures-util",
