@@ -177,10 +177,7 @@ async fn disconnect_device(adapter: &Adapter, device: &Device) {
 
 async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String> {
     log::debug!("BLE I/O: searching target device id={id}");
-    let devices = adapter
-        .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
-        .await
-        .map_err(|e| e.to_string())?;
+    let devices = connected_devices_for_lookup(adapter).await?;
 
     let target = devices
         .iter()
@@ -196,6 +193,49 @@ async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String
     );
 
     Ok(target)
+}
+
+async fn connected_devices_for_lookup(adapter: &Adapter) -> Result<Vec<Device>, String> {
+    // Windows service-filtered enumeration waits for wireless discovery to finish.
+    #[cfg(target_os = "windows")]
+    let devices = adapter.connected_devices().await;
+    #[cfg(not(target_os = "windows"))]
+    let devices = adapter
+        .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
+        .await;
+
+    devices.map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "windows")]
+async fn filter_battery_devices(devices: Vec<Device>) -> Vec<Device> {
+    let checks = devices.into_iter().map(|device| async move {
+        match tokio::time::timeout(Duration::from_secs(8), device.services()).await {
+            Ok(Ok(services)) => services
+                .iter()
+                .any(|service| service.uuid() == BATTERY_SERVICE_UUID)
+                .then_some(device),
+            Ok(Err(error)) => {
+                log::warn!(
+                    "BLE I/O: battery service query failed device_id={}: {error}",
+                    device.id()
+                );
+                None
+            }
+            Err(_) => {
+                log::warn!(
+                    "BLE I/O: battery service query timed out device_id={}",
+                    device.id()
+                );
+                None
+            }
+        }
+    });
+    futures_util::future::join_all(checks)
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 async fn get_battery_characteristic_contexts(
@@ -571,10 +611,7 @@ async fn battery_connection_watcher(
         // to check whether the device has appeared in the connected list.
         log::debug!("BLE I/O: connection watcher polling for device device_id={device_id}");
         let target_device = loop {
-            match adapter
-                .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
-                .await
-            {
+            match connected_devices_for_lookup(&adapter).await {
                 Ok(devices) => {
                     if let Some(device) = devices
                         .into_iter()
@@ -623,8 +660,7 @@ async fn battery_connection_watcher(
         };
 
         // Check whether the device is already connected (returned in the connected-first batch).
-        let already_connected = adapter
-            .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
+        let already_connected = connected_devices_for_lookup(&adapter)
             .await
             .map(|devs| devs.iter().any(|d| is_target_device(d, &device_id)))
             .unwrap_or(false);
@@ -865,10 +901,9 @@ pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
     let adapter = get_adapter().await?;
 
     log::debug!("BLE I/O: list connected battery devices request");
-    let devices = adapter
-        .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
-        .await
-        .map_err(|e| e.to_string())?;
+    let devices = connected_devices_for_lookup(&adapter).await?;
+    #[cfg(target_os = "windows")]
+    let devices = filter_battery_devices(devices).await;
 
     let mut result = Vec::new();
 
@@ -1033,6 +1068,42 @@ mod tests {
     use super::*;
     use std::time::Duration;
     use tokio::sync::watch;
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    #[ignore = "requires a connected BLE battery device and Bluetooth access"]
+    async fn windows_battery_lookup_and_read_without_discovery_wait() {
+        let devices = tokio::time::timeout(Duration::from_secs(15), list_battery_devices())
+            .await
+            .expect("battery device listing must finish before the UI timeout")
+            .expect("battery device listing failed");
+        assert!(!devices.is_empty(), "connect a BLE battery device first");
+
+        let adapter = get_adapter().await.unwrap();
+        let target = tokio::time::timeout(
+            Duration::from_secs(3),
+            get_target_device(&adapter, &devices[0].id),
+        )
+        .await
+        .expect("registered device lookup must not wait for service discovery")
+        .unwrap();
+        let infos = tokio::time::timeout(Duration::from_secs(10), async {
+            let contexts = get_battery_characteristic_contexts(&target).await?;
+            read_battery_infos_strict(&contexts).await
+        })
+        .await
+        .expect("battery read timed out")
+        .unwrap();
+        assert!(infos.iter().any(|info| info.battery_level.is_some()));
+
+        let absent = tokio::time::timeout(
+            Duration::from_secs(3),
+            get_target_device(&adapter, "nonexistent-device"),
+        )
+        .await
+        .expect("absent device lookup must not wait for service discovery");
+        assert_eq!(absent.unwrap_err(), "Device not found");
+    }
 
     #[test]
     fn first_worker_connect_flips_aggregate_to_connected() {
