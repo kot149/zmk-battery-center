@@ -23,6 +23,7 @@
         "skipTaskbar": true,
         "shadow": false,
         "transparent": true,
+        "noRedirectionBitmap": true,
         "resizable": false
       }
     ],
