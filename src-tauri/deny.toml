@@ -103,6 +103,7 @@ allow = [
   "MPL-2.0",
   "Unicode-3.0",
   "BSL-1.0",
+  "CDLA-Permissive-2.0",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -121,17 +122,9 @@ exceptions = [
 # adding a clarification entry for it allows you to manually specify the
 # licensing information
 
-# dlopen2 doesn't have a license field in Cargo.toml but uses MIT
-[[licenses.clarify]]
-crate = "dlopen2"
-expression = "MIT"
-license-files = [{ path = "LICENSE", hash = 0x001c7e6c }]
-
-# dlopen2_derive also uses MIT
-[[licenses.clarify]]
-crate = "dlopen2_derive"
-expression = "MIT"
-license-files = [{ path = "LICENSE", hash = 0x001c7e6c }]
+# Note: dlopen2/dlopen2_derive used to need clarification entries here,
+# but since v0.8 they carry a proper `license = "MIT"` in Cargo.toml,
+# so no clarification is required anymore.
 
 [licenses.private]
 # If true, ignores workspace crates that aren't published, or are only

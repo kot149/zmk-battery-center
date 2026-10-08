@@ -143,9 +143,7 @@ describe("App", () => {
     });
     expect(updateSwitch.getAttribute("data-state")).toBe("unchecked");
     await user.click(updateSwitch);
-    const updateConfig = mocks.context.setConfig.mock.calls[0]?.[0] as (
-      config: Config,
-    ) => Config;
+    const updateConfig = mocks.context.setConfig.mock.calls[0]?.[0] as (config: Config) => Config;
     expect(updateConfig(defaultConfig).updateCheckEnabled).toBe(true);
   });
 
