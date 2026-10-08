@@ -74,7 +74,6 @@ ksni = "0.3.6"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.39.1"
-windows-core = "0.100.0"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "~0.62"

@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, WebviewWindow};
 use webview2_com::{Microsoft::Web::WebView2::Win32::ICoreWebView2_3, TrySuspendCompletedHandler};
-use windows_core::Interface;
+use windows::core::{Interface, Result};
 
 use super::{should_suspend, WindowState};
 
@@ -29,7 +29,7 @@ pub(super) fn schedule(app: &AppHandle) {
             ) {
                 return;
             }
-            let result = (|| -> windows_core::Result<()> {
+            let result = (|| -> Result<()> {
                 let controller = webview.controller();
                 // Hiding the native parent does not set the controller's visibility.
                 unsafe { controller.SetIsVisible(false)? };
@@ -86,7 +86,7 @@ fn resume_for_generation(window: &WebviewWindow, expected_generation: Option<u64
             return;
         }
         let controller = webview.controller();
-        let result = (|| -> windows_core::Result<()> {
+        let result = (|| -> Result<()> {
             let core: ICoreWebView2_3 = unsafe { controller.CoreWebView2()? }.cast()?;
             unsafe { core.Resume() }
         })();
