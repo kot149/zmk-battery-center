@@ -112,7 +112,8 @@ impl ksni::Tray for LinuxTray {
             StandardItem {
                 label: "Quit".into(),
                 activate: Box::new(|this: &mut Self| {
-                    this.app.exit(0);
+                    let app = this.app.clone();
+                    tauri::async_runtime::spawn(crate::common::exit_app(app));
                 }),
                 ..Default::default()
             }
@@ -300,7 +301,9 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
             "manual_window_positioning" => toggle_config(app, "manualWindowPositioning"),
             "pin_window" => toggle_config(app, "pinWindow"),
             "about" => crate::window::show_about_window(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                tauri::async_runtime::spawn(crate::common::exit_app(app.clone()));
+            }
             _ => {}
         });
     }
