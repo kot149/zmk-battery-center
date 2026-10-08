@@ -71,7 +71,9 @@ pub fn run() {
             Some(vec![]),
         ))
         .plugin(tauri_plugin_store::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|_, _, _| {}))
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            window::show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_positioner::init())
         .manage(external_integration::ExternalIntegrationState::default())
