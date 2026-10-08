@@ -44,7 +44,7 @@ enum State {
   chart = "chart",
 }
 
-const DEVICE_FETCH_TIMEOUT_MS = 20_000;
+const DEVICE_FETCH_TIMEOUT_MS = 40_000;
 const EMPTY_DEVICES: RegisteredDevice[] = [];
 const NOOP_SET_DEVICES: Dispatch<SetStateAction<RegisteredDevice[]>> = () => undefined;
 const LazySettings = lazy(() => import("@/components/settings"));

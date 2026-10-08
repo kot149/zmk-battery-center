@@ -216,7 +216,10 @@ fn normalize_config(raw: Option<Value>) -> Value {
         result.insert(key, value);
     }
 
-    if !result.get("updateCheckEnabled").is_some_and(Value::is_boolean) {
+    if !result
+        .get("updateCheckEnabled")
+        .is_some_and(Value::is_boolean)
+    {
         result.insert("updateCheckEnabled".to_string(), json!(false));
     }
 
@@ -469,7 +472,7 @@ fn annotate_infos(infos: &[ble::BatteryInfo], observed_at: u64) -> Vec<MonitorBa
             Some(level) if level <= 100 => MonitorBatteryInfo {
                 battery_level: Some(level),
                 user_description: info.user_description.clone(),
-                observed_at_unix_ms: Some(observed_at),
+                observed_at_unix_ms: Some(info.observed_at_unix_ms.unwrap_or(observed_at)),
                 last_read_succeeded: true,
             },
             _ => MonitorBatteryInfo {
@@ -709,7 +712,10 @@ fn history_records(infos: &[MonitorBatteryInfo], timestamp: &str) -> Vec<History
         .iter()
         .filter_map(|info| {
             Some(HistoryRecord {
-                timestamp: timestamp.to_string(),
+                timestamp: info
+                    .observed_at_unix_ms
+                    .map(history::timestamp_rfc3339)
+                    .unwrap_or_else(|| timestamp.to_string()),
                 user_description: info
                     .user_description
                     .clone()
@@ -720,12 +726,30 @@ fn history_records(infos: &[MonitorBatteryInfo], timestamp: &str) -> Vec<History
         .collect()
 }
 
+fn new_history_infos(
+    device: &MonitorDevice,
+    infos: &[MonitorBatteryInfo],
+) -> Vec<MonitorBatteryInfo> {
+    infos
+        .iter()
+        .filter(|info| {
+            !crate::fast_pair::is_device(&device.id)
+                || !device.battery_infos.iter().any(|previous| {
+                    previous.user_description == info.user_description
+                        && previous.observed_at_unix_ms >= info.observed_at_unix_ms
+                })
+        })
+        .cloned()
+        .collect()
+}
+
 fn record_history(app: &AppHandle, device: &MonitorDevice, infos: &[MonitorBatteryInfo]) {
     let Ok(timestamp) = history::current_timestamp_rfc3339() else {
         log::warn!("Failed to obtain history timestamp for {}", device.id);
         return;
     };
-    let records = history_records(infos, &timestamp);
+    let fresh = new_history_infos(device, infos);
+    let records = history_records(&fresh, &timestamp);
     if records.is_empty() {
         return;
     }
@@ -895,6 +919,7 @@ async fn actor_loop(
         cache,
         tx,
         active_monitors: HashSet::new(),
+        fast_pair_scanner: None,
         active_monitor_sessions: HashMap::new(),
         monitor_token: 0,
         poll_token: 0,
@@ -998,6 +1023,7 @@ struct MonitorCore {
     cache: Arc<RwLock<MonitorSnapshot>>,
     tx: mpsc::Sender<Request>,
     active_monitors: HashSet<String>,
+    fast_pair_scanner: Option<crate::fast_pair::Receiver>,
     active_monitor_sessions: HashMap<String, u64>,
     monitor_token: u64,
     poll_token: u64,
@@ -1172,6 +1198,7 @@ impl MonitorCore {
         apply_collapse(&mut registered, self.auto_collapse());
         self.snapshot.devices.push(registered);
         self.publish(false, true)?;
+        self.sync_fast_pair_scanner();
         if config_fetch_interval(&self.snapshot.config).is_none() {
             self.schedule_reconfigure();
         } else {
@@ -1284,7 +1311,21 @@ impl MonitorCore {
         Ok(self.snapshot.clone())
     }
 
+    fn sync_fast_pair_scanner(&mut self) {
+        let needed = self
+            .snapshot
+            .devices
+            .iter()
+            .any(|device| crate::fast_pair::is_device(&device.id));
+        if needed && self.fast_pair_scanner.is_none() {
+            self.fast_pair_scanner = Some(crate::fast_pair::subscribe());
+        } else if !needed {
+            self.fast_pair_scanner = None;
+        }
+    }
+
     fn schedule_reconfigure(&mut self) {
+        self.sync_fast_pair_scanner();
         self.monitor_token = self.monitor_token.saturating_add(1);
         let token = self.monitor_token;
         let desired: Vec<String> = if config_fetch_interval(&self.snapshot.config).is_none() {
@@ -1463,6 +1504,7 @@ impl MonitorCore {
     }
 
     async fn stop_all_monitors(&mut self) -> Result<(), String> {
+        self.fast_pair_scanner = None;
         self.active_monitors.clear();
         self.active_monitor_sessions.clear();
         ble::stop_all_battery_monitors().await;
@@ -1572,16 +1614,17 @@ impl MonitorCore {
         let previous = self.snapshot.devices[index].clone();
         let now = unix_now_ms();
         let annotated = annotate_infos(&[payload.battery_info], now);
+        let merged = upsert_info(&previous.battery_infos, annotated[0].clone());
         record_history(&self.app, &previous, &annotated);
         emit_edge_notifications(
             &self.app,
             &self.snapshot.config,
             &previous,
             &previous.battery_infos,
-            &annotated,
+            &merged,
         );
         let mut next = previous;
-        next.battery_infos = upsert_info(&next.battery_infos, annotated[0].clone());
+        next.battery_infos = merged;
         next.is_disconnected = false;
         next.connection_status_known = Some(true);
         next.connection_observed_at_unix_ms = Some(now);
@@ -1802,6 +1845,59 @@ pub async fn monitor_reload() -> Result<MonitorSnapshot, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn advertisement_receive_time_is_preserved_in_state_and_history() {
+        let infos = annotate_infos(
+            &[ble::BatteryInfo {
+                battery_level: Some(52),
+                user_description: Some("Left".into()),
+                observed_at_unix_ms: Some(1_000),
+            }],
+            90_000,
+        );
+        assert_eq!(infos[0].observed_at_unix_ms, Some(1_000));
+        assert_eq!(
+            history_records(&infos, "fallback")[0].timestamp,
+            "1970-01-01T00:00:01.000Z"
+        );
+    }
+
+    #[test]
+    fn cached_advertisements_are_not_recorded_again() {
+        let mut device = normalize_devices(Some(json!([{
+            "id": "fast-pair:earbuds", "name": "Earbuds"
+        }])))
+        .remove(0);
+        device.battery_infos = vec![info(Some(52), Some("Left")), info(Some(51), Some("Right"))];
+        assert!(new_history_infos(&device, &device.battery_infos).is_empty());
+        let mut next = device.battery_infos.clone();
+        next[1].observed_at_unix_ms = Some(2);
+        let fresh = new_history_infos(&device, &next);
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].user_description.as_deref(), Some("Right"));
+        device.id = "gatt-device".into();
+        assert_eq!(new_history_infos(&device, &device.battery_infos).len(), 2);
+    }
+
+    #[test]
+    fn right_earbud_updates_do_not_repeat_left_earbud_threshold_checks() {
+        let previous = vec![
+            info(Some(52), Some("Left")),
+            info(Some(20), Some("Right")),
+            info(None, Some("Case")),
+        ];
+        let current = upsert_info(&previous, info(Some(19), Some("Right")));
+        assert_eq!(
+            notification_low_state(&previous, 20, true),
+            notification_low_state(&current, 20, true)
+        );
+        let current = upsert_info(&previous, info(Some(10), Some("Left")));
+        assert_eq!(
+            notification_low_state(&current, 20, true),
+            [true, true, false]
+        );
+    }
 
     #[test]
     fn dismissed_versions_ignores_invalid_values() {

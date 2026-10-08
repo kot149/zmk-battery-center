@@ -203,17 +203,19 @@ pub fn current_timestamp_rfc3339() -> Result<String, String> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| e.to_string())?;
-    let total_seconds = now.as_secs();
+    Ok(timestamp_rfc3339(now.as_millis() as u64))
+}
+
+pub(crate) fn timestamp_rfc3339(unix_ms: u64) -> String {
+    let total_seconds = unix_ms / 1_000;
     let days = (total_seconds / 86_400) as i64;
     let seconds_today = total_seconds % 86_400;
     let (year, month, day) = civil_date_from_days(days);
     let hour = seconds_today / 3_600;
     let minute = (seconds_today % 3_600) / 60;
     let second = seconds_today % 60;
-    let millis = now.subsec_millis();
-    Ok(format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
-    ))
+    let millis = unix_ms % 1_000;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
 }
 
 fn read_battery_history_from_dir(

@@ -5,6 +5,8 @@ use tauri_plugin_autostart::MacosLauncher;
 mod ble;
 mod common;
 mod external_integration;
+mod fast_pair;
+mod fast_pair_data;
 mod history;
 mod licenses;
 mod monitor;
@@ -15,6 +17,8 @@ mod tray_battery_payload;
 mod tray_native_macos;
 mod update;
 mod window;
+#[cfg(target_os = "windows")]
+mod windows_battery;
 
 #[cfg(debug_assertions)] // for development
 const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Debug;

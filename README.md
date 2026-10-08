@@ -12,6 +12,8 @@ A system tray app to monitor the battery level of ZMK-based keyboards, built wit
 - Display battery level for:
   - Both central and peripheral sides of split keyboards
   - Multiple keyboards simultaneously
+  - Left earbud, right earbud, and case levels from compatible Fast Pair BLE advertisements
+  - On Windows, Bluetooth Classic devices that report battery levels to Windows, including compatible headphones
 - Record battery level history and display in a graph
 - Multi-platform: Windows, macOS, Linux (limited, see [here](#limitations-on-linux) for details)
   [macOS only] Display battery level on the system tray (inspired by [ZMK Battery Bar](https://github.com/itouuuuuuuuu/zmk-battery-bar))
@@ -79,6 +81,22 @@ AppImage installs to `~/.local/bin/zmk-battery-center.AppImage`. Debian and RPM 
 Download the binary/installer and install manually from [Releases](https://github.com/kot149/zmk-battery-center/releases).
 
 If you worry about security, you can build the app yourself from source code. See [development](docs/development.md) for more details.
+
+## Fast Pair earbud batteries
+
+Choose the device ending in `(Fast Pair)` from **Add Device**, for example `LE_WF-1000XM6 (Fast Pair)`. Discovery scans nearby BLE advertisements for about 30 seconds. This source uses shared bluest code; WF-1000XM6 has been tested on Windows. macOS and Linux have not been tested. The current bluest Linux backend excludes connected BLE devices from scan results and does not forward advertisement property updates, so continuous Fast Pair updates are not guaranteed on Linux.
+
+The app displays `Left`, `Right`, and `Case` separately. Unknown values appear as `N/A`, or as a dimmed previous value if one was recorded. Battery history and notifications use these same parts. Charging flags are not displayed.
+
+The app keeps a shared BLE scan running while Fast Pair devices are registered. Polling uses the latest received advertisement at the configured interval; notification mode updates on reception. Values expire after 90 seconds without a battery advertisement, marking the device unavailable. This does not necessarily mean its audio connection has disconnected. History retains the reception time and does not duplicate cached readings. Open the case or retry discovery if no entry appears.
+
+Devices are matched by the Bluetooth identity supplied by the OS, never by name alone. If address rotation or re-pairing produces a different identity, remove the old entry and add the device again. On Windows, the Windows battery source is also available as a separate entry.
+
+## Bluetooth Classic batteries on Windows
+
+Connect the device in Windows, then add it from the app's device list. The app reads the battery level cached by Windows and checks the Bluetooth connection state. Availability and update frequency depend on the device and its Windows driver. Separate earbud and case levels are not available through this source.
+
+The configured polling interval applies to these devices. In notification mode, Windows battery properties are checked every 60 seconds.
 
 ## Limitations on Linux
 

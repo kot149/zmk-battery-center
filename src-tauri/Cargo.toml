@@ -74,6 +74,7 @@ ksni = "0.3.5"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com = "0.38.2"
+windows-collections = "0.3"
 windows-core = "0.61.2"
 
 [target.'cfg(windows)'.dependencies.windows]
@@ -86,6 +87,10 @@ features = [
   # "Win32_Foundation",
   "Win32_System_WinRT", # WinRT API を使うために必要
   "UI_ViewManagement", # UISettings を使うために必要
+  "Devices_Bluetooth",
+  "Devices_Enumeration",
+  "Foundation",
+  "Foundation_Collections",
 ]
 
 [dev-dependencies]

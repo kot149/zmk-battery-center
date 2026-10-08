@@ -70,6 +70,24 @@ Dismissal persists across page reloads in the preview. Open `http://127.0.0.1:14
 Data directory for unit tests and E2E tests is isolated by default, so test-run data does not mix with local development data.
 Default data directory is `<project>/.dev-data-test`. To override the directory, set `ZMK_BATTERY_CENTER_DEV_TEST_DIR`.
 
+### BLE battery diagnostics
+
+To inspect a device through bluest, run:
+
+```sh
+cargo run --example inspect_battery_ble -- WF-1000XM6
+```
+
+The diagnostic scans BLE advertisements for 30 seconds, decodes Fast Pair battery fields for matching device names, and enumerates their GATT services. It reads the standard Battery Level characteristic when available. Fast Pair reports left earbud, right earbud, and case levels; unknown values are printed as `None`.
+
+Advertising battery data is separate from the standard GATT Battery Service. Its availability depends on the device's current state, and receiving advertisements does not establish an audio connection. The diagnostic shares its Fast Pair decoder with the app.
+
+The app's Fast Pair source shares one scanner across discovery, reads, and registered devices. A watch receiver keeps the scanner alive; it stops when the last receiver is dropped. Observations expire after 90 seconds. Polling preserves their reception timestamps and notification mode forwards new observations. Registered IDs contain the OS-supplied bluest device identity with a `fast-pair:` prefix. Names are display text only and cannot associate a rotated address with an existing registration.
+
+Run decoder and cache tests with `cargo test fast_pair`. To verify discovery and fresh reads through the app commands with a nearby WF-1000XM6, run `cargo test app_commands_discover_and_read_fast_pair_battery -- --ignored --nocapture`.
+
+The packet format is documented in Google's [Fast Pair battery notification specification](https://developers.google.com/nearby/fast-pair/specifications/extensions/batterynotification).
+
 ### Unit tests
 
 1. Frontend unit test:

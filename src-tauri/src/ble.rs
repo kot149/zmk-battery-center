@@ -38,6 +38,8 @@ pub struct BleDeviceInfo {
 pub struct BatteryInfo {
     pub battery_level: Option<u8>,
     pub user_description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_at_unix_ms: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -324,6 +326,7 @@ async fn read_battery_infos_strict(
         battery_infos.push(BatteryInfo {
             battery_level: value.first().copied(),
             user_description: context.user_description.clone(),
+            observed_at_unix_ms: None,
         });
     }
 
@@ -364,6 +367,7 @@ async fn read_battery_infos_best_effort(
         battery_infos.push(BatteryInfo {
             battery_level,
             user_description: context.user_description.clone(),
+            observed_at_unix_ms: None,
         });
     }
 
@@ -415,6 +419,7 @@ fn classify_notification_item(
         Some(Ok(data)) => NotificationOutcome::Emit(BatteryInfo {
             battery_level: data.first().copied(),
             user_description: user_description.clone(),
+            observed_at_unix_ms: None,
         }),
         Some(Err(_)) | None => NotificationOutcome::Stop,
     }
@@ -898,6 +903,49 @@ pub async fn stop_all_battery_monitors() {
 
 #[tauri::command]
 pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
+    #[cfg(target_os = "windows")]
+    let sources = {
+        let (ble, classic, fast_pair) = tokio::join!(
+            list_ble_battery_devices(),
+            crate::windows_battery::list_devices(),
+            crate::fast_pair::list_devices(),
+        );
+        vec![ble, classic, fast_pair]
+    };
+    #[cfg(not(target_os = "windows"))]
+    let sources = {
+        let (ble, fast_pair) =
+            tokio::join!(list_ble_battery_devices(), crate::fast_pair::list_devices());
+        vec![ble, fast_pair]
+    };
+    let mut result = Vec::new();
+    let mut errors = Vec::new();
+    let mut succeeded = false;
+    for source in sources {
+        match source {
+            Ok(devices) => {
+                succeeded = true;
+                result.extend(devices);
+            }
+            Err(error) => {
+                log::warn!("Bluetooth enumeration failed: {error}");
+                errors.push(error);
+            }
+        }
+    }
+    if !succeeded {
+        return Err(format!(
+            "Bluetooth enumeration failed: {}",
+            errors.join("; ")
+        ));
+    }
+    for device in &mut result {
+        device.name = sanitize_device_text(&device.name);
+    }
+    Ok(result)
+}
+
+async fn list_ble_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
     let adapter = get_adapter().await?;
 
     log::debug!("BLE I/O: list connected battery devices request");
@@ -925,6 +973,13 @@ pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
 
 #[tauri::command]
 pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
+    if crate::fast_pair::is_device(&id) {
+        return crate::fast_pair::read(&id).await;
+    }
+    #[cfg(target_os = "windows")]
+    if crate::windows_battery::is_device(&id) {
+        return crate::windows_battery::read(&id).await;
+    }
     let adapter = get_adapter().await?;
     let target_device = get_target_device(&adapter, &id).await?;
 
@@ -945,6 +1000,145 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
     Ok(battery_infos)
 }
 
+async fn start_fast_pair_monitor(
+    app: AppHandle,
+    id: String,
+    session_id: u64,
+) -> Result<BatteryMonitorStartResult, String> {
+    let mut receiver = crate::fast_pair::subscribe();
+    let battery_infos = receiver.borrow().infos(&id).unwrap_or_default();
+    let mut observed_at = battery_infos
+        .first()
+        .and_then(|info| info.observed_at_unix_ms);
+    let (stop_tx, mut stop_rx) = watch::channel(false);
+    let worker_id = id.clone();
+    let worker = tokio::spawn(async move {
+        let mut connected = None;
+        loop {
+            tokio::select! {
+                _ = stop_rx.changed() => break,
+                changed = receiver.changed() => if changed.is_err() { break; },
+            }
+            let infos = receiver.borrow_and_update().infos(&worker_id);
+            let next_connected = infos.is_some();
+            if connected != Some(next_connected) {
+                emit_battery_monitor_status(
+                    &app,
+                    BatteryMonitorStatusEvent {
+                        id: worker_id.clone(),
+                        connected: next_connected,
+                        session_id,
+                    },
+                );
+                connected = Some(next_connected);
+            }
+            if let Some(infos) = infos {
+                let next_observed = infos.first().and_then(|info| info.observed_at_unix_ms);
+                if observed_at != next_observed {
+                    observed_at = next_observed;
+                    for battery_info in infos {
+                        emit_battery_info_notification(
+                            &app,
+                            BatteryInfoNotificationEvent {
+                                id: worker_id.clone(),
+                                battery_info,
+                                session_id,
+                            },
+                        );
+                    }
+                }
+            }
+        }
+    });
+    register_monitor_task(
+        &id,
+        MonitorTask {
+            session_id,
+            stop_tx,
+            join_handles: vec![worker],
+        },
+    )
+    .await;
+    Ok(BatteryMonitorStartResult {
+        session_id,
+        battery_infos,
+    })
+}
+
+#[cfg(target_os = "windows")]
+async fn start_polling_battery_monitor(
+    app: AppHandle,
+    id: String,
+    session_id: u64,
+) -> Result<BatteryMonitorStartResult, String> {
+    let battery_infos = get_battery_info(id.clone()).await.unwrap_or_default();
+    let (stop_tx, mut stop_rx) = watch::channel(false);
+    let worker_id = id.clone();
+    let worker = tokio::spawn(async move {
+        // Non-GATT sources use periodic reads in notification mode.
+        while !wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(60)).await {
+            let result = tokio::select! {
+                _ = stop_rx.changed() => break,
+                result = get_battery_info(worker_id.clone()) => result,
+            };
+            emit_battery_monitor_status(
+                &app,
+                BatteryMonitorStatusEvent {
+                    id: worker_id.clone(),
+                    connected: result.is_ok(),
+                    session_id,
+                },
+            );
+            if let Ok(infos) = result {
+                for battery_info in infos {
+                    emit_battery_info_notification(
+                        &app,
+                        BatteryInfoNotificationEvent {
+                            id: worker_id.clone(),
+                            battery_info,
+                            session_id,
+                        },
+                    );
+                }
+            }
+        }
+    });
+    register_monitor_task(
+        &id,
+        MonitorTask {
+            session_id,
+            stop_tx,
+            join_handles: vec![worker],
+        },
+    )
+    .await;
+    Ok(BatteryMonitorStartResult {
+        session_id,
+        battery_infos,
+    })
+}
+
+async fn register_monitor_task(id: &str, task: MonitorTask) {
+    let (replaced, rejected) = {
+        let mut monitors = MONITORS.lock().await;
+        let has_newer_session = monitors
+            .get(id)
+            .map(|monitor| monitor.session_id > task.session_id)
+            .unwrap_or(false);
+        if has_newer_session {
+            (None, Some(task))
+        } else {
+            (monitors.insert(id.to_string(), task), None)
+        }
+    };
+    if let Some(monitor) = replaced {
+        stop_monitor_task(id, monitor).await;
+    }
+    if let Some(monitor) = rejected {
+        stop_monitor_task(id, monitor).await;
+    }
+}
+
 pub(crate) async fn start_battery_notification_monitor_with_session(
     app: AppHandle,
     id: String,
@@ -954,6 +1148,13 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
         id
     );
     let session_id = next_session_id();
+    if crate::fast_pair::is_device(&id) {
+        return start_fast_pair_monitor(app, id, session_id).await;
+    }
+    #[cfg(target_os = "windows")]
+    if crate::windows_battery::is_device(&id) {
+        return start_polling_battery_monitor(app, id, session_id).await;
+    }
     let adapter = get_adapter().await?;
 
     let (stop_tx, stop_rx) = watch::channel(false);
@@ -1018,24 +1219,7 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
         stop_tx,
         join_handles,
     };
-    let (replaced, rejected) = {
-        let mut monitors = MONITORS.lock().await;
-        let has_newer_session = monitors
-            .get(&id)
-            .map(|monitor| monitor.session_id > session_id)
-            .unwrap_or(false);
-        if has_newer_session {
-            (None, Some(task))
-        } else {
-            (monitors.insert(id.clone(), task), None)
-        }
-    };
-    if let Some(monitor) = replaced {
-        stop_monitor_task(&id, monitor).await;
-    }
-    if let Some(monitor) = rejected {
-        stop_monitor_task(&id, monitor).await;
-    }
+    register_monitor_task(&id, task).await;
 
     log::debug!("BLE I/O: start notification monitor response success");
 
@@ -1073,7 +1257,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires a connected BLE battery device and Bluetooth access"]
     async fn windows_battery_lookup_and_read_without_discovery_wait() {
-        let devices = tokio::time::timeout(Duration::from_secs(15), list_battery_devices())
+        let devices = tokio::time::timeout(Duration::from_secs(15), list_ble_battery_devices())
             .await
             .expect("battery device listing must finish before the UI timeout")
             .expect("battery device listing failed");
@@ -1177,6 +1361,7 @@ mod tests {
             battery_info: BatteryInfo {
                 battery_level: Some(80),
                 user_description: Some("Central".to_string()),
+                observed_at_unix_ms: None,
             },
             session_id: 42,
         };

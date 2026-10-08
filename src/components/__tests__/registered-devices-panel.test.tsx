@@ -61,6 +61,27 @@ async function openDeviceMenu(user: ReturnType<typeof userEvent.setup>, deviceNa
 }
 
 describe("RegisteredDevicesPanel", () => {
+  it("renders all Fast Pair parts including an unknown case", () => {
+    render(
+      <RegisteredDevicesPanel
+        registeredDevices={[
+          {
+            ...sampleDevice,
+            batteryInfos: [
+              { battery_level: 52, user_description: "Left" },
+              { battery_level: 51, user_description: "Right" },
+              { battery_level: null, user_description: "Case" },
+            ],
+          },
+        ]}
+        setRegisteredDevices={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("device-battery-level-dev-1-Left").textContent).toBe("52%");
+    expect(screen.getByTestId("device-battery-level-dev-1-Right").textContent).toBe("51%");
+    expect(screen.getByTestId("device-battery-level-dev-1-Case").textContent).toBe("N/A");
+  });
+
   it("renders device rows with battery percentage", () => {
     render(
       <RegisteredDevicesPanel registeredDevices={[sampleDevice]} setRegisteredDevices={vi.fn()} />,
