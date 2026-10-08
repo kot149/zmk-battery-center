@@ -1,6 +1,8 @@
 name: "Tauri Build"
 
 on:
+  push:
+  pull_request:
   workflow_dispatch:
     inputs:
       macos_aarch64:
@@ -23,11 +25,6 @@ on:
         description: "Linux arm64"
         type: boolean
         default: true
-  # pull_request:
-  # push:
-  #   paths-ignore:
-  #     - '*.md'
-  #     - .vscode
 
 # This workflow will build your tauri app without uploading it anywhere.
 jobs:
