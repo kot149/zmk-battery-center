@@ -243,10 +243,10 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
             </div>
           </SettingsGroup>
 
-          {/* Battery fetch interval */}
+          {/* Battery update interval */}
           <SettingsGroup>
             <div className="flex min-w-0 items-center justify-between gap-3">
-              <span className="shrink-0">Battery fetch interval</span>
+              <span className="shrink-0">Battery update interval</span>
               <div className="flex min-w-0 max-w-full flex-1 basis-0 justify-end">
                 <Select
                   value={config.fetchInterval.toString()}

@@ -440,7 +440,7 @@ function App() {
               title="Select Device"
               isLoading={state === State.fetchingDevices}
               error={error}
-              loadingText="Fetching devices..."
+              loadingText="Finding devices..."
             >
               {state === State.addDeviceModal && (
                 <ul className="app-scrollbar max-h-60 overflow-y-auto rounded-sm">
@@ -494,7 +494,7 @@ function App() {
             open={state === State.fetchingBatteryInfo}
             onClose={() => undefined}
             isLoading={true}
-            loadingText="Fetching battery info..."
+            loadingText="Reading battery levels..."
             showCloseButton={false}
           />
         </>
