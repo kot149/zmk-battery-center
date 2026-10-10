@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { vi } from "vite-plus/test";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),

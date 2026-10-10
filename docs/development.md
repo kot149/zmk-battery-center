@@ -65,6 +65,8 @@ Dismissal persists across page reloads in the preview. Open `http://127.0.0.1:14
 - Providers live in `src/providers/`, hooks in `src/hooks/`, and shared utilities in `src/utils/`.
 - Unit tests live in the nearest `__tests__/` directory and use the same kebab-case basename as the files they test.
 
+Vite+ runs the frontend build, tests, linting, and formatting. Use `bun run build:ui`, `bun run test:frontend`, `bun run lint`, and `bun run format:check` after installing dependencies with Bun. The shared tool configuration is in `vite.config.ts`.
+
 ## Testing
 
 Data directory for unit tests and E2E tests is isolated by default, so test-run data does not mix with local development data.
@@ -156,7 +158,7 @@ This section describes a practical test design for this project. It is intention
 
 Recommended stack:
 
-- Test runner: `vitest`
+- Test runner: Vite+ (`vp test`)
 - Component tests: `@testing-library/react`
 - DOM environment: `jsdom`
 - Mocking Tauri APIs: module mocks for `@tauri-apps/api/*` and Tauri plugins

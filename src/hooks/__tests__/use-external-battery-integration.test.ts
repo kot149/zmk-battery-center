@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { useExternalBatteryIntegration } from "@/hooks/use-external-battery-integration";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import App from "@/app";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { defaultConfig, type Config } from "@/utils/config";
