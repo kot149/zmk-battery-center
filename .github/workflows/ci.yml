@@ -1,8 +1,8 @@
 name: CI
 
-# Manual trigger only for now; switch to pull_request/push once the
-# pipeline is validated.
 on:
+  push:
+  pull_request:
   workflow_dispatch:
 
 concurrency:

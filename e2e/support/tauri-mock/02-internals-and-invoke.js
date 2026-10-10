@@ -239,6 +239,21 @@
       if (cmd === "window_ready") return null;
 
       if (cmd === "get_monitor_state") return snapshot();
+      if (cmd === "monitor_is_update_dismissed") {
+        const versions = readStoreData("config.json").dismissedVersions;
+        return Array.isArray(versions) && versions.includes(args.version);
+      }
+      if (cmd === "monitor_dismiss_update") {
+        const data = readStoreData("config.json");
+        const versions = Array.isArray(data.dismissedVersions)
+          ? data.dismissedVersions.filter((value) => typeof value === "string")
+          : [];
+        if (!versions.includes(args.version)) {
+          data.dismissedVersions = [...versions, args.version];
+          writeStoreData("config.json", data);
+        }
+        return null;
+      }
       if (cmd === "monitor_update_config") {
         return commit(() => {
           state.config = { ...state.config, ...clone(args.patch) };

@@ -459,6 +459,19 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
             </ul>
           </SettingsGroup>
 
+          <SettingsGroup>
+            <div className="flex items-center justify-between gap-3">
+              <span>Check for zmk-battery-center update</span>
+              <Switch
+                aria-label="Check for zmk-battery-center update"
+                checked={config.updateCheckEnabled}
+                onCheckedChange={(checked) =>
+                  setConfig((current) => ({ ...current, updateCheckEnabled: checked }))
+                }
+              />
+            </div>
+          </SettingsGroup>
+
           {/* External battery snapshot */}
           <SettingsGroup>
             <div className="flex items-center justify-between gap-3">

@@ -12,6 +12,7 @@ use tokio::sync::{mpsc, oneshot, Notify};
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_KEY: &str = "config";
+const DISMISSED_VERSIONS_KEY: &str = "dismissedVersions";
 const DEVICES_FILENAME: &str = "devices.json";
 const DEVICES_KEY: &str = "devices";
 const STATE_EVENT: &str = "monitor-state-changed";
@@ -75,6 +76,14 @@ enum Request {
     UpdateConfig {
         patch: Value,
         reply: oneshot::Sender<Result<MonitorSnapshot, String>>,
+    },
+    IsUpdateDismissed {
+        version: String,
+        reply: oneshot::Sender<Result<bool, String>>,
+    },
+    DismissUpdate {
+        version: String,
+        reply: oneshot::Sender<Result<(), String>>,
     },
     AddDevice {
         device: ble::BleDeviceInfo,
@@ -143,6 +152,7 @@ fn default_config() -> Value {
         "theme": "dark",
         "fetchInterval": DEFAULT_FETCH_INTERVAL_MS,
         "autoStart": false,
+        "updateCheckEnabled": false,
         "autoCollapseDisconnectedDevices": false,
         "externalBatterySnapshot": false,
         "pushNotification": false,
@@ -190,12 +200,24 @@ fn finite_rounded(value: Option<&Value>, fallback: u8, min: u8, max: u8) -> u8 {
     number.round().clamp(f64::from(min), f64::from(max)) as u8
 }
 
+fn dismissed_versions(raw: Option<Value>) -> Vec<String> {
+    raw.and_then(|value| value.as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|value| value.as_str().map(str::to_string))
+        .collect()
+}
+
 fn normalize_config(raw: Option<Value>) -> Value {
     let defaults = default_config();
     let raw_object = object_or_empty(raw.as_ref());
     let mut result = object_or_empty(Some(&defaults));
     for (key, value) in raw_object {
         result.insert(key, value);
+    }
+
+    if !result.get("updateCheckEnabled").is_some_and(Value::is_boolean) {
+        result.insert("updateCheckEnabled".to_string(), json!(false));
     }
 
     let default_flags = defaults
@@ -887,6 +909,14 @@ async fn actor_loop(
                 let result = core.update_config(patch);
                 let _ = reply.send(result);
             }
+            Request::IsUpdateDismissed { version, reply } => {
+                let result = core.is_update_dismissed(&version);
+                let _ = reply.send(result);
+            }
+            Request::DismissUpdate { version, reply } => {
+                let result = core.dismiss_update(&version);
+                let _ = reply.send(result);
+            }
             Request::AddDevice { device, reply } => {
                 let result = core.add_device(device);
                 let _ = reply.send(result);
@@ -984,6 +1014,28 @@ fn is_current_monitor_session(
 }
 
 impl MonitorCore {
+    fn is_update_dismissed(&self, version: &str) -> Result<bool, String> {
+        let saved = storage::load_store_value(&self.app, CONFIG_FILENAME, DISMISSED_VERSIONS_KEY)?;
+        Ok(dismissed_versions(saved)
+            .iter()
+            .any(|saved| saved == version))
+    }
+
+    fn dismiss_update(&self, version: &str) -> Result<(), String> {
+        let saved = storage::load_store_value(&self.app, CONFIG_FILENAME, DISMISSED_VERSIONS_KEY)?;
+        let mut versions = dismissed_versions(saved);
+        if versions.iter().any(|saved| saved == version) {
+            return Ok(());
+        }
+        versions.push(version.to_string());
+        storage::save_store_value(
+            &self.app,
+            CONFIG_FILENAME,
+            DISMISSED_VERSIONS_KEY,
+            json!(versions),
+        )
+    }
+
     fn publish(&mut self, save_config: bool, save_devices: bool) -> Result<(), String> {
         let previous = self.snapshot.clone();
         if save_config {
@@ -1653,6 +1705,18 @@ pub async fn monitor_update_config(patch: Value) -> Result<MonitorSnapshot, Stri
     patch_config_from_service(patch).await
 }
 
+#[tauri::command]
+pub async fn monitor_is_update_dismissed(version: String) -> Result<bool, String> {
+    let (reply, receiver) = oneshot::channel();
+    send_request(Request::IsUpdateDismissed { version, reply }, receiver).await
+}
+
+#[tauri::command]
+pub async fn monitor_dismiss_update(version: String) -> Result<(), String> {
+    let (reply, receiver) = oneshot::channel();
+    send_request(Request::DismissUpdate { version, reply }, receiver).await
+}
+
 async fn patch_config_from_service(patch: Value) -> Result<MonitorSnapshot, String> {
     let (reply, receiver) = oneshot::channel();
     send_request(Request::UpdateConfig { patch, reply }, receiver).await
@@ -1739,6 +1803,15 @@ pub async fn monitor_reload() -> Result<MonitorSnapshot, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn dismissed_versions_ignores_invalid_values() {
+        assert_eq!(dismissed_versions(None), Vec::<String>::new());
+        assert_eq!(
+            dismissed_versions(Some(json!(["0.13.0", null, 12, "0.14.0"]))),
+            vec!["0.13.0", "0.14.0"]
+        );
+    }
+
     fn info(level: Option<u8>, description: Option<&str>) -> MonitorBatteryInfo {
         MonitorBatteryInfo {
             battery_level: level,
@@ -1762,6 +1835,19 @@ mod tests {
         assert_eq!(normalized["pushNotificationWhen"]["high_battery"], true);
         assert_eq!(normalized["windowPosition"]["x"], 42);
         assert_eq!(normalized["windowPosition"]["y"], 0);
+    }
+
+    #[test]
+    fn update_check_defaults_to_off_and_preserves_enabled_setting() {
+        assert_eq!(normalize_config(None)["updateCheckEnabled"], false);
+        assert_eq!(
+            normalize_config(Some(json!({ "updateCheckEnabled": true })))["updateCheckEnabled"],
+            true
+        );
+        assert_eq!(
+            normalize_config(Some(json!({ "updateCheckEnabled": "true" })))["updateCheckEnabled"],
+            false
+        );
     }
 
     #[test]

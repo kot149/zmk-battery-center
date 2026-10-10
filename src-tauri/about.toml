@@ -17,6 +17,7 @@ accepted = [
   "Unicode-3.0",
   "BSL-1.0",
   "LGPL-2.1-or-later",
+  "CDLA-Permissive-2.0",
 ]
 
 ignore-build-dependencies = true

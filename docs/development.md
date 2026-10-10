@@ -52,6 +52,12 @@ Rust owns device state, polling, BLE subscriptions, battery history, notificatio
 
 UI edits use narrow `monitor_*` commands. They do not write device snapshots or config files independently. Existing `config.json` and `devices.json` formats are retained. The main window is revealed after hydration and layout, or with an error message if hydration fails. Hiding or closing it retains the WebView on all platforms, and monitoring continues. On Windows, after one hidden second the app sets the WebView2 controller invisible and calls `TrySuspend` on a best-effort basis; the runtime can decline or fail suspension. Reopening resumes the controller and makes it visible before showing the window. Background monitor and history events are not delivered to a hidden window; `main-window-shown` triggers a fresh monitor snapshot and battery-history read. About is a separate window and stays alive until closed.
 
+## Update banner preview
+
+Run `bun run preview:update` and open `http://127.0.0.1:1421/`. This builds the current React UI and serves it with sample keyboard and update data. It does not require the Tauri app or a keyboard. Enable **Check for zmk-battery-center update** in Settings to show the sample update. Re-run the command after editing the UI.
+
+Dismissal persists across page reloads in the preview. Open `http://127.0.0.1:1421/?reset=1` to enable update checks and show the sample update again.
+
 ## Frontend file conventions
 
 - TypeScript and TSX filenames use kebab-case.

@@ -16,12 +16,7 @@ export default function PushPinIcon({ pinned, className, ...props }: PushPinIcon
     >
       <g transform="rotate(45 12 12)">
         {/* Outline (always shown, pinned state is expressed by slash only) */}
-        <g
-          stroke="currentColor"
-          strokeWidth="1.55"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
+        <g stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round">
           <path d="M8.7 4.75h6.6" />
           <path d="M10 4.75v4.6l-2.6 2.9c-.22.24-.28.58-.16.88.12.29.41.48.73.48h8.06c.32 0 .61-.19.73-.48.12-.3.06-.64-.16-.88L14 9.35v-4.6" />
           <path d="M12 13.6v4.25" />
