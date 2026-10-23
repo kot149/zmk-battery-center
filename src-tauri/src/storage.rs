@@ -65,10 +65,24 @@ pub fn save_store_value(
     key: &str,
     value: Value,
 ) -> Result<(), String> {
+    write_store_value(app, filename, key, Some(value))
+}
+
+pub fn write_store_value(
+    app: &AppHandle,
+    filename: &str,
+    key: &str,
+    value: Option<Value>,
+) -> Result<(), String> {
     let path = resolve_store_file_path(app, filename)?;
     let store = app.store(path).map_err(|e| e.to_string())?;
     let previous = store.get(key);
-    store.set(key, value);
+    match value {
+        Some(value) => store.set(key, value),
+        None => {
+            store.delete(key);
+        }
+    }
     match store.save() {
         Ok(()) => Ok(()),
         Err(error) => {

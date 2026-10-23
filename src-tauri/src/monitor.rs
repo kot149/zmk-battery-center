@@ -142,6 +142,65 @@ enum Request {
         id: String,
         attempt: usize,
     },
+    RetryDevicePersistence {
+        generation: u64,
+    },
+}
+
+#[derive(Clone)]
+struct PersistedValues {
+    config: Option<Value>,
+    devices: Option<Value>,
+}
+
+fn persist_snapshot_values(
+    persisted: &mut PersistedValues,
+    candidate: &MonitorSnapshot,
+    save_config: bool,
+    save_devices: bool,
+    mut write: impl FnMut(&str, &str, Option<Value>) -> Result<(), String>,
+) -> Result<(), String> {
+    let devices = if save_devices {
+        Some(serde_json::to_value(&candidate.devices).map_err(|error| error.to_string())?)
+    } else {
+        None
+    };
+    if save_config {
+        if let Err(error) = write(CONFIG_FILENAME, CONFIG_KEY, Some(candidate.config.clone())) {
+            if let Err(compensation_error) =
+                write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
+            {
+                log::error!(
+                    "Failed to restore configuration after save failure: {compensation_error}"
+                );
+            }
+            return Err(error);
+        }
+    }
+    if let Some(devices) = devices.as_ref() {
+        if let Err(error) = write(DEVICES_FILENAME, DEVICES_KEY, Some(devices.clone())) {
+            if let Err(compensation_error) =
+                write(DEVICES_FILENAME, DEVICES_KEY, persisted.devices.clone())
+            {
+                log::error!("Failed to restore devices after save failure: {compensation_error}");
+            }
+            if save_config {
+                if let Err(compensation_error) =
+                    write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
+                {
+                    log::error!("Failed to restore configuration after device save failure: {compensation_error}");
+                }
+            }
+            return Err(error);
+        }
+    }
+    if save_config {
+        persisted.config = Some(candidate.config.clone());
+    }
+    if let Some(devices) = devices {
+        persisted.devices = Some(devices);
+    }
+    Ok(())
 }
 
 const MONITOR_RETRY_DELAYS: [u64; 4] = [2, 5, 10, 30];
@@ -906,12 +965,10 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let config = normalize_config(storage::load_store_value(app, CONFIG_FILENAME, CONFIG_KEY)?);
-    let devices = normalize_devices(storage::load_store_value(
-        app,
-        DEVICES_FILENAME,
-        DEVICES_KEY,
-    )?);
+    let stored_config = storage::load_store_value(app, CONFIG_FILENAME, CONFIG_KEY)?;
+    let stored_devices = storage::load_store_value(app, DEVICES_FILENAME, DEVICES_KEY)?;
+    let config = normalize_config(stored_config.clone());
+    let devices = normalize_devices(stored_devices.clone());
     let snapshot = MonitorSnapshot {
         revision: 1,
         config,
@@ -941,7 +998,18 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     });
 
     let actor_app = app.clone();
-    tauri::async_runtime::spawn(actor_loop(actor_app, snapshot, cache, tx.clone(), rx, wake));
+    tauri::async_runtime::spawn(actor_loop(
+        actor_app,
+        snapshot,
+        PersistedValues {
+            config: stored_config,
+            devices: stored_devices,
+        },
+        cache,
+        tx.clone(),
+        rx,
+        wake,
+    ));
     tauri::async_runtime::spawn(scheduler_loop(service));
     Ok(())
 }
@@ -981,6 +1049,7 @@ async fn scheduler_loop(service: MonitorService) {
 async fn actor_loop(
     app: AppHandle,
     snapshot: MonitorSnapshot,
+    persisted: PersistedValues,
     cache: Arc<RwLock<MonitorSnapshot>>,
     tx: mpsc::Sender<Request>,
     mut rx: mpsc::Receiver<Request>,
@@ -989,12 +1058,17 @@ async fn actor_loop(
     let mut core = MonitorCore {
         app,
         snapshot,
+        persisted,
         cache,
         tx,
         active_monitors: HashSet::new(),
         active_monitor_sessions: HashMap::new(),
         starting_monitors: HashSet::new(),
         monitor_retries: MonitorRetryState::default(),
+        device_persistence_dirty: false,
+        device_retry_pending: false,
+        device_retry_attempt: 0,
+        device_retry_generation: 0,
         monitor_token: 0,
         poll_token: 0,
         poll_in_flight: false,
@@ -1088,6 +1162,9 @@ async fn actor_loop(
             Request::RetryMonitor { token, id, attempt } => {
                 core.handle_monitor_retry(token, &id, attempt);
             }
+            Request::RetryDevicePersistence { generation } => {
+                core.retry_device_persistence(generation);
+            }
         }
     }
 
@@ -1097,12 +1174,17 @@ async fn actor_loop(
 struct MonitorCore {
     app: AppHandle,
     snapshot: MonitorSnapshot,
+    persisted: PersistedValues,
     cache: Arc<RwLock<MonitorSnapshot>>,
     tx: mpsc::Sender<Request>,
     active_monitors: HashSet<String>,
     active_monitor_sessions: HashMap<String, u64>,
     starting_monitors: HashSet<String>,
     monitor_retries: MonitorRetryState,
+    device_persistence_dirty: bool,
+    device_retry_pending: bool,
+    device_retry_attempt: usize,
+    device_retry_generation: u64,
     monitor_token: u64,
     poll_token: u64,
     poll_in_flight: bool,
@@ -1140,45 +1222,92 @@ impl MonitorCore {
         )
     }
 
-    fn publish(&mut self, save_config: bool, save_devices: bool) -> Result<(), String> {
-        let previous = self.snapshot.clone();
-        if save_config {
-            if let Err(error) = storage::save_store_value(
-                &self.app,
-                CONFIG_FILENAME,
-                CONFIG_KEY,
-                self.snapshot.config.clone(),
-            ) {
-                self.snapshot = previous;
-                return Err(error);
-            }
-        }
+    fn persist(
+        &mut self,
+        candidate: &MonitorSnapshot,
+        save_config: bool,
+        save_devices: bool,
+    ) -> Result<(), String> {
+        persist_snapshot_values(
+            &mut self.persisted,
+            candidate,
+            save_config,
+            save_devices,
+            |filename, key, value| storage::write_store_value(&self.app, filename, key, value),
+        )
+    }
+
+    fn commit_requested(
+        &mut self,
+        candidate: MonitorSnapshot,
+        save_config: bool,
+        save_devices: bool,
+    ) -> Result<(), String> {
+        self.persist(&candidate, save_config, save_devices)?;
         if save_devices {
-            let value = serde_json::to_value(&self.snapshot.devices).map_err(|error| {
-                self.snapshot = previous.clone();
-                error.to_string()
-            })?;
-            if let Err(error) =
-                storage::save_store_value(&self.app, DEVICES_FILENAME, DEVICES_KEY, value)
-            {
-                if save_config {
-                    let _ = storage::save_store_value(
-                        &self.app,
-                        CONFIG_FILENAME,
-                        CONFIG_KEY,
-                        previous.config.clone(),
-                    );
-                }
-                let _ = storage::save_store_value(
-                    &self.app,
-                    DEVICES_FILENAME,
-                    DEVICES_KEY,
-                    serde_json::to_value(&previous.devices).unwrap_or(Value::Null),
-                );
-                self.snapshot = previous;
-                return Err(error);
+            self.clear_device_persistence_retry();
+        }
+        self.snapshot = candidate;
+        self.broadcast();
+        Ok(())
+    }
+
+    fn publish_observation(&mut self) {
+        let candidate = self.snapshot.clone();
+        match self.persist(&candidate, false, true) {
+            Ok(()) => self.clear_device_persistence_retry(),
+            Err(error) => {
+                log::warn!("Failed to persist monitor observation: {error}");
+                self.device_persistence_dirty = true;
+                self.schedule_device_persistence_retry();
             }
         }
+        self.broadcast();
+    }
+
+    fn clear_device_persistence_retry(&mut self) {
+        self.device_persistence_dirty = false;
+        self.device_retry_pending = false;
+        self.device_retry_attempt = 0;
+        self.device_retry_generation = self.device_retry_generation.saturating_add(1);
+    }
+
+    fn schedule_device_persistence_retry(&mut self) {
+        if self.device_retry_pending || !self.device_persistence_dirty {
+            return;
+        }
+        let delay = MONITOR_RETRY_DELAYS[self
+            .device_retry_attempt
+            .min(MONITOR_RETRY_DELAYS.len() - 1)];
+        self.device_retry_attempt = self.device_retry_attempt.saturating_add(1);
+        self.device_retry_pending = true;
+        self.device_retry_generation = self.device_retry_generation.saturating_add(1);
+        let generation = self.device_retry_generation;
+        let tx = self.tx.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(delay)).await;
+            let _ = tx
+                .send(Request::RetryDevicePersistence { generation })
+                .await;
+        });
+    }
+
+    fn retry_device_persistence(&mut self, generation: u64) {
+        if generation != self.device_retry_generation || !self.device_retry_pending {
+            return;
+        }
+        self.device_retry_pending = false;
+        let candidate = self.snapshot.clone();
+        match self.persist(&candidate, false, true) {
+            Ok(()) => self.clear_device_persistence_retry(),
+            Err(error) => {
+                log::warn!("Failed to retry device persistence: {error}");
+                self.schedule_device_persistence_retry();
+            }
+        }
+    }
+
+    fn broadcast(&mut self) {
         self.snapshot.revision = self.snapshot.revision.saturating_add(1);
         if let Ok(mut cache) = self.cache.write() {
             *cache = self.snapshot.clone();
@@ -1198,7 +1327,6 @@ impl MonitorCore {
                 log::debug!("Failed to refresh tray battery payload: {error}");
             }
         });
-        Ok(())
     }
 
     fn device_index(&self, id: &str) -> Option<usize> {
@@ -1219,6 +1347,7 @@ impl MonitorCore {
     fn update_config(&mut self, patch: Value) -> Result<MonitorSnapshot, String> {
         let previous_mode = config_fetch_interval(&self.snapshot.config);
         let previous_auto_collapse = self.auto_collapse();
+        let mut candidate = self.snapshot.clone();
         let mut merged = merge_object_values(&self.snapshot.config, &patch);
         if let Some(object) = merged.as_object_mut() {
             for key in ["pushNotificationWhen", "windowPosition"] {
@@ -1231,14 +1360,16 @@ impl MonitorCore {
                 }
             }
         }
-        self.snapshot.config = normalize_config(Some(merged));
-        let next_mode = config_fetch_interval(&self.snapshot.config);
-        if self.auto_collapse() && !previous_auto_collapse {
-            for device in &mut self.snapshot.devices {
+        candidate.config = normalize_config(Some(merged));
+        let next_mode = config_fetch_interval(&candidate.config);
+        if config_bool(&candidate.config, "autoCollapseDisconnectedDevices", false)
+            && !previous_auto_collapse
+        {
+            for device in &mut candidate.devices {
                 apply_collapse(device, true);
             }
         }
-        self.publish(true, true)?;
+        self.commit_requested(candidate, true, true)?;
         if previous_mode != next_mode {
             self.schedule_reconfigure();
         }
@@ -1274,8 +1405,9 @@ impl MonitorCore {
             extra: Map::new(),
         };
         apply_collapse(&mut registered, self.auto_collapse());
-        self.snapshot.devices.push(registered);
-        self.publish(false, true)?;
+        let mut candidate = self.snapshot.clone();
+        candidate.devices.push(registered);
+        self.commit_requested(candidate, false, true)?;
         if config_fetch_interval(&self.snapshot.config).is_none() {
             self.schedule_reconfigure();
         } else {
@@ -1288,8 +1420,9 @@ impl MonitorCore {
         let Some(index) = self.device_index(id) else {
             return Ok(self.snapshot.clone());
         };
-        self.snapshot.devices.remove(index);
-        self.publish(false, true)?;
+        let mut candidate = self.snapshot.clone();
+        candidate.devices.remove(index);
+        self.commit_requested(candidate, false, true)?;
         let was_active = self.active_monitors.remove(id);
         let session_id = self.active_monitor_sessions.remove(id);
         if was_active || session_id.is_some() {
@@ -1309,9 +1442,10 @@ impl MonitorCore {
         };
         let default_name = self.snapshot.devices[index].name.clone();
         let display_name_value = trim_optional(display_name_value);
-        self.snapshot.devices[index].display_name =
+        let mut candidate = self.snapshot.clone();
+        candidate.devices[index].display_name =
             display_name_value.filter(|display_name| display_name != &default_name);
-        self.publish(false, true)?;
+        self.commit_requested(candidate, false, true)?;
         Ok(self.snapshot.clone())
     }
 
@@ -1327,7 +1461,8 @@ impl MonitorCore {
         let key = source_description.unwrap_or("Central").to_string();
         let default_name = source_description.unwrap_or("Central");
         let label = trim_optional(label).filter(|label| label != default_name);
-        let device = &mut self.snapshot.devices[index];
+        let mut candidate = self.snapshot.clone();
+        let device = &mut candidate.devices[index];
         let labels = device.battery_part_labels.get_or_insert_with(HashMap::new);
         match label {
             Some(label) => {
@@ -1340,7 +1475,7 @@ impl MonitorCore {
         if labels.is_empty() {
             device.battery_part_labels = None;
         }
-        self.publish(false, true)?;
+        self.commit_requested(candidate, false, true)?;
         Ok(self.snapshot.clone())
     }
 
@@ -1352,8 +1487,9 @@ impl MonitorCore {
         let Some(index) = self.device_index(id) else {
             return Err(format!("Device not found: {id}"));
         };
-        self.snapshot.devices[index].is_collapsed = collapsed;
-        self.publish(false, true)?;
+        let mut candidate = self.snapshot.clone();
+        candidate.devices[index].is_collapsed = collapsed;
+        self.commit_requested(candidate, false, true)?;
         Ok(self.snapshot.clone())
     }
 
@@ -1368,14 +1504,14 @@ impl MonitorCore {
         if ids.len() != expected.len() || actual != expected {
             return Err("Device order must contain every registered device exactly once".into());
         }
-        let mut by_id: HashMap<String, MonitorDevice> = self
-            .snapshot
+        let mut candidate = self.snapshot.clone();
+        let mut by_id: HashMap<String, MonitorDevice> = candidate
             .devices
             .drain(..)
             .map(|device| (device.id.clone(), device))
             .collect();
-        self.snapshot.devices = ids.into_iter().filter_map(|id| by_id.remove(&id)).collect();
-        self.publish(false, true)?;
+        candidate.devices = ids.into_iter().filter_map(|id| by_id.remove(&id)).collect();
+        self.commit_requested(candidate, false, true)?;
         Ok(self.snapshot.clone())
     }
 
@@ -1523,9 +1659,7 @@ impl MonitorCore {
             changed |= self.apply_poll_result(&id, result);
         }
         if changed {
-            if let Err(error) = self.publish(false, true) {
-                log::warn!("Failed to publish polling state: {error}");
-            }
+            self.publish_observation();
         }
     }
 
@@ -1549,9 +1683,7 @@ impl MonitorCore {
         self.active_monitor_sessions
             .insert(id.to_string(), session_id);
         if self.apply_initial_infos(id, infos) {
-            if let Err(error) = self.publish(false, true) {
-                log::warn!("Failed to publish monitor start state: {error}");
-            }
+            self.publish_observation();
         }
     }
 
@@ -1564,9 +1696,7 @@ impl MonitorCore {
         }
         log::warn!("Failed to start battery monitor for {id}: {error}");
         if self.apply_monitor_failure(id) {
-            if let Err(error) = self.publish(false, true) {
-                log::warn!("Failed to publish monitor failure state: {error}");
-            }
+            self.publish_observation();
         }
         if matches!(error, ble::MonitorStartError::Transient(_)) {
             if let Some((attempt, delay)) = self.monitor_retries.failed(id) {
@@ -1722,7 +1852,8 @@ impl MonitorCore {
         next.connection_observed_at_unix_ms = Some(now);
         apply_collapse(&mut next, self.auto_collapse());
         self.snapshot.devices[index] = next;
-        self.publish(false, true)
+        self.publish_observation();
+        Ok(())
     }
 
     fn handle_monitor_status(
@@ -1758,7 +1889,8 @@ impl MonitorCore {
         {
             next.connection_observed_at_unix_ms = Some(now);
             self.snapshot.devices[index] = next;
-            return self.publish(false, true);
+            self.publish_observation();
+            return Ok(());
         }
         next.is_disconnected = next_disconnected;
         next.connection_status_known = Some(true);
@@ -1775,7 +1907,8 @@ impl MonitorCore {
             );
         }
         self.snapshot.devices[index] = next;
-        self.publish(false, true)
+        self.publish_observation();
+        Ok(())
     }
 }
 
@@ -1937,6 +2070,146 @@ pub async fn monitor_reload() -> Result<MonitorSnapshot, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn transaction_snapshot() -> MonitorSnapshot {
+        MonitorSnapshot {
+            revision: 4,
+            config: json!({"fetchInterval": "auto"}),
+            devices: normalize_devices(Some(json!([{"id": "keyboard", "name": "Keyboard"}]))),
+        }
+    }
+
+    #[test]
+    fn requested_save_failure_keeps_accepted_values_and_restores_config() {
+        let mut accepted = transaction_snapshot();
+        let mut persisted = PersistedValues {
+            config: Some(accepted.config.clone()),
+            devices: Some(serde_json::to_value(&accepted.devices).unwrap()),
+        };
+        let old_persisted = persisted.clone();
+        let mut candidate = accepted.clone();
+        candidate.config = json!({"fetchInterval": 60000});
+        candidate.devices.clear();
+        let mut disk = HashMap::from([
+            (CONFIG_FILENAME.to_string(), old_persisted.config.clone()),
+            (DEVICES_FILENAME.to_string(), old_persisted.devices.clone()),
+        ]);
+        let mut fail_devices = true;
+        let result = persist_snapshot_values(
+            &mut persisted,
+            &candidate,
+            true,
+            true,
+            |filename, _, value| {
+                if filename == DEVICES_FILENAME && fail_devices {
+                    fail_devices = false;
+                    return Err("device save failed".into());
+                }
+                disk.insert(filename.to_string(), value);
+                Ok(())
+            },
+        );
+        assert_eq!(result.unwrap_err(), "device save failed");
+        assert_eq!(accepted.revision, 4);
+        assert_eq!(accepted.devices.len(), 1);
+        assert_eq!(persisted.config, old_persisted.config);
+        assert_eq!(persisted.devices, old_persisted.devices);
+        assert_eq!(disk[CONFIG_FILENAME], old_persisted.config);
+        assert_eq!(disk[DEVICES_FILENAME], old_persisted.devices);
+
+        let result = persist_snapshot_values(
+            &mut persisted,
+            &candidate,
+            true,
+            true,
+            |filename, _, value| {
+                disk.insert(filename.to_string(), value);
+                Ok(())
+            },
+        );
+        assert!(result.is_ok());
+        accepted = candidate;
+        assert_eq!(accepted.devices.len(), 0);
+        assert_eq!(persisted.config, Some(accepted.config));
+    }
+
+    #[test]
+    fn compensation_restores_an_absent_config_key() {
+        let snapshot = transaction_snapshot();
+        let mut persisted = PersistedValues {
+            config: None,
+            devices: None,
+        };
+        let mut disk = HashMap::new();
+        let result = persist_snapshot_values(
+            &mut persisted,
+            &snapshot,
+            true,
+            true,
+            |filename, _, value| {
+                if filename == DEVICES_FILENAME && value.is_some() {
+                    return Err("device save failed".into());
+                }
+                disk.insert(filename.to_string(), value);
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(disk[CONFIG_FILENAME], None);
+        assert_eq!(persisted.config, None);
+    }
+
+    #[test]
+    fn failed_config_save_does_not_write_devices() {
+        let snapshot = transaction_snapshot();
+        let mut persisted = PersistedValues {
+            config: None,
+            devices: None,
+        };
+        let mut config_attempts = 0;
+        let mut device_attempts = 0;
+        let result =
+            persist_snapshot_values(&mut persisted, &snapshot, true, true, |filename, _, _| {
+                if filename == CONFIG_FILENAME {
+                    config_attempts += 1;
+                    if config_attempts == 1 {
+                        return Err("config save failed".into());
+                    }
+                } else {
+                    device_attempts += 1;
+                }
+                Ok(())
+            });
+        assert_eq!(result.unwrap_err(), "config save failed");
+        assert_eq!(config_attempts, 2);
+        assert_eq!(device_attempts, 0);
+        assert!(persisted.config.is_none());
+        assert!(persisted.devices.is_none());
+    }
+
+    #[test]
+    fn observation_retry_persists_latest_value_without_replaying_observation() {
+        let mut runtime = transaction_snapshot();
+        let mut persisted = PersistedValues {
+            config: None,
+            devices: None,
+        };
+        runtime.devices[0].battery_infos = vec![info(Some(19), None)];
+        let failed = persist_snapshot_values(&mut persisted, &runtime, false, true, |_, _, _| {
+            Err("storage unavailable".into())
+        });
+        assert!(failed.is_err());
+        assert_eq!(runtime.devices[0].battery_infos[0].battery_level, Some(19));
+        runtime.devices[0].battery_infos = vec![info(Some(18), None)];
+        let mut stored = None;
+        persist_snapshot_values(&mut persisted, &runtime, false, true, |_, _, value| {
+            stored = value;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(stored.unwrap()[0]["batteryInfos"][0]["battery_level"], 18);
+        assert_eq!(runtime.revision, 4);
+    }
 
     #[tokio::test(start_paused = true)]
     async fn monitor_retry_uses_bounded_delays_and_cancels_obsolete_attempts() {
