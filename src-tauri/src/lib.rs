@@ -105,6 +105,7 @@ pub fn run() {
             storage::get_dev_store_path,
             history::append_battery_history,
             history::read_battery_history,
+            history::read_battery_history_snapshot,
             tray::update_tray_battery_icon,
             tray::update_manual_positioning,
             tray::update_pin_window,

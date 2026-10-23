@@ -2,11 +2,35 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { RegisteredDevice } from "@/utils/app-helpers";
 import { logger } from "@/utils/log";
-import { readBatteryHistory, type BatteryHistoryRecord } from "@/utils/battery-history";
+import {
+  readBatteryHistorySnapshot,
+  type BatteryHistoryEvent,
+  type BatteryHistoryRecord,
+  type BatteryHistorySnapshot,
+} from "@/utils/battery-history";
 import { smooth, type ChartRow } from "@/utils/battery-chart-math";
 import type { DateRange } from "@/components/date-range-picker";
 
 type GroupedHistory = Map<string, BatteryHistoryRecord[]>;
+type SequencedRecord = BatteryHistoryRecord & { sequence: string; epoch: string };
+
+function compareSequence(left: string, right: string): number {
+  const a = left.replace(/^0+(?=\d)/, "");
+  const b = right.replace(/^0+(?=\d)/, "");
+  return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0);
+}
+
+function groupRecords(records: BatteryHistoryRecord[]): GroupedHistory {
+  const grouped = new Map<string, BatteryHistoryRecord[]>();
+  for (const record of records) {
+    if (record.battery_level === 0) continue;
+    const key = record.user_description || "Central";
+    const part = grouped.get(key) ?? [];
+    part.push(record);
+    grouped.set(key, part);
+  }
+  return grouped;
+}
 
 export function useBatteryChartData(options: {
   device: RegisteredDevice;
@@ -25,83 +49,158 @@ export function useBatteryChartData(options: {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const loadGeneration = useRef(0);
+  const [readyDevice, setReadyDevice] = useState<string | null>(null);
+  const boundary = useRef<{ epoch: string; throughSequence: string } | null>(null);
+  const pending = useRef(new Map<string, SequencedRecord>());
+  const loading = useRef(false);
+  const refreshNeeded = useRef(false);
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
+    loading.current = true;
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch only the visible range plus the smoothing margin, so edge
-      // points still have earlier context to smooth against.
       let sinceForFetch: string | undefined;
       if (rangeMs > 0) {
         sinceForFetch = new Date(Date.now() - rangeMs - smoothingWindow).toISOString();
       } else if (rangeMs === -1 && customRange) {
         sinceForFetch = new Date(customRange.start.getTime() - smoothingWindow).toISOString();
       }
-      const records = await readBatteryHistory(device.name, device.id, sinceForFetch);
+      const snapshot: BatteryHistorySnapshot = await readBatteryHistorySnapshot(
+        device.name,
+        device.id,
+        sinceForFetch,
+      );
       if (generation !== loadGeneration.current) return;
-      const map = new Map<string, BatteryHistoryRecord[]>();
-      for (const r of records) {
-        if (r.battery_level === 0) continue; // Ignore 0%
-        const key = r.user_description || "Central";
-        if (!map.has(key)) map.set(key, []);
-        map.get(key)!.push(r);
+      boundary.current = { epoch: snapshot.epoch, throughSequence: snapshot.throughSequence };
+      for (const [key, record] of pending.current) {
+        if (
+          record.epoch !== snapshot.epoch ||
+          compareSequence(record.sequence, snapshot.throughSequence) <= 0
+        ) {
+          pending.current.delete(key);
+        }
       }
-      setGrouped(map);
+      const later = [...pending.current.values()].sort((a, b) =>
+        compareSequence(a.sequence, b.sequence),
+      );
+      const records = [...snapshot.records, ...later];
+      records.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+      setGrouped(groupRecords(records));
     } catch (e) {
       if (generation !== loadGeneration.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
       logger.warn(`Failed to load battery history: ${msg}`);
     } finally {
-      if (generation === loadGeneration.current) setIsLoading(false);
+      if (generation === loadGeneration.current) {
+        loading.current = false;
+        setIsLoading(false);
+        if (refreshNeeded.current) {
+          refreshNeeded.current = false;
+          queueMicrotask(() => void loadRef.current());
+        }
+      }
     }
   }, [device.name, device.id, rangeMs, customRange, smoothingWindow]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useEffect(() => {
-    void load();
+    if (readyDevice === device.id) void load();
     return () => {
       loadGeneration.current += 1;
     };
-  }, [load]);
+  }, [load, readyDevice, device.id]);
 
-  // Apply new readings incrementally; fall back to a full reload for
-  // events that don't carry the appended records.
   useEffect(() => {
-    const unlistenPromise = listen<{ deviceId: string; records?: BatteryHistoryRecord[] }>(
-      "battery-history-updated",
-      (event) => {
-        if (event.payload.deviceId !== device.id) return;
-        const records = event.payload.records;
-        if (Array.isArray(records) && records.length > 0) {
-          setGrouped((prev) => {
-            const next = new Map(prev);
-            for (const r of records) {
-              if (r.battery_level === 0) continue; // match load()'s 0% skip
-              const key = r.user_description || "Central";
-              next.set(key, [...(next.get(key) ?? []), r]);
-            }
-            return next;
-          });
-        } else {
-          load();
+    let active = true;
+    let unlistenHistory: (() => void) | undefined;
+    let unlistenShown: (() => void) | undefined;
+    loadGeneration.current += 1;
+    boundary.current = null;
+    pending.current.clear();
+    loading.current = false;
+    refreshNeeded.current = false;
+    setGrouped(new Map());
+    setReadyDevice(null);
+
+    const refresh = () => {
+      if (loading.current) refreshNeeded.current = true;
+      else void loadRef.current();
+    };
+    const onHistory = (event: { payload: BatteryHistoryEvent }) => {
+      const payload = event.payload;
+      if (!active || payload.deviceId !== device.id) return;
+      const records = payload.records;
+      if (
+        !payload.epoch ||
+        !Array.isArray(records) ||
+        records.length === 0 ||
+        records.some(
+          (record) => typeof record.sequence !== "string" || !/^\d+$/.test(record.sequence),
+        )
+      ) {
+        refresh();
+        return;
+      }
+      if (boundary.current && boundary.current.epoch !== payload.epoch) {
+        refresh();
+        return;
+      }
+      const accepted: SequencedRecord[] = [];
+      for (const record of records) {
+        const sequence = record.sequence as string;
+        const key = `${payload.epoch}:${sequence}`;
+        if (
+          (boundary.current && compareSequence(sequence, boundary.current.throughSequence) <= 0) ||
+          pending.current.has(key)
+        )
+          continue;
+        const received = { ...record, sequence, epoch: payload.epoch };
+        pending.current.set(key, received);
+        accepted.push(received);
+      }
+      if (boundary.current && accepted.length > 0) {
+        setGrouped((previous) => {
+          const all = [...previous.values()].flat().concat(accepted);
+          all.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
+          return groupRecords(all);
+        });
+      }
+    };
+    void (async () => {
+      try {
+        unlistenHistory = await listen<BatteryHistoryEvent>("battery-history-updated", onHistory);
+        if (!active) {
+          unlistenHistory();
+          return;
         }
-      },
-    );
+        unlistenShown = await listen("main-window-shown", () => void loadRef.current());
+        if (!active) {
+          unlistenHistory();
+          unlistenShown();
+          return;
+        }
+        setReadyDevice(device.id);
+      } catch (cause) {
+        unlistenHistory?.();
+        if (active) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          setError(message);
+          setIsLoading(false);
+          logger.warn(`Failed to listen for battery history: ${message}`);
+        }
+      }
+    })();
     return () => {
-      unlistenPromise.then((unlisten) => unlisten());
+      active = false;
+      loadGeneration.current += 1;
+      unlistenHistory?.();
+      unlistenShown?.();
     };
-  }, [device.id, load]);
-
-  useEffect(() => {
-    const unlistenPromise = listen("main-window-shown", () => {
-      void load();
-    });
-    return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, [load]);
+  }, [device.id]);
 
   // ── Derived data ───────────────────────────────────
   const allKeys = useMemo(() => [...grouped.keys()], [grouped]);

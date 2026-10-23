@@ -5,7 +5,21 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::{LazyLock, Mutex};
 
-static HISTORY_FILE_LOCK: Mutex<()> = Mutex::new(());
+struct HistoryBoundary {
+    epoch: String,
+    sequence: u64,
+}
+
+static HISTORY_FILE_LOCK: LazyLock<Mutex<HistoryBoundary>> = LazyLock::new(|| {
+    let started = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    Mutex::new(HistoryBoundary {
+        epoch: format!("{}-{started}", std::process::id()),
+        sequence: 0,
+    })
+});
 
 static PRUNED_FILES: LazyLock<Mutex<HashMap<PathBuf, u64>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -312,6 +326,48 @@ pub struct BatteryHistoryRecord {
     pub battery_level: i32,
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryAppendReceipt {
+    pub epoch: String,
+    pub sequence: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatteryHistorySnapshot {
+    pub records: Vec<BatteryHistoryRecord>,
+    pub epoch: String,
+    pub through_sequence: String,
+}
+
+fn append_locked(
+    boundary: &mut HistoryBoundary,
+    write: impl FnOnce() -> Result<(), String>,
+) -> Result<HistoryAppendReceipt, String> {
+    let next_sequence = boundary
+        .sequence
+        .checked_add(1)
+        .ok_or("History sequence exhausted")?;
+    write()?;
+    boundary.sequence = next_sequence;
+    Ok(HistoryAppendReceipt {
+        epoch: boundary.epoch.clone(),
+        sequence: next_sequence.to_string(),
+    })
+}
+
+fn read_locked(
+    boundary: &HistoryBoundary,
+    read: impl FnOnce() -> Result<Vec<BatteryHistoryRecord>, String>,
+) -> Result<BatteryHistorySnapshot, String> {
+    Ok(BatteryHistorySnapshot {
+        records: read()?,
+        epoch: boundary.epoch.clone(),
+        through_sequence: boundary.sequence.to_string(),
+    })
+}
+
 pub fn append_battery_history_record(
     app: &tauri::AppHandle,
     device_name: &str,
@@ -319,8 +375,8 @@ pub fn append_battery_history_record(
     timestamp: &str,
     user_description: &str,
     battery_level: i32,
-) -> Result<(), String> {
-    let _guard = HISTORY_FILE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+) -> Result<HistoryAppendReceipt, String> {
+    let mut boundary = HISTORY_FILE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
 
     let dir = history_dir(app);
 
@@ -348,14 +404,16 @@ pub fn append_battery_history_record(
         }
     }
 
-    append_battery_history_at_dir(
-        &dir,
-        device_name,
-        ble_id,
-        timestamp,
-        user_description,
-        battery_level,
-    )
+    append_locked(&mut boundary, || {
+        append_battery_history_at_dir(
+            &dir,
+            device_name,
+            ble_id,
+            timestamp,
+            user_description,
+            battery_level,
+        )
+    })
 }
 
 /// Append battery history to CSV
@@ -376,6 +434,21 @@ pub fn append_battery_history(
         &user_description,
         battery_level,
     )
+    .map(|_| ())
+}
+
+#[tauri::command]
+pub fn read_battery_history_snapshot(
+    app: tauri::AppHandle,
+    device_name: String,
+    ble_id: String,
+    since: Option<String>,
+) -> Result<BatteryHistorySnapshot, String> {
+    let boundary = HISTORY_FILE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let dir = history_dir(&app);
+    read_locked(&boundary, || {
+        read_battery_history_from_dir(&dir, &device_name, &ble_id, since.as_deref())
+    })
 }
 
 /// Read battery history, optionally limited to records at or after `since` (RFC3339 UTC)
@@ -396,6 +469,54 @@ pub fn read_battery_history(
 mod tests {
     use super::*;
     use tempfile::tempdir;
+
+    #[test]
+    fn snapshot_boundary_orders_identical_appends_and_skips_failed_writes() {
+        let dir = tempdir().unwrap();
+        let mut boundary = HistoryBoundary {
+            epoch: "test".into(),
+            sequence: 0,
+        };
+        let append = |boundary: &mut HistoryBoundary| {
+            append_locked(boundary, || {
+                append_battery_history_at_dir(
+                    dir.path(),
+                    "Keyboard",
+                    "dev-1",
+                    "2026-03-19T12:00:00Z",
+                    "Central",
+                    55,
+                )
+            })
+        };
+        let first = append(&mut boundary).unwrap();
+        let before = read_locked(&boundary, || {
+            read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None)
+        })
+        .unwrap();
+        let second = append(&mut boundary).unwrap();
+        let after = read_locked(&boundary, || {
+            read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None)
+        })
+        .unwrap();
+        assert_eq!(first.sequence, "1");
+        assert_eq!(before.through_sequence, "1");
+        assert_eq!(before.records.len(), 1);
+        assert_eq!(second.sequence, "2");
+        assert_eq!(after.through_sequence, "2");
+        assert_eq!(after.records.len(), 2);
+        let failed = append_locked(&mut boundary, || Err("write failed".into()));
+        assert_eq!(failed.unwrap_err(), "write failed");
+        assert_eq!(boundary.sequence, 2);
+        prune_battery_history_at_dir(dir.path(), "Keyboard", "dev-1", "2026-03-20T00:00:00Z")
+            .unwrap();
+        let pruned = read_locked(&boundary, || {
+            read_battery_history_from_dir(dir.path(), "Keyboard", "dev-1", None)
+        })
+        .unwrap();
+        assert!(pruned.records.is_empty());
+        assert_eq!(pruned.through_sequence, "2");
+    }
 
     #[test]
     fn safe_filename_sanitizes_non_filename_chars() {

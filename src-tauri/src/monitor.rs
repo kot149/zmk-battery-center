@@ -62,7 +62,15 @@ pub struct MonitorBatteryInfo {
 struct HistoryEvent {
     #[serde(rename = "deviceId")]
     device_id: String,
-    records: Vec<HistoryRecord>,
+    epoch: String,
+    records: Vec<SequencedHistoryRecord>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SequencedHistoryRecord {
+    #[serde(flatten)]
+    record: HistoryRecord,
+    sequence: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -881,12 +889,14 @@ fn record_history(app: &AppHandle, device: &MonitorDevice, infos: &[MonitorBatte
         log::warn!("Failed to obtain history timestamp for {}", device.id);
         return;
     };
-    let records = history_records(infos, &timestamp);
-    if records.is_empty() {
+    let pending = history_records(infos, &timestamp);
+    if pending.is_empty() {
         return;
     }
-    for record in &records {
-        if let Err(error) = history::append_battery_history_record(
+    let mut records = Vec::new();
+    let mut epoch = None;
+    for record in pending {
+        match history::append_battery_history_record(
             app,
             &device.name,
             &device.id,
@@ -894,18 +904,28 @@ fn record_history(app: &AppHandle, device: &MonitorDevice, infos: &[MonitorBatte
             &record.user_description,
             record.battery_level,
         ) {
-            log::warn!(
-                "Failed to append battery history for {}: {error}",
-                device.id
-            );
+            Ok(receipt) => {
+                epoch = Some(receipt.epoch);
+                records.push(SequencedHistoryRecord {
+                    record,
+                    sequence: receipt.sequence,
+                });
+            }
+            Err(error) => {
+                log::warn!(
+                    "Failed to append battery history for {}: {error}",
+                    device.id
+                );
+            }
         }
     }
-    if crate::window::main_window_requested(app) {
+    if !records.is_empty() && crate::window::main_window_requested(app) {
         let _ = app.emit_to(
             "main",
             HISTORY_EVENT,
             HistoryEvent {
                 device_id: device.id.clone(),
+                epoch: epoch.unwrap_or_default(),
                 records,
             },
         );

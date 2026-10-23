@@ -59,6 +59,12 @@ vi.mock("recharts", () => ({
 
 vi.mock("@/utils/battery-history", () => ({
   readBatteryHistory: (...args: unknown[]) => mockReadBatteryHistory(...args),
+  readBatteryHistorySnapshot: async (...args: unknown[]) => {
+    const result = await mockReadBatteryHistory(...args);
+    return Array.isArray(result)
+      ? { records: result, epoch: "test-epoch", throughSequence: "0" }
+      : result;
+  },
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -152,18 +158,22 @@ describe("BatteryHistoryChart", () => {
     });
     const handler = mockListen.mock.calls.find(
       (call) => call[0] === "battery-history-updated",
-    )?.[1] as ((event: { payload: { deviceId: string; records?: unknown[] } }) => void) | undefined;
+    )?.[1] as
+      | ((event: { payload: { deviceId: string; epoch?: string; records?: unknown[] } }) => void)
+      | undefined;
     expect(handler).toBeDefined();
 
     await act(async () => {
       handler?.({
         payload: {
           deviceId: "kbd-1",
+          epoch: "test-epoch",
           records: [
             {
               timestamp: new Date().toISOString(),
               user_description: "Central",
               battery_level: 80,
+              sequence: "1",
             },
           ],
         },
@@ -174,6 +184,67 @@ describe("BatteryHistoryChart", () => {
       expect(screen.getByTestId("line-chart")).toBeTruthy();
     });
     expect(mockReadBatteryHistory).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an event appended after an older snapshot boundary", async () => {
+    let resolveRead!: (value: unknown) => void;
+    mockReadBatteryHistory.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    renderChart();
+    await waitFor(() => expect(mockReadBatteryHistory).toHaveBeenCalledOnce());
+    const handler = mockListen.mock.calls.find(
+      (call) => call[0] === "battery-history-updated",
+    )?.[1] as (event: { payload: unknown }) => void;
+    const first = {
+      timestamp: "2026-01-01T00:00:00.000Z",
+      user_description: "Central",
+      battery_level: 90,
+    };
+    const later = {
+      timestamp: "2026-01-02T00:00:00.000Z",
+      user_description: "Central",
+      battery_level: 80,
+      sequence: "9007199254740993",
+    };
+    await act(async () => {
+      handler({ payload: { deviceId: "kbd-1", epoch: "test-epoch", records: [later] } });
+      resolveRead({ records: [first], epoch: "test-epoch", throughSequence: "9007199254740992" });
+    });
+    await waitFor(() => expect(mockRecharts.lineChartData).toHaveLength(2));
+    expect((mockRecharts.lineChartData as ChartRow[]).map((row) => row.Central)).toEqual([90, 80]);
+  });
+
+  it("does not duplicate an event covered by the snapshot or delivered twice", async () => {
+    let resolveRead!: (value: unknown) => void;
+    mockReadBatteryHistory.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRead = resolve;
+      }),
+    );
+    renderChart();
+    await waitFor(() => expect(mockReadBatteryHistory).toHaveBeenCalledOnce());
+    const handler = mockListen.mock.calls.find(
+      (call) => call[0] === "battery-history-updated",
+    )?.[1] as (event: { payload: unknown }) => void;
+    const record = {
+      timestamp: "2026-01-01T00:00:00.000Z",
+      user_description: "Central",
+      battery_level: 80,
+      sequence: "4",
+    };
+    await act(async () => {
+      handler({ payload: { deviceId: "kbd-1", epoch: "test-epoch", records: [record] } });
+      resolveRead({ records: [record, record], epoch: "test-epoch", throughSequence: "4" });
+    });
+    await waitFor(() => expect(mockRecharts.lineChartData).toHaveLength(1));
+    await act(async () => {
+      handler({ payload: { deviceId: "kbd-1", epoch: "test-epoch", records: [record] } });
+    });
+    expect(mockReadBatteryHistory).toHaveBeenCalledTimes(1);
+    expect(mockRecharts.lineChartData).toHaveLength(1);
   });
 
   it("falls back to a full reload when the event carries no records", async () => {
@@ -236,10 +307,11 @@ describe("BatteryHistoryChart", () => {
 
     await waitFor(() => {
       expect(mockListen).toHaveBeenCalledWith("main-window-shown", expect.any(Function));
+      expect(mockReadBatteryHistory).toHaveBeenCalledTimes(1);
     });
-    const handler = mockListen.mock.calls.find((call) => call[0] === "main-window-shown")?.[1] as
-      | (() => void)
-      | undefined;
+    const handler = mockListen.mock.calls
+      .filter((call) => call[0] === "main-window-shown")
+      .slice(-1)[0]?.[1] as (() => void) | undefined;
     expect(handler).toBeDefined();
 
     await act(async () => {

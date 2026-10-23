@@ -9,6 +9,18 @@ export type BatteryHistoryRecord = {
   battery_level: number;
 };
 
+export type BatteryHistorySnapshot = {
+  records: BatteryHistoryRecord[];
+  epoch: string;
+  throughSequence: string;
+};
+
+export type BatteryHistoryEvent = {
+  deviceId: string;
+  epoch?: string;
+  records?: (BatteryHistoryRecord & { sequence?: string })[];
+};
+
 export async function appendBatteryHistory(
   deviceName: string,
   bleId: string,
@@ -61,6 +73,18 @@ export async function readBatteryHistory(
   since?: string,
 ): Promise<BatteryHistoryRecord[]> {
   return invoke<BatteryHistoryRecord[]>("read_battery_history", {
+    deviceName,
+    bleId,
+    since: since ?? null,
+  });
+}
+
+export async function readBatteryHistorySnapshot(
+  deviceName: string,
+  bleId: string,
+  since?: string,
+): Promise<BatteryHistorySnapshot> {
+  return invoke<BatteryHistorySnapshot>("read_battery_history_snapshot", {
     deviceName,
     bleId,
     since: since ?? null,
