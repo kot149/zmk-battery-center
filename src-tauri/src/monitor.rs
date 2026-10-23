@@ -688,15 +688,14 @@ fn notification_high_state(infos: &[MonitorBatteryInfo], threshold: u8) -> Vec<b
         .collect()
 }
 
-fn emit_edge_notifications(
-    app: &AppHandle,
+fn edge_notification_messages(
     config: &Value,
     device: &MonitorDevice,
     previous: &[MonitorBatteryInfo],
     current: &[MonitorBatteryInfo],
-) {
+) -> Vec<String> {
     if !config_bool(config, "pushNotification", false) {
-        return;
+        return Vec::new();
     }
     let low_threshold = config_threshold(config, "lowBatteryThreshold", LOW_BATTERY_DEFAULT);
     let high_threshold = config_threshold(config, "highBatteryThreshold", HIGH_BATTERY_DEFAULT);
@@ -706,11 +705,12 @@ fn emit_edge_notifications(
     let high_previous = notification_high_state(previous, high_threshold);
     let high_current = notification_high_state(current, high_threshold);
 
-    let notify = |enabled_key: &str,
-                  previous_state: &[bool],
-                  current_state: &[bool],
-                  verb: &str,
-                  threshold: u8| {
+    let mut messages = Vec::new();
+    let mut notify = |enabled_key: &str,
+                      previous_state: &[bool],
+                      current_state: &[bool],
+                      verb: &str,
+                      threshold: u8| {
         if !config_notification_enabled(config, enabled_key) {
             return;
         }
@@ -737,10 +737,7 @@ fn emit_edge_notifications(
                 verb,
                 threshold
             );
-            log::info!("{message}");
-            if let Err(error) = app.notification().builder().title(message.clone()).show() {
-                log::warn!("Failed to send battery notification: {error}");
-            }
+            messages.push(message);
         }
     };
 
@@ -758,6 +755,22 @@ fn emit_edge_notifications(
         "reached",
         high_threshold,
     );
+    messages
+}
+
+fn emit_edge_notifications(
+    app: &AppHandle,
+    config: &Value,
+    device: &MonitorDevice,
+    previous: &[MonitorBatteryInfo],
+    current: &[MonitorBatteryInfo],
+) {
+    for message in edge_notification_messages(config, device, previous, current) {
+        log::info!("{message}");
+        if let Err(error) = app.notification().builder().title(message.clone()).show() {
+            log::warn!("Failed to send battery notification: {error}");
+        }
+    }
 }
 
 fn emit_connection_notification(
@@ -1694,15 +1707,16 @@ impl MonitorCore {
         let now = unix_now_ms();
         let annotated = annotate_infos(&[payload.battery_info], now);
         record_history(&self.app, &previous, &annotated);
+        let next_infos = upsert_info(&previous.battery_infos, annotated[0].clone());
         emit_edge_notifications(
             &self.app,
             &self.snapshot.config,
             &previous,
             &previous.battery_infos,
-            &annotated,
+            &next_infos,
         );
         let mut next = previous;
-        next.battery_infos = upsert_info(&next.battery_infos, annotated[0].clone());
+        next.battery_infos = next_infos;
         next.is_disconnected = false;
         next.connection_status_known = Some(true);
         next.connection_observed_at_unix_ms = Some(now);
@@ -2101,6 +2115,57 @@ mod tests {
             .collect();
         assert!(edges.is_empty());
         assert!(config["pushNotification"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn partial_notifications_compare_aligned_parts() {
+        let mut device = normalize_devices(Some(json!([{
+            "id": "keyboard", "name": "Keyboard",
+            "batteryPartLabels": {"Peripheral": "Right"}
+        }])))
+        .remove(0);
+        let config = normalize_config(Some(json!({
+            "pushNotification": true,
+            "lowBatteryThreshold": 20,
+            "highBatteryThreshold": 80
+        })));
+        let before = vec![info(Some(10), None), info(Some(50), Some("Peripheral"))];
+        let low = upsert_info(&before, info(Some(19), Some("Peripheral")));
+        assert_eq!(
+            edge_notification_messages(&config, &device, &before, &low),
+            vec!["Keyboard Right battery dropped below 20%."]
+        );
+        assert!(edge_notification_messages(&config, &device, &low, &low).is_empty());
+
+        let high = upsert_info(&low, info(Some(80), Some("Peripheral")));
+        assert_eq!(
+            edge_notification_messages(&config, &device, &low, &high),
+            vec!["Keyboard Right battery reached 80%."]
+        );
+        let central = upsert_info(&before, info(Some(80), None));
+        assert_eq!(
+            edge_notification_messages(&config, &device, &before, &central),
+            vec!["Keyboard Central battery reached 80%."]
+        );
+        assert!(
+            edge_notification_messages(&normalize_config(None), &device, &before, &low).is_empty()
+        );
+
+        let invalid = upsert_info(&before, info(None, Some("Peripheral")));
+        assert!(edge_notification_messages(&config, &device, &before, &invalid).is_empty());
+        let new_part = upsert_info(&before, info(Some(1), Some("Extra")));
+        assert!(edge_notification_messages(&config, &device, &before, &new_part).is_empty());
+        device.battery_part_labels = None;
+        let zero = upsert_info(&before, info(Some(0), Some("Peripheral")));
+        assert!(edge_notification_messages(&config, &device, &before, &zero).is_empty());
+        let include_zero = normalize_config(Some(json!({
+            "pushNotification": true,
+            "ignoreZeroPercent": false
+        })));
+        assert_eq!(
+            edge_notification_messages(&include_zero, &device, &before, &zero).len(),
+            1
+        );
     }
 
     #[test]
