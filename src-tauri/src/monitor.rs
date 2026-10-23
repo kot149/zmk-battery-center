@@ -3,6 +3,7 @@ use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
@@ -134,8 +135,88 @@ enum Request {
     MonitorFailed {
         token: u64,
         id: String,
-        error: String,
+        error: ble::MonitorStartError,
     },
+    RetryMonitor {
+        token: u64,
+        id: String,
+        attempt: usize,
+    },
+}
+
+const MONITOR_RETRY_DELAYS: [u64; 4] = [2, 5, 10, 30];
+
+#[derive(Default)]
+struct MonitorRetryState {
+    attempts: HashMap<String, usize>,
+    pending: HashMap<String, usize>,
+}
+
+impl MonitorRetryState {
+    fn clear(&mut self) {
+        self.attempts.clear();
+        self.pending.clear();
+    }
+
+    fn succeeded(&mut self, id: &str) {
+        self.attempts.remove(id);
+        self.pending.remove(id);
+    }
+
+    fn failed(&mut self, id: &str) -> Option<(usize, Duration)> {
+        if self.pending.contains_key(id) {
+            return None;
+        }
+        let attempt = self.attempts.entry(id.to_string()).or_default();
+        let delay = MONITOR_RETRY_DELAYS[(*attempt).min(MONITOR_RETRY_DELAYS.len() - 1)];
+        *attempt += 1;
+        self.pending.insert(id.to_string(), *attempt);
+        Some((*attempt, Duration::from_secs(delay)))
+    }
+
+    fn take_due(&mut self, id: &str, attempt: usize) -> bool {
+        if self.pending.get(id).copied() != Some(attempt) {
+            return false;
+        }
+        self.pending.remove(id);
+        true
+    }
+}
+
+fn schedule_monitor_retry(
+    tx: mpsc::Sender<Request>,
+    token: u64,
+    id: String,
+    attempt: usize,
+    delay: Duration,
+) {
+    tauri::async_runtime::spawn(send_monitor_retry_after(tx, token, id, attempt, delay));
+}
+
+async fn send_monitor_retry_after(
+    tx: mpsc::Sender<Request>,
+    token: u64,
+    id: String,
+    attempt: usize,
+    delay: Duration,
+) {
+    tokio::time::sleep(delay).await;
+    let _ = tx.send(Request::RetryMonitor { token, id, attempt }).await;
+}
+
+async fn run_monitor_start<F>(
+    start: F,
+) -> Result<ble::BatteryMonitorStartResult, ble::MonitorStartError>
+where
+    F: Future<Output = Result<ble::BatteryMonitorStartResult, ble::MonitorStartError>>,
+{
+    tokio::time::timeout(Duration::from_secs(30), start)
+        .await
+        .unwrap_or_else(|_| {
+            Err(ble::MonitorStartError::Transient(
+                "Battery monitor start timed out".to_string(),
+            ))
+        })
 }
 
 #[derive(Clone)]
@@ -216,7 +297,10 @@ fn normalize_config(raw: Option<Value>) -> Value {
         result.insert(key, value);
     }
 
-    if !result.get("updateCheckEnabled").is_some_and(Value::is_boolean) {
+    if !result
+        .get("updateCheckEnabled")
+        .is_some_and(Value::is_boolean)
+    {
         result.insert("updateCheckEnabled".to_string(), json!(false));
     }
 
@@ -896,6 +980,8 @@ async fn actor_loop(
         tx,
         active_monitors: HashSet::new(),
         active_monitor_sessions: HashMap::new(),
+        starting_monitors: HashSet::new(),
+        monitor_retries: MonitorRetryState::default(),
         monitor_token: 0,
         poll_token: 0,
         poll_in_flight: false,
@@ -984,7 +1070,10 @@ async fn actor_loop(
                 core.handle_monitor_started(token, &id, session_id, &infos);
             }
             Request::MonitorFailed { token, id, error } => {
-                core.handle_monitor_failed(token, &id, &error);
+                core.handle_monitor_failed(token, &id, error);
+            }
+            Request::RetryMonitor { token, id, attempt } => {
+                core.handle_monitor_retry(token, &id, attempt);
             }
         }
     }
@@ -999,6 +1088,8 @@ struct MonitorCore {
     tx: mpsc::Sender<Request>,
     active_monitors: HashSet<String>,
     active_monitor_sessions: HashMap<String, u64>,
+    starting_monitors: HashSet<String>,
+    monitor_retries: MonitorRetryState,
     monitor_token: u64,
     poll_token: u64,
     poll_in_flight: bool,
@@ -1287,6 +1378,8 @@ impl MonitorCore {
     fn schedule_reconfigure(&mut self) {
         self.monitor_token = self.monitor_token.saturating_add(1);
         let token = self.monitor_token;
+        self.starting_monitors.clear();
+        self.monitor_retries.clear();
         let desired: Vec<String> = if config_fetch_interval(&self.snapshot.config).is_none() {
             self.snapshot
                 .devices
@@ -1304,7 +1397,6 @@ impl MonitorCore {
                 (id, session_id)
             })
             .collect();
-        let app = self.app.clone();
         let tx = self.tx.clone();
         tauri::async_runtime::spawn(async move {
             for (id, session_id) in previous_active {
@@ -1329,37 +1421,56 @@ impl MonitorCore {
                 }
             }
             for id in desired {
-                let result = tokio::time::timeout(
-                    Duration::from_secs(30),
-                    ble::start_battery_notification_monitor_with_session(app.clone(), id.clone()),
-                )
-                .await;
-                match result {
-                    Ok(Ok(started)) => {
-                        let _ = tx
-                            .send(Request::MonitorStarted {
-                                token,
-                                id,
-                                session_id: started.session_id,
-                                infos: started.battery_infos,
-                            })
-                            .await;
-                    }
-                    Ok(Err(error)) => {
-                        let _ = tx.send(Request::MonitorFailed { token, id, error }).await;
-                    }
-                    Err(_) => {
-                        let _ = tx
-                            .send(Request::MonitorFailed {
-                                token,
-                                id,
-                                error: "Battery monitor start timed out".to_string(),
-                            })
-                            .await;
-                    }
-                }
+                let _ = tx
+                    .send(Request::RetryMonitor {
+                        token,
+                        id,
+                        attempt: 0,
+                    })
+                    .await;
             }
         });
+    }
+
+    fn start_monitor(&mut self, id: &str) {
+        if config_fetch_interval(&self.snapshot.config).is_some()
+            || self.device_index(id).is_none()
+            || self.active_monitors.contains(id)
+            || !self.starting_monitors.insert(id.to_string())
+        {
+            return;
+        }
+        let app = self.app.clone();
+        let tx = self.tx.clone();
+        let id = id.to_string();
+        let token = self.monitor_token;
+        tauri::async_runtime::spawn(async move {
+            let result = run_monitor_start(ble::start_battery_notification_monitor_with_session(
+                app,
+                id.clone(),
+            ))
+            .await;
+            let request = match result {
+                Ok(started) => Request::MonitorStarted {
+                    token,
+                    id,
+                    session_id: started.session_id,
+                    infos: started.battery_infos,
+                },
+                Err(error) => Request::MonitorFailed { token, id, error },
+            };
+            let _ = tx.send(request).await;
+        });
+    }
+
+    fn handle_monitor_retry(&mut self, token: u64, id: &str, attempt: usize) {
+        if token != self.monitor_token {
+            return;
+        }
+        if attempt != 0 && !self.monitor_retries.take_due(id, attempt) {
+            return;
+        }
+        self.start_monitor(id);
     }
 
     fn schedule_poll(&mut self) {
@@ -1419,6 +1530,8 @@ impl MonitorCore {
             self.spawn_stop_monitor(id.to_string(), Some(session_id));
             return;
         }
+        self.starting_monitors.remove(id);
+        self.monitor_retries.succeeded(id);
         self.active_monitors.insert(id.to_string());
         self.active_monitor_sessions
             .insert(id.to_string(), session_id);
@@ -1429,14 +1542,22 @@ impl MonitorCore {
         }
     }
 
-    fn handle_monitor_failed(&mut self, token: u64, id: &str, error: &str) {
+    fn handle_monitor_failed(&mut self, token: u64, id: &str, error: ble::MonitorStartError) {
         if token != self.monitor_token || config_fetch_interval(&self.snapshot.config).is_some() {
+            return;
+        }
+        if !self.starting_monitors.remove(id) || self.device_index(id).is_none() {
             return;
         }
         log::warn!("Failed to start battery monitor for {id}: {error}");
         if self.apply_monitor_failure(id) {
             if let Err(error) = self.publish(false, true) {
                 log::warn!("Failed to publish monitor failure state: {error}");
+            }
+        }
+        if matches!(error, ble::MonitorStartError::Transient(_)) {
+            if let Some((attempt, delay)) = self.monitor_retries.failed(id) {
+                schedule_monitor_retry(self.tx.clone(), token, id.to_string(), attempt, delay);
             }
         }
     }
@@ -1802,6 +1923,74 @@ pub async fn monitor_reload() -> Result<MonitorSnapshot, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_retry_uses_bounded_delays_and_cancels_obsolete_attempts() {
+        let mut retries = MonitorRetryState::default();
+        let (tx, mut rx) = mpsc::channel(8);
+        for expected_delay in MONITOR_RETRY_DELAYS {
+            let (attempt, delay) = retries.failed("keyboard").unwrap();
+            assert_eq!(delay, Duration::from_secs(expected_delay));
+            assert!(retries.failed("keyboard").is_none());
+            tokio::spawn(send_monitor_retry_after(
+                tx.clone(),
+                3,
+                "keyboard".into(),
+                attempt,
+                delay,
+            ));
+            tokio::task::yield_now().await;
+            tokio::time::advance(delay).await;
+            let Request::RetryMonitor {
+                token,
+                id,
+                attempt: due,
+            } = rx.recv().await.unwrap()
+            else {
+                panic!("expected monitor retry");
+            };
+            assert_eq!(token, 3);
+            assert!(retries.take_due(&id, due));
+            assert!(!retries.take_due(&id, due));
+        }
+        assert_eq!(
+            retries.failed("keyboard").unwrap().1,
+            Duration::from_secs(30)
+        );
+        retries.clear();
+        assert!(!retries.take_due("keyboard", 5));
+        assert_eq!(
+            retries.failed("keyboard").unwrap().1,
+            Duration::from_secs(2)
+        );
+        retries.succeeded("keyboard");
+        assert!(!retries.take_due("keyboard", 1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn monitor_start_boundary_accepts_recovery_and_times_out() {
+        let failed = run_monitor_start(async {
+            Err(ble::MonitorStartError::Transient(
+                "adapter unavailable".into(),
+            ))
+        })
+        .await;
+        assert!(matches!(failed, Err(ble::MonitorStartError::Transient(_))));
+        let recovered = run_monitor_start(async {
+            Ok(ble::BatteryMonitorStartResult {
+                session_id: 7,
+                battery_infos: Vec::new(),
+            })
+        })
+        .await
+        .unwrap();
+        assert_eq!(recovered.session_id, 7);
+        let timed_out = run_monitor_start(std::future::pending()).await;
+        assert!(matches!(
+            timed_out,
+            Err(ble::MonitorStartError::Transient(message)) if message.contains("timed out")
+        ));
+    }
 
     #[test]
     fn dismissed_versions_ignores_invalid_values() {

@@ -110,6 +110,43 @@ pub(crate) struct BatteryMonitorStartResult {
     pub(crate) battery_infos: Vec<BatteryInfo>,
 }
 
+#[derive(Debug)]
+pub(crate) enum MonitorStartError {
+    Transient(String),
+    UnsupportedNotifications,
+}
+
+impl std::fmt::Display for MonitorStartError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Transient(message) => formatter.write_str(message),
+            Self::UnsupportedNotifications => {
+                formatter.write_str("Battery level notification is not supported by this device")
+            }
+        }
+    }
+}
+
+fn notification_capability(
+    properties: impl IntoIterator<Item = Result<(bool, bool), String>>,
+) -> Result<(), MonitorStartError> {
+    let mut read_failed = false;
+    for property in properties {
+        match property {
+            Ok((notify, indicate)) if notify || indicate => return Ok(()),
+            Err(_) => read_failed = true,
+            _ => {}
+        }
+    }
+    if read_failed {
+        Err(MonitorStartError::Transient(
+            "Battery notification properties could not be read".to_string(),
+        ))
+    } else {
+        Err(MonitorStartError::UnsupportedNotifications)
+    }
+}
+
 static MONITORS: LazyLock<Mutex<HashMap<String, MonitorTask>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(1);
@@ -948,13 +985,13 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
 pub(crate) async fn start_battery_notification_monitor_with_session(
     app: AppHandle,
     id: String,
-) -> Result<BatteryMonitorStartResult, String> {
+) -> Result<BatteryMonitorStartResult, MonitorStartError> {
     log::debug!(
         "BLE I/O: start notification monitor request device_id={}",
         id
     );
     let session_id = next_session_id();
-    let adapter = get_adapter().await?;
+    let adapter = get_adapter().await.map_err(MonitorStartError::Transient)?;
 
     let (stop_tx, stop_rx) = watch::channel(false);
     let initial_battery_infos;
@@ -966,32 +1003,33 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
             adapter
                 .connect_device(&target_device)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| MonitorStartError::Transient(e.to_string()))?;
             log::debug!("BLE I/O: connect response success (notification) device_id={id}");
 
-            let contexts = get_battery_characteristic_contexts(&target_device).await?;
+            let contexts = get_battery_characteristic_contexts(&target_device)
+                .await
+                .map_err(MonitorStartError::Transient)?;
             if contexts.is_empty() {
-                return Err("Battery level characteristic not found".to_string());
+                return Err(MonitorStartError::Transient(
+                    "Battery level characteristic not found".to_string(),
+                ));
             }
 
             initial_battery_infos = read_battery_infos_best_effort(&contexts).await;
 
             // Verify that at least one characteristic supports notifications.
-            let mut has_notify = false;
+            let mut properties = Vec::new();
             for context in contexts.iter() {
-                if let Ok(props) = context.characteristic.properties().await {
-                    if props.notify || props.indicate {
-                        has_notify = true;
-                        break;
-                    }
-                }
-            }
-
-            if !has_notify {
-                return Err(
-                    "Battery level notification is not supported by this device".to_string()
+                properties.push(
+                    context
+                        .characteristic
+                        .properties()
+                        .await
+                        .map(|props| (props.notify, props.indicate))
+                        .map_err(|error| error.to_string()),
                 );
             }
+            notification_capability(properties)?;
         }
         Err(e) => {
             log::info!(
@@ -1051,7 +1089,8 @@ pub async fn start_battery_notification_monitor(
     id: String,
 ) -> Result<Vec<BatteryInfo>, String> {
     Ok(start_battery_notification_monitor_with_session(app, id)
-        .await?
+        .await
+        .map_err(|error| error.to_string())?
         .battery_infos)
 }
 
@@ -1068,6 +1107,26 @@ mod tests {
     use super::*;
     use std::time::Duration;
     use tokio::sync::watch;
+
+    #[test]
+    fn notification_capability_distinguishes_unsupported_from_read_failure() {
+        assert!(matches!(
+            notification_capability([Ok((false, false)), Ok((false, false))]),
+            Err(MonitorStartError::UnsupportedNotifications)
+        ));
+        assert!(matches!(
+            notification_capability([Ok((false, false)), Err("read failed".to_string())]),
+            Err(MonitorStartError::Transient(_))
+        ));
+        assert!(matches!(
+            notification_capability([Err("read failed".to_string()), Ok((true, false))]),
+            Ok(())
+        ));
+        assert!(matches!(
+            notification_capability([Err("read failed".to_string())]),
+            Err(MonitorStartError::Transient(_))
+        ));
+    }
 
     #[cfg(target_os = "windows")]
     #[tokio::test]
