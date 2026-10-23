@@ -11,6 +11,8 @@ import {
   MAX_X_AXIS_TICKS,
 } from "@/utils/battery-chart-math";
 import type { ChartRow } from "@/utils/battery-chart-math";
+import { smooth } from "@/utils/battery-chart-math";
+import { retainHistoryForChart } from "@/hooks/use-battery-chart-data";
 import { ConfigProvider } from "@/providers/config-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
 
@@ -129,6 +131,46 @@ function renderChart() {
 }
 
 describe("BatteryHistoryChart", () => {
+  it("bounds finite and custom history with symmetric smoothing context", () => {
+    const hour = 60 * 60 * 1000;
+    const record = (offset: number) => ({
+      timestamp: new Date(FIXED_NOW + offset).toISOString(),
+      user_description: "Central",
+      battery_level: Math.round(50 + offset / hour),
+    });
+    const records = [-3, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 3].map((hours) =>
+      record(hours * hour),
+    );
+    const customRange = {
+      start: new Date(FIXED_NOW - hour),
+      end: new Date(FIXED_NOW + hour),
+    };
+    const custom = retainHistoryForChart(records, -1, customRange, hour / 2, FIXED_NOW);
+    expect(custom).toHaveLength(7);
+    const visible = (rows: typeof records) =>
+      rows.filter((row) => {
+        const time = new Date(row.timestamp).getTime();
+        return time >= customRange.start.getTime() && time <= customRange.end.getTime();
+      });
+    expect(visible(smooth(custom, hour / 2))).toEqual(visible(smooth(records, hour / 2)));
+    expect(retainHistoryForChart(records, hour, null, hour / 2, FIXED_NOW)).toHaveLength(9);
+    expect(retainHistoryForChart(records, hour, null, 0, FIXED_NOW)).toHaveLength(8);
+    expect(retainHistoryForChart(records, 0, null, hour / 2, FIXED_NOW)).toBe(records);
+    expect(retainHistoryForChart(records, hour, null, hour / 2, FIXED_NOW + hour)).toHaveLength(7);
+  });
+
+  it("keeps smoothing input bounded after many old events", () => {
+    const minute = 60 * 1000;
+    const records = Array.from({ length: 1000 }, (_, index) => ({
+      timestamp: new Date(FIXED_NOW - (1000 - index) * minute).toISOString(),
+      user_description: "Central",
+      battery_level: 80,
+    }));
+    expect(retainHistoryForChart(records, 10 * minute, null, 5 * minute, FIXED_NOW)).toHaveLength(
+      15,
+    );
+  });
+
   beforeEach(() => {
     mockReadBatteryHistory.mockReset();
     mockListen.mockReset();

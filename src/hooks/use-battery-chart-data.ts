@@ -32,6 +32,24 @@ function groupRecords(records: BatteryHistoryRecord[]): GroupedHistory {
   return grouped;
 }
 
+export function retainHistoryForChart(
+  records: BatteryHistoryRecord[],
+  rangeMs: number,
+  customRange: DateRange | null,
+  smoothingWindow: number,
+  now: number,
+): BatteryHistoryRecord[] {
+  if (rangeMs === 0 || (rangeMs === -1 && !customRange)) return records;
+  const margin = Math.max(0, smoothingWindow);
+  const start =
+    rangeMs === -1 && customRange ? customRange.start.getTime() - margin : now - rangeMs - margin;
+  const end = rangeMs === -1 && customRange ? customRange.end.getTime() + margin : Infinity;
+  return records.filter((record) => {
+    const timestamp = new Date(record.timestamp).getTime();
+    return timestamp >= start && timestamp <= end;
+  });
+}
+
 export function useBatteryChartData(options: {
   device: RegisteredDevice;
   rangeMs: number;
@@ -54,6 +72,8 @@ export function useBatteryChartData(options: {
   const pending = useRef(new Map<string, SequencedRecord>());
   const loading = useRef(false);
   const refreshNeeded = useRef(false);
+  const rangeRef = useRef({ rangeMs, customRange, smoothingWindow });
+  rangeRef.current = { rangeMs, customRange, smoothingWindow };
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
@@ -87,7 +107,11 @@ export function useBatteryChartData(options: {
       );
       const records = [...snapshot.records, ...later];
       records.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
-      setGrouped(groupRecords(records));
+      setGrouped(
+        groupRecords(
+          retainHistoryForChart(records, rangeMs, customRange, smoothingWindow, Date.now()),
+        ),
+      );
     } catch (e) {
       if (generation !== loadGeneration.current) return;
       const msg = e instanceof Error ? e.message : String(e);
@@ -166,7 +190,15 @@ export function useBatteryChartData(options: {
         setGrouped((previous) => {
           const all = [...previous.values()].flat().concat(accepted);
           all.sort((a, b) => (a.timestamp < b.timestamp ? -1 : a.timestamp > b.timestamp ? 1 : 0));
-          return groupRecords(all);
+          return groupRecords(
+            retainHistoryForChart(
+              all,
+              rangeRef.current.rangeMs,
+              rangeRef.current.customRange,
+              rangeRef.current.smoothingWindow,
+              Date.now(),
+            ),
+          );
         });
       }
     };
