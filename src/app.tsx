@@ -120,7 +120,7 @@ function App() {
 
     const isMac = platform() === "macos";
     const createTimeoutError = () => {
-      let message = "Failed to fetch devices.";
+      let message = "Failed to load devices.";
       if (isMac) {
         message += " If you are using macOS, please make sure Bluetooth permission is granted.";
       }
@@ -440,7 +440,7 @@ function App() {
               title="Select Device"
               isLoading={state === State.fetchingDevices}
               error={error}
-              loadingText="Fetching devices..."
+              loadingText="Loading devices..."
             >
               {state === State.addDeviceModal && (
                 <ul className="app-scrollbar max-h-60 overflow-y-auto rounded-sm">
@@ -494,7 +494,7 @@ function App() {
             open={state === State.fetchingBatteryInfo}
             onClose={() => undefined}
             isLoading={true}
-            loadingText="Fetching battery info..."
+            loadingText="Reading battery levels..."
             showCloseButton={false}
           />
         </>
