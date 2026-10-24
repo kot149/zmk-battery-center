@@ -450,7 +450,7 @@ function App() {
                     availableDevices.map((device) => (
                       <li key={device.id}>
                         <Button
-                          className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-muted transition-colors duration-300 p-2!"
+                          className="w-full text-left rounded-none bg-card text-card-foreground hover:bg-secondary transition-colors duration-300 p-2!"
                           onClick={() => handleAddDevice(device.id)}
                         >
                           {device.name}

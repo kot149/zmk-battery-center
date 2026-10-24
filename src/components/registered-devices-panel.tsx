@@ -113,14 +113,14 @@ const DeviceTopBar: React.FC<DeviceTopBarProps> = ({
   return (
     <div className="absolute right-0 top-1/2 z-10 flex h-8 w-16 -translate-y-1/2 items-center justify-end -space-x-1">
       <Button
-        className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
+        className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:text-foreground p-0! transition-opacity"
         onClick={onChart}
         aria-label="Show battery history chart"
       >
         <ChartCurveIcon className="size-5 mx-auto" />
       </Button>
       <Button
-        className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:bg-muted hover:text-foreground p-0! transition-opacity"
+        className="w-8 h-8 text-muted-foreground group-hover:opacity-100 opacity-0 bg-transparent hover:text-foreground p-0! transition-opacity"
         onClick={onOpenMenu}
         aria-label="Open menu"
       >
@@ -206,7 +206,7 @@ const PartLabelEdit: React.FC<PartLabelEditProps> = ({
     />
     <button
       type="button"
-      className="absolute right-0.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className="absolute right-0.5 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
       aria-label={resetAriaLabel}
       title={resetTitle}
       onPointerDown={(e) => {
@@ -242,7 +242,7 @@ const PartLabelView: React.FC<PartLabelViewProps> = ({
     </span>
     <Button
       type="button"
-      className="h-6 w-6 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover/labelrow:opacity-100"
+      className="h-6 w-6 shrink-0 p-0! text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/labelrow:opacity-100"
       aria-label={editAriaLabel}
       onClick={onStartEdit}
     >
@@ -520,7 +520,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
                 <div className="relative flex min-h-8 flex-wrap items-center gap-x-1 gap-y-1 pr-16">
                   <button
                     type="button"
-                    className="-ml-1.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="-ml-1.5 shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
                     onClick={() => toggleCollapse(device.id)}
                     aria-label={isCollapsed ? "Expand device" : "Collapse device"}
                   >
@@ -573,7 +573,7 @@ const RegisteredDevicesPanel: React.FC<DeviceListProps> = ({
                         </span>
                         <Button
                           type="button"
-                          className="h-5 w-0 group-hover/devicename:w-5 shrink-0 overflow-hidden p-0! text-muted-foreground opacity-0 pointer-events-none transition-[width,margin,opacity] duration-150 hover:bg-muted hover:text-foreground group-hover/devicename:ml-1  group-hover/devicename:opacity-100 group-hover/devicename:pointer-events-auto"
+                          className="h-5 w-0 group-hover/devicename:w-5 shrink-0 overflow-hidden p-0! text-muted-foreground opacity-0 pointer-events-none transition-[width,margin,opacity] duration-150 hover:text-foreground group-hover/devicename:ml-1  group-hover/devicename:opacity-100 group-hover/devicename:pointer-events-auto"
                           aria-label="Edit device display name"
                           onClick={() => startDeviceNameEdit(device)}
                         >
