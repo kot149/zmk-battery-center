@@ -232,7 +232,7 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
                       setConfig((c) => ({ ...c, theme: opt.key as Theme }));
                     }}
                     className={`relative w-12 h-12 flex items-center justify-center rounded-lg transition-colors
-										${theme === opt.key ? "bg-muted-foreground/30" : "bg-transparent"}
+										${theme === opt.key ? "bg-muted-foreground/30" : "bg-transparent hover:bg-secondary"}
 									`}
                     aria-label={opt.label}
                   >
@@ -243,10 +243,10 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
             </div>
           </SettingsGroup>
 
-          {/* Battery update interval */}
+          {/* Battery refresh interval */}
           <SettingsGroup>
             <div className="flex min-w-0 items-center justify-between gap-3">
-              <span className="shrink-0">Battery update interval</span>
+              <span className="shrink-0">Battery refresh interval</span>
               <div className="flex min-w-0 max-w-full flex-1 basis-0 justify-end">
                 <Select
                   value={config.fetchInterval.toString()}

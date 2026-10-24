@@ -18,7 +18,7 @@ const DEVICES_FILENAME: &str = "devices.json";
 const DEVICES_KEY: &str = "devices";
 const STATE_EVENT: &str = "monitor-state-changed";
 const HISTORY_EVENT: &str = "battery-history-updated";
-const DEFAULT_FETCH_INTERVAL_MS: u64 = 60_000;
+const DEFAULT_FETCH_INTERVAL: &str = "auto";
 const LOW_BATTERY_DEFAULT: u8 = 20;
 const HIGH_BATTERY_DEFAULT: u8 = 80;
 
@@ -298,7 +298,7 @@ static SERVICE: OnceLock<MonitorService> = OnceLock::new();
 fn default_config() -> Value {
     json!({
         "theme": "dark",
-        "fetchInterval": DEFAULT_FETCH_INTERVAL_MS,
+        "fetchInterval": DEFAULT_FETCH_INTERVAL,
         "autoStart": false,
         "updateCheckEnabled": false,
         "autoCollapseDisconnectedDevices": false,
@@ -426,10 +426,7 @@ fn normalize_config(raw: Option<Value>) -> Value {
         _ => false,
     };
     if !valid_interval {
-        result.insert(
-            "fetchInterval".to_string(),
-            json!(DEFAULT_FETCH_INTERVAL_MS),
-        );
+        result.insert("fetchInterval".to_string(), json!(DEFAULT_FETCH_INTERVAL));
     }
 
     Value::Object(result)
@@ -439,7 +436,7 @@ fn config_fetch_interval(config: &Value) -> Option<u64> {
     match config.get("fetchInterval") {
         Some(Value::String(value)) if value == "auto" => None,
         Some(Value::Number(value)) => value.as_u64(),
-        _ => Some(DEFAULT_FETCH_INTERVAL_MS),
+        _ => None,
     }
 }
 

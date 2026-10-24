@@ -52,9 +52,27 @@ fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
     if let Err(error) = position_main_window(app, window) {
         log::warn!("Failed to position main window: {error}");
     }
-    window.show()?;
-    if let Err(error) = window.set_focus() {
-        log::warn!("Failed to focus main window: {error}");
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+
+        let gtk_window = window.gtk_window()?;
+        // Tao queues show(), so an immediate set_focus() can still see a hidden window.
+        gtk_window.show_all();
+        // D-Bus tray clicks do not update GTK's last user interaction timestamp.
+        let timestamp = gtk_window
+            .window()
+            .and_then(|window| window.downcast::<gdkx11::X11Window>().ok())
+            .map(|window| gdkx11::functions::x11_get_server_time(&window))
+            .unwrap_or(gtk::gdk::ffi::GDK_CURRENT_TIME as u32);
+        gtk_window.present_with_time(timestamp);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        window.show()?;
+        if let Err(error) = window.set_focus() {
+            log::warn!("Failed to focus main window: {error}");
+        }
     }
     let _ = app.emit_to("main", "main-window-shown", ());
     Ok(())
@@ -224,31 +242,18 @@ pub async fn window_ready(
 }
 
 fn resize_main_window(window: &WebviewWindow, width: f64, height: f64) -> Result<(), String> {
-    let size = content_size(
-        width,
-        height,
-        get_windows_text_scale_factor(),
-        cfg!(target_os = "linux"),
-    )?;
+    let size = content_size(width, height, get_windows_text_scale_factor())?;
     window.set_size(size).map_err(|error| error.to_string())
 }
 
-fn content_size(
-    width: f64,
-    height: f64,
-    scale: f64,
-    linux: bool,
-) -> Result<tauri::LogicalSize<f64>, String> {
+fn content_size(width: f64, height: f64, scale: f64) -> Result<tauri::LogicalSize<f64>, String> {
     if [width, height, scale]
         .iter()
         .any(|value| !value.is_finite() || *value <= 0.0)
     {
         return Err("Content dimensions and scale must be positive and finite".into());
     }
-    // GTK client-side decorations add a shadow margin outside the content.
-    let width = width * scale + if linux { 16.0 } else { 0.0 };
-    let height = height * scale + if linux { 8.0 } else { 0.0 };
-    Ok(tauri::LogicalSize::new(width, height))
+    Ok(tauri::LogicalSize::new(width * scale, height * scale))
 }
 
 #[tauri::command]
@@ -305,23 +310,23 @@ mod tests {
     }
 
     #[test]
-    fn scales_content_and_preserves_linux_shadow_margins() {
+    fn scales_content_for_text_scale() {
         assert_eq!(
-            content_size(360.0, 200.0, 1.25, false).unwrap(),
+            content_size(360.0, 200.0, 1.25).unwrap(),
             tauri::LogicalSize::new(450.0, 250.0)
         );
         assert_eq!(
-            content_size(360.0, 200.0, 1.0, true).unwrap(),
-            tauri::LogicalSize::new(376.0, 208.0)
+            content_size(360.0, 200.0, 1.0).unwrap(),
+            tauri::LogicalSize::new(360.0, 200.0)
         );
     }
 
     #[test]
     fn rejects_invalid_content_dimensions() {
         for invalid in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-            assert!(content_size(invalid, 200.0, 1.0, false).is_err());
-            assert!(content_size(360.0, invalid, 1.0, false).is_err());
-            assert!(content_size(360.0, 200.0, invalid, false).is_err());
+            assert!(content_size(invalid, 200.0, 1.0).is_err());
+            assert!(content_size(360.0, invalid, 1.0).is_err());
+            assert!(content_size(360.0, 200.0, invalid).is_err());
         }
     }
 }
