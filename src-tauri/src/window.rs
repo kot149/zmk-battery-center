@@ -52,9 +52,27 @@ fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
     if let Err(error) = position_main_window(app, window) {
         log::warn!("Failed to position main window: {error}");
     }
-    window.show()?;
-    if let Err(error) = window.set_focus() {
-        log::warn!("Failed to focus main window: {error}");
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+
+        let gtk_window = window.gtk_window()?;
+        // Tao queues show(), so an immediate set_focus() can still see a hidden window.
+        gtk_window.show_all();
+        // D-Bus tray clicks do not update GTK's last user interaction timestamp.
+        let timestamp = gtk_window
+            .window()
+            .and_then(|window| window.downcast::<gdkx11::X11Window>().ok())
+            .map(|window| gdkx11::functions::x11_get_server_time(&window))
+            .unwrap_or(gtk::gdk::ffi::GDK_CURRENT_TIME as u32);
+        gtk_window.present_with_time(timestamp);
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        window.show()?;
+        if let Err(error) = window.set_focus() {
+            log::warn!("Failed to focus main window: {error}");
+        }
     }
     let _ = app.emit_to("main", "main-window-shown", ());
     Ok(())

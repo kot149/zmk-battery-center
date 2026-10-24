@@ -6109,6 +6109,8 @@ dependencies = [
  "bluest",
  "csv",
  "futures-util",
+ "gdkx11",
+ "gtk",
  "ksni",
  "log",
  "objc2",
