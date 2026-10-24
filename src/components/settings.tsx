@@ -108,7 +108,7 @@ function BatteryThresholdInput({
 }
 
 const fetchIntervalOptions = [
-  { label: "Auto (experimental)", value: FETCH_INTERVAL_AUTO },
+  { label: "Auto", value: FETCH_INTERVAL_AUTO },
   { label: "10 sec", value: 10_000 },
   { label: "30 sec", value: 30_000 },
   { label: "1 min", value: 60_000 },
