@@ -121,6 +121,8 @@
       },
     ),
     historyByKey: clone(seed.historyByKey ?? {}),
+    historyEpoch: "e2e-epoch",
+    historySequence: 0,
   };
 
   function historyKey(deviceName, bleId) {

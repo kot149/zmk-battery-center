@@ -45,6 +45,7 @@ declare global {
       getInvocations: () => Array<{ cmd: string; args?: Record<string, unknown> }>;
       setBatteryInfo: (id: string, infos: MockBatteryInfo[]) => void;
       setHistory: (deviceName: string, bleId: string, records: MockHistoryRecord[]) => void;
+      appendHistory: (deviceName: string, bleId: string, records: MockHistoryRecord[]) => void;
     };
   }
 }

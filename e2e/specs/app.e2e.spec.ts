@@ -132,16 +132,13 @@ test("battery history chart accepts backend history events", async ({ page }) =>
   await expect(page.getByText("No history recorded yet")).toBeVisible();
 
   await page.evaluate(() => {
-    return window.__e2eTauriMock.emit("battery-history-updated", {
-      deviceId: "kbd-1",
-      records: [
-        {
-          timestamp: new Date().toISOString(),
-          user_description: "Central",
-          battery_level: 48,
-        },
-      ],
-    });
+    window.__e2eTauriMock.appendHistory("MockBoard One", "kbd-1", [
+      {
+        timestamp: new Date().toISOString(),
+        user_description: "Central",
+        battery_level: 48,
+      },
+    ]);
   });
   await expect(page.getByText("No history recorded yet")).toHaveCount(0);
 });

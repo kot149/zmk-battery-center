@@ -154,6 +154,27 @@
     }
   }
 
+  function readHistory(deviceName, bleId, since) {
+    const records = state.historyByKey[historyKey(deviceName, bleId)] ?? [];
+    return since ? records.filter((record) => record.timestamp >= since) : records;
+  }
+
+  /** Mirrors the backend append + battery-history-updated event, including epoch/sequence. */
+  function appendHistory(deviceName, bleId, records) {
+    const key = historyKey(deviceName, bleId);
+    const stored = state.historyByKey[key] ?? [];
+    const sequenced = records.map((record) => {
+      state.historySequence += 1;
+      return { ...clone(record), sequence: String(state.historySequence) };
+    });
+    state.historyByKey[key] = [...stored, ...sequenced];
+    emitEvent("battery-history-updated", {
+      deviceId: bleId,
+      epoch: state.historyEpoch,
+      records: sequenced,
+    });
+  }
+
   function installTauriMocks() {
     window.__TAURI_INTERNALS__ = window.__TAURI_INTERNALS__ ?? {};
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = window.__TAURI_EVENT_PLUGIN_INTERNALS__ ?? {};
@@ -314,11 +335,16 @@
       }
 
       if (cmd === "list_battery_devices") return clone(state.devices);
+
       if (cmd === "read_battery_history") {
-        const records = state.historyByKey[historyKey(args.deviceName, args.bleId)] ?? [];
-        return clone(
-          args.since ? records.filter((record) => record.timestamp >= args.since) : records,
-        );
+        return clone(readHistory(args.deviceName, args.bleId, args.since));
+      }
+      if (cmd === "read_battery_history_snapshot") {
+        return clone({
+          records: readHistory(args.deviceName, args.bleId, args.since),
+          epoch: state.historyEpoch,
+          throughSequence: String(state.historySequence),
+        });
       }
 
       if (cmd === "plugin:autostart|is_enabled") return false;
@@ -368,6 +394,9 @@
       },
       setHistory: (deviceName, bleId, records) => {
         state.historyByKey[historyKey(deviceName, bleId)] = clone(records);
+      },
+      appendHistory: (deviceName, bleId, records) => {
+        appendHistory(deviceName, bleId, records);
       },
       getInvocations: () => clone(state.invocations),
       readStore: (path) => clone(readStoreData(path)),
