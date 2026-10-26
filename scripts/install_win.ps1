@@ -3,14 +3,26 @@ $ErrorActionPreference = "Stop"
 $tmpDir = $null
 
 try {
-    # Get the URL of the latest MSI file
+    # Detect the system architecture to select the matching installer
+    # PROCESSOR_ARCHITEW6432 is set when the script runs as x86 under WoW64
+    $procArch = $env:PROCESSOR_ARCHITEW6432
+    if (-not $procArch) {
+        $procArch = $env:PROCESSOR_ARCHITECTURE
+    }
+    $msiArch = switch ($procArch) {
+        "AMD64" { "x64" }
+        "ARM64" { "arm64" }
+        default { throw "Unsupported system architecture: $procArch. Please install manually from the Releases page." }
+    }
+
+    # Get the URL of the latest MSI file for this architecture
     Write-Host "Fetching the latest release information..."
     $apiUrl = "https://api.github.com/repos/kot149/zmk-battery-center/releases/latest"
     $latestRelease = Invoke-RestMethod -Uri $apiUrl
-    $asset = $latestRelease.assets | Where-Object { $_.name -like 'zmk-battery-center_*_x64_en-US.msi' }
+    $asset = $latestRelease.assets | Where-Object { $_.name -like "zmk-battery-center_*_${msiArch}_en-US.msi" }
 
     if (-not $asset) {
-        throw "Could not find the target MSI file in the latest release."
+        throw "Could not find the ${msiArch} MSI file in the latest release."
     }
 
     $url = $asset.browser_download_url
