@@ -1,9 +1,5 @@
-import {
-  isPermissionGranted,
-  requestPermission,
-  sendNotification as sendNotification_,
-  type Options as NotificationOptions,
-} from "@tauri-apps/plugin-notification";
+import { invoke } from "@tauri-apps/api/core";
+import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 
 /*
  * Requests notification permission.
@@ -31,11 +27,9 @@ export async function sendNotification(title: string, message?: string): Promise
     return false;
   }
 
-  const options: NotificationOptions = {
+  await invoke("send_notification", {
     title,
     body: message,
-    channelId: "default",
-  };
-  sendNotification_(options);
+  });
   return true;
 }

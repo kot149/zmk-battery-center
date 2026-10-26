@@ -8,6 +8,7 @@ mod external_integration;
 mod history;
 mod licenses;
 mod monitor;
+mod notification;
 mod storage;
 mod tray;
 mod tray_battery_payload;
@@ -101,6 +102,7 @@ pub fn run() {
             monitor::monitor_set_device_collapsed,
             monitor::monitor_reorder_devices,
             monitor::monitor_reload,
+            notification::send_notification,
             licenses::get_licenses,
             storage::get_dev_store_path,
             history::append_battery_history,

@@ -1,14 +1,13 @@
+import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { requestNotificationPermission, sendNotification } from "../notification";
 
 const mockIsPermissionGranted = vi.fn();
 const mockRequestPermission = vi.fn();
-const mockSendNotificationPlugin = vi.fn();
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
   isPermissionGranted: () => mockIsPermissionGranted(),
   requestPermission: () => mockRequestPermission(),
-  sendNotification: (options: unknown) => mockSendNotificationPlugin(options),
 }));
 
 describe("notification utils", () => {
@@ -16,7 +15,7 @@ describe("notification utils", () => {
     vi.clearAllMocks();
     mockIsPermissionGranted.mockReset();
     mockRequestPermission.mockReset();
-    mockSendNotificationPlugin.mockReset();
+    vi.mocked(invoke).mockReset();
   });
 
   describe("requestNotificationPermission", () => {
@@ -56,27 +55,22 @@ describe("notification utils", () => {
       mockRequestPermission.mockResolvedValue("denied");
 
       await expect(sendNotification("Title", "Body")).resolves.toBe(false);
-      expect(mockSendNotificationPlugin).not.toHaveBeenCalled();
+      expect(invoke).not.toHaveBeenCalled();
     });
 
     it("sends notification and returns true when permission is granted", async () => {
       mockIsPermissionGranted.mockResolvedValue(true);
 
       await expect(sendNotification("Hello", "World")).resolves.toBe(true);
-      expect(mockSendNotificationPlugin).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Hello",
-          body: "World",
-          channelId: "default",
-        }),
-      );
+      expect(invoke).toHaveBeenCalledWith("send_notification", {
+        title: "Hello",
+        body: "World",
+      });
     });
 
-    it("propagates plugin send errors", async () => {
+    it("propagates backend send errors", async () => {
       mockIsPermissionGranted.mockResolvedValue(true);
-      mockSendNotificationPlugin.mockImplementation(() => {
-        throw new Error("send failed");
-      });
+      vi.mocked(invoke).mockRejectedValue(new Error("send failed"));
 
       await expect(sendNotification("Hello", "World")).rejects.toThrow("send failed");
     });

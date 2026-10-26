@@ -8,7 +8,6 @@ use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
-use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{mpsc, oneshot, Notify};
 
 const CONFIG_FILENAME: &str = "config.json";
@@ -822,6 +821,16 @@ fn edge_notification_messages(
     messages
 }
 
+fn send_notification(app: &AppHandle, message: String) {
+    log::info!("{message}");
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = crate::notification::send_notification(app, message, None).await {
+            log::warn!("Failed to send notification: {error}");
+        }
+    });
+}
+
 fn emit_edge_notifications(
     app: &AppHandle,
     config: &Value,
@@ -830,10 +839,7 @@ fn emit_edge_notifications(
     current: &[MonitorBatteryInfo],
 ) {
     for message in edge_notification_messages(config, device, previous, current) {
-        log::info!("{message}");
-        if let Err(error) = app.notification().builder().title(message.clone()).show() {
-            log::warn!("Failed to send battery notification: {error}");
-        }
+        send_notification(app, message);
     }
 }
 
@@ -859,10 +865,7 @@ fn emit_connection_notification(
     } else {
         format!("{} has been disconnected.", display_name(device))
     };
-    log::info!("{message}");
-    if let Err(error) = app.notification().builder().title(message).show() {
-        log::warn!("Failed to send connection notification: {error}");
-    }
+    send_notification(app, message);
 }
 
 fn history_records(infos: &[MonitorBatteryInfo], timestamp: &str) -> Vec<HistoryRecord> {
