@@ -15,8 +15,12 @@ on:
         description: "macOS Intel (x86_64)"
         type: boolean
         default: true
-      windows:
+      windows_x64:
         description: "Windows x64"
+        type: boolean
+        default: true
+      windows_arm64:
+        description: "Windows arm64"
         type: boolean
         default: true
       linux_x64:
@@ -35,7 +39,8 @@ jobs:
     outputs:
       macos_aarch64: ${{ steps.flags.outputs.macos_aarch64 }}
       macos_x64: ${{ steps.flags.outputs.macos_x64 }}
-      windows: ${{ steps.flags.outputs.windows }}
+      windows_x64: ${{ steps.flags.outputs.windows_x64 }}
+      windows_arm64: ${{ steps.flags.outputs.windows_arm64 }}
       linux_x64: ${{ steps.flags.outputs.linux_x64 }}
       linux_arm64: ${{ steps.flags.outputs.linux_arm64 }}
     steps:
@@ -44,28 +49,33 @@ jobs:
         env:
           INC_MACOS_AARCH64: ${{ github.event_name != 'workflow_dispatch' || inputs.macos_aarch64 }}
           INC_MACOS_X64: ${{ github.event_name != 'workflow_dispatch' || inputs.macos_x64 }}
-          INC_WINDOWS: ${{ github.event_name != 'workflow_dispatch' || inputs.windows }}
+          INC_WINDOWS_X64: ${{ github.event_name != 'workflow_dispatch' || inputs.windows_x64 }}
+          INC_WINDOWS_ARM64: ${{ github.event_name != 'workflow_dispatch' || inputs.windows_arm64 }}
           INC_LINUX_X64: ${{ github.event_name != 'workflow_dispatch' || inputs.linux_x64 }}
           INC_LINUX_ARM64: ${{ github.event_name != 'workflow_dispatch' || inputs.linux_arm64 }}
         run: |
           set -euo pipefail
           on() { [[ "${1,,}" == "true" ]]; }
-          ma=0 mx=0 win=0 lx=0 la=0
+          ma=0 mx=0 wx=0 wa=0 lx=0 la=0
           on "$INC_MACOS_AARCH64" && ma=1
           on "$INC_MACOS_X64" && mx=1
-          on "$INC_WINDOWS" && win=1
+          on "$INC_WINDOWS_X64" && wx=1
+          on "$INC_WINDOWS_ARM64" && wa=1
           on "$INC_LINUX_X64" && lx=1
           on "$INC_LINUX_ARM64" && la=1
-          total=$(( ma + mx + win + lx + la ))
+          total=$(( ma + mx + wx + wa + lx + la ))
           if (( total < 1 )); then
             echo "Select at least one platform"
             exit 1
           fi
-          echo "macos_aarch64=$([[ $ma -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "macos_x64=$([[ $mx -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "windows=$([[ $win -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "linux_x64=$([[ $lx -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "linux_arm64=$([[ $la -eq 1 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          {
+            echo "macos_aarch64=$([[ $ma -eq 1 ]] && echo true || echo false)"
+            echo "macos_x64=$([[ $mx -eq 1 ]] && echo true || echo false)"
+            echo "windows_x64=$([[ $wx -eq 1 ]] && echo true || echo false)"
+            echo "windows_arm64=$([[ $wa -eq 1 ]] && echo true || echo false)"
+            echo "linux_x64=$([[ $lx -eq 1 ]] && echo true || echo false)"
+            echo "linux_arm64=$([[ $la -eq 1 ]] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
 
   build-macos-aarch64:
     needs: select-platforms
@@ -95,9 +105,9 @@ jobs:
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-macos-x64
 
-  build-windows:
+  build-windows-x64:
     needs: select-platforms
-    if: needs.select-platforms.outputs.windows == 'true'
+    if: needs.select-platforms.outputs.windows_x64 == 'true'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -105,7 +115,20 @@ jobs:
       - uses: ./.github/actions/tauri-platform-build
         with:
           ubuntu-deps: "none"
-          artifact-name: tauri-artifacts-windows
+          artifact-name: tauri-artifacts-windows-x64
+
+  build-windows-arm64:
+    needs: select-platforms
+    if: needs.select-platforms.outputs.windows_arm64 == 'true'
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: ./.github/actions/tauri-platform-build
+        with:
+          tauri-args: "--target aarch64-pc-windows-msvc"
+          ubuntu-deps: "none"
+          artifact-name: tauri-artifacts-windows-arm64
 
   build-linux-x64:
     needs: select-platforms
