@@ -31,16 +31,125 @@ async fn send_linux_notification(title: &str, body: Option<&str>) -> Result<(), 
         notification.body(body);
     }
     // Synchronous show() starts another Tokio runtime when ksni enables zbus/tokio.
-    notification
+    let handle = notification
         .show_async()
         .await
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    // GNOME removes notifications when their sender's D-Bus connection disappears.
+    tauri::async_runtime::spawn(async move {
+        handle.wait_for_action_async(|_| {}).await;
+    });
+    Ok(())
 }
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
     use super::send_linux_notification;
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    struct Notifications {
+        sender: Option<tokio::sync::oneshot::Sender<String>>,
+    }
+
+    #[zbus::interface(name = "org.freedesktop.Notifications")]
+    impl Notifications {
+        #[allow(clippy::too_many_arguments)]
+        fn notify(
+            &mut self,
+            _app_name: &str,
+            _replaces_id: u32,
+            _app_icon: &str,
+            summary: &str,
+            body: &str,
+            _actions: Vec<String>,
+            _hints: HashMap<String, zbus::zvariant::OwnedValue>,
+            _expire_timeout: i32,
+            #[zbus(header)] header: zbus::message::Header<'_>,
+        ) -> u32 {
+            assert_eq!(summary, "Test");
+            assert_eq!(body, "Body");
+            self.sender
+                .take()
+                .unwrap()
+                .send(header.sender().unwrap().to_string())
+                .unwrap();
+            1
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn successful_notification_keeps_connection_until_closed() {
+        const CHILD_ENV: &str = "ZMK_NOTIFICATION_LIFETIME_TEST_CHILD";
+        if std::env::var_os(CHILD_ENV).is_none() {
+            let output = std::process::Command::new("dbus-run-session")
+                .arg("--")
+                .arg(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "notification::tests::successful_notification_keeps_connection_until_closed",
+                    "--nocapture",
+                ])
+                .env(CHILD_ENV, "1")
+                .output()
+                .expect("dbus-run-session is required for the notification lifetime test");
+            assert!(
+                output.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return;
+        }
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let service = zbus::connection::Builder::session()
+                .unwrap()
+                .name("org.freedesktop.Notifications")
+                .unwrap()
+                .serve_at(
+                    "/org/freedesktop/Notifications",
+                    Notifications { sender: Some(tx) },
+                )
+                .unwrap()
+                .build()
+                .await
+                .unwrap();
+            let bus = zbus::fdo::DBusProxy::new(&service).await.unwrap();
+
+            send_linux_notification("Test", Some("Body")).await.unwrap();
+            let sender = rx.await.unwrap();
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            assert!(
+                bus.name_has_owner(sender.as_str().try_into().unwrap())
+                    .await
+                    .unwrap(),
+                "notification connection must survive the send call"
+            );
+
+            // Repeat until the close listener is registered and releases the connection.
+            while bus
+                .name_has_owner(sender.as_str().try_into().unwrap())
+                .await
+                .unwrap()
+            {
+                service
+                    .emit_signal(
+                        None::<&str>,
+                        "/org/freedesktop/Notifications",
+                        "org.freedesktop.Notifications",
+                        "NotificationClosed",
+                        &(1_u32, 2_u32),
+                    )
+                    .await
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("notification must return promptly and release its connection after closing");
+    }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
     async fn unavailable_bus_returns_error_without_runtime_panic() {
