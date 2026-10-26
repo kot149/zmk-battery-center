@@ -2,6 +2,10 @@
 $ErrorActionPreference = "Stop"
 $tmpDir = $null
 
+# Older Windows PowerShell versions may have TLS 1.2 disabled by default,
+# which would make the GitHub API calls below fail
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
 try {
     # Detect the system architecture to select the matching installer
     # PROCESSOR_ARCHITEW6432 is set when the script runs as x86 under WoW64
