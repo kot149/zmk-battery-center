@@ -29,11 +29,16 @@ jobs:
         run: bun run test:frontend
 
   rust:
-    name: Rust / Checks & Unit Tests
-    runs-on: ubuntu-latest
+    name: Rust / Checks & Unit Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-26]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -51,6 +56,7 @@ jobs:
       - name: Build frontend (required by tauri::generate_context!)
         run: bun run build:ui
       - name: Check Formatting
+        if: runner.os == 'Linux'
         run: bunx --no-install vp run format:rust:check
       - name: Lint
         run: bunx --no-install vp run lint:rust
