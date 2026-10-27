@@ -37,7 +37,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
         with:
           toolchain: stable
-          components: rustfmt
+          components: rustfmt, clippy
       - run: cargo fmt --all -- --check
       - uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
@@ -45,6 +45,7 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Build frontend (required by tauri::generate_context!)
         run: bun run build:ui
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test
 
   e2e:
