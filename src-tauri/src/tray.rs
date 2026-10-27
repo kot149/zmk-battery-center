@@ -4,10 +4,9 @@ use ksni::TrayMethods;
 use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "linux")]
 use std::sync::Mutex;
-use tauri::{
-    tray::{MouseButton, MouseButtonState, TrayIconEvent},
-    AppHandle, Manager,
-};
+#[cfg(not(target_os = "linux"))]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+use tauri::{AppHandle, Manager};
 
 pub struct TrayState {
     pub manual_positioning: AtomicBool,
@@ -194,7 +193,7 @@ fn init_linux_tray(app_handle: AppHandle) {
     let rgba_bytes = tauri_image.rgba();
 
     let mut argb_bytes = rgba_bytes.to_vec();
-    for pixel in argb_bytes.chunks_exact_mut(4) {
+    for pixel in argb_bytes.as_chunks_mut::<4>().0 {
         pixel.rotate_right(1); // RGBA -> ARGB
     }
 
