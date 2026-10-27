@@ -67,7 +67,7 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<Option<UpdateInfo>, String>>,
 {
-    cell.get_or_try_init(fetch).await.map(Clone::clone)
+    cell.get_or_try_init(fetch).await.cloned()
 }
 
 #[cfg(test)]
