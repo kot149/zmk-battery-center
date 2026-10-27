@@ -11,10 +11,7 @@ export default defineConfig({
   staged: {
     "!(*.rs)": "vp fmt",
     "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}": "vp lint",
-    "*.rs": [
-      "rustfmt --edition 2021 --config skip_children=true",
-      () => "cargo clippy --workspace --all-targets -- -D warnings",
-    ],
+    "*.rs": ["vp run format:rust:staged", () => "vp run lint:rust"],
   },
   lint: {
     plugins: ["typescript", "unicorn", "oxc", "react"],
