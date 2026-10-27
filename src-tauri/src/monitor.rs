@@ -1,14 +1,14 @@
 use crate::{ble, history, storage};
 use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
-use tokio::sync::{mpsc, oneshot, Notify};
+use tokio::sync::{Notify, mpsc, oneshot};
 
 const CONFIG_FILENAME: &str = "config.json";
 const CONFIG_KEY: &str = "config";
@@ -172,34 +172,33 @@ fn persist_snapshot_values(
     } else {
         None
     };
-    if save_config {
-        if let Err(error) = write(CONFIG_FILENAME, CONFIG_KEY, Some(candidate.config.clone())) {
-            if let Err(compensation_error) =
-                write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
-            {
-                log::error!(
-                    "Failed to restore configuration after save failure: {compensation_error}"
-                );
-            }
-            return Err(error);
+    if save_config
+        && let Err(error) = write(CONFIG_FILENAME, CONFIG_KEY, Some(candidate.config.clone()))
+    {
+        if let Err(compensation_error) =
+            write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
+        {
+            log::error!("Failed to restore configuration after save failure: {compensation_error}");
         }
+        return Err(error);
     }
-    if let Some(devices) = devices.as_ref() {
-        if let Err(error) = write(DEVICES_FILENAME, DEVICES_KEY, Some(devices.clone())) {
-            if let Err(compensation_error) =
-                write(DEVICES_FILENAME, DEVICES_KEY, persisted.devices.clone())
-            {
-                log::error!("Failed to restore devices after save failure: {compensation_error}");
-            }
-            if save_config {
-                if let Err(compensation_error) =
-                    write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
-                {
-                    log::error!("Failed to restore configuration after device save failure: {compensation_error}");
-                }
-            }
-            return Err(error);
+    if let Some(devices) = devices.as_ref()
+        && let Err(error) = write(DEVICES_FILENAME, DEVICES_KEY, Some(devices.clone()))
+    {
+        if let Err(compensation_error) =
+            write(DEVICES_FILENAME, DEVICES_KEY, persisted.devices.clone())
+        {
+            log::error!("Failed to restore devices after save failure: {compensation_error}");
         }
+        if save_config
+            && let Err(compensation_error) =
+                write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
+        {
+            log::error!(
+                "Failed to restore configuration after device save failure: {compensation_error}"
+            );
+        }
+        return Err(error);
     }
     if save_config {
         persisted.config = Some(candidate.config.clone());
@@ -1718,10 +1717,10 @@ impl MonitorCore {
         if self.apply_monitor_failure(id) {
             self.publish_observation();
         }
-        if matches!(error, ble::MonitorStartError::Transient(_)) {
-            if let Some((attempt, delay)) = self.monitor_retries.failed(id) {
-                schedule_monitor_retry(self.tx.clone(), token, id.to_string(), attempt, delay);
-            }
+        if matches!(error, ble::MonitorStartError::Transient(_))
+            && let Some((attempt, delay)) = self.monitor_retries.failed(id)
+        {
+            schedule_monitor_retry(self.tx.clone(), token, id.to_string(), attempt, delay);
         }
     }
 

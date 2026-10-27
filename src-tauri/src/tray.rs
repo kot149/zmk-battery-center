@@ -1,9 +1,9 @@
 use crate::tray_battery_payload::TrayBatteryPayload;
 #[cfg(target_os = "linux")]
 use ksni::TrayMethods;
-use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "linux")]
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(not(target_os = "linux"))]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri::{AppHandle, Manager};
@@ -373,9 +373,9 @@ pub fn init_tray(app_handle: AppHandle) {
             }
         });
     }
-    if let Some(snapshot) = crate::monitor::current_snapshot() {
-        if let Err(error) = crate::tray_battery_payload::refresh(&app_handle, &snapshot) {
-            log::warn!("Failed to initialize battery tray icon: {error}");
-        }
+    if let Some(snapshot) = crate::monitor::current_snapshot()
+        && let Err(error) = crate::tray_battery_payload::refresh(&app_handle, &snapshot)
+    {
+        log::warn!("Failed to initialize battery tray icon: {error}");
     }
 }

@@ -4,7 +4,7 @@
 use crate::tray_battery_payload::{TrayBatteryPayload, TrayIconComponent};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyClass, AnyObject};
-use objc2::{define_class, msg_send, AnyThread, ClassType, DefinedClass, MainThreadOnly};
+use objc2::{AnyThread, ClassType, DefinedClass, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{
     NSBezierPath, NSColor, NSCompositingOperation, NSFont, NSFontAttributeName,
     NSFontDescriptorSystemDesignRounded, NSFontWeightSemibold, NSForegroundColorAttributeName,

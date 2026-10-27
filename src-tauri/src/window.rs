@@ -85,10 +85,10 @@ pub fn show_main_window(app: &AppHandle) {
         state.generation.fetch_add(1, Ordering::SeqCst);
         state.requested_visible.store(true, Ordering::SeqCst);
         if let Some(window) = handle.get_webview_window("main") {
-            if state.ready.load(Ordering::SeqCst) {
-                if let Err(error) = reveal_main_window(&handle, &window) {
-                    log::error!("Failed to show main window: {error}");
-                }
+            if state.ready.load(Ordering::SeqCst)
+                && let Err(error) = reveal_main_window(&handle, &window)
+            {
+                log::error!("Failed to show main window: {error}");
             }
             return;
         }
@@ -117,11 +117,11 @@ pub fn show_main_window(app: &AppHandle) {
 pub fn hide_main_window(app: &AppHandle) {
     let handle = app.clone();
     if let Err(error) = app.run_on_main_thread(move || {
-        if let Some(window) = handle.get_webview_window("main") {
-            if let Err(error) = window.hide() {
-                log::error!("Failed to hide main window: {error}");
-                return;
-            }
+        if let Some(window) = handle.get_webview_window("main")
+            && let Err(error) = window.hide()
+        {
+            log::error!("Failed to hide main window: {error}");
+            return;
         }
         let state = handle.state::<WindowState>();
         state.requested_visible.store(false, Ordering::SeqCst);
@@ -182,10 +182,9 @@ pub fn refresh_main_window(app: &AppHandle) {
 pub fn show_about_window(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let result = if let Some(window) = handle.get_webview_window("about") {
-            Ok(window)
-        } else {
-            WebviewWindowBuilder::new(
+        let result = match handle.get_webview_window("about") {
+            Some(window) => Ok(window),
+            _ => WebviewWindowBuilder::new(
                 &handle,
                 "about",
                 tauri::WebviewUrl::App("about.html".into()),
@@ -193,7 +192,7 @@ pub fn show_about_window(app: &AppHandle) {
             .title("zmk-battery-center - About")
             .inner_size(600.0, 500.0)
             .center()
-            .build()
+            .build(),
         };
         match result {
             Ok(window) => {

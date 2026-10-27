@@ -33,7 +33,7 @@
     "format:check": "vp fmt . --check",
     "format:rust": "cargo fmt --all",
     "format:rust:check": "cargo fmt --all -- --check",
-    "format:rust:staged": "rustfmt --edition 2021 --config skip_children=true",
+    "format:rust:staged": "rustfmt --edition 2024 --config skip_children=true",
     "cargo-check": "cargo check",
     "check-versions": "bun scripts/verify_versions.ts",
     "check-licenses": "bun scripts/check_licenses.ts",

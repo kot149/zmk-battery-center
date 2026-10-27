@@ -4,13 +4,13 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Arc, LazyLock,
+    atomic::{AtomicU64, Ordering},
 };
 use tauri::{AppHandle, Emitter};
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use tokio::time::{sleep, Duration};
+use tokio::time::{Duration, sleep};
 use uuid::Uuid;
 
 const BATTERY_SERVICE_UUID: Uuid = Uuid::from_u128(0x0000180F_0000_1000_8000_00805F9B34FB);
@@ -687,7 +687,9 @@ async fn battery_connection_watcher(
         let mut conn_events = match adapter.device_connection_events(&target_device).await {
             Ok(s) => s,
             Err(e) => {
-                log::warn!("BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}");
+                log::warn!(
+                    "BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}"
+                );
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
                     disconnect_device(&adapter, &target_device).await;
                     return;
@@ -704,7 +706,9 @@ async fn battery_connection_watcher(
 
         if !already_connected {
             // Wait for ConnectionEvent::Connected.
-            log::debug!("BLE I/O: connection watcher waiting for ConnectionEvent::Connected device_id={device_id}");
+            log::debug!(
+                "BLE I/O: connection watcher waiting for ConnectionEvent::Connected device_id={device_id}"
+            );
             loop {
                 tokio::select! {
                     changed = stop_rx.changed() => {
@@ -748,7 +752,9 @@ async fn battery_connection_watcher(
         let contexts = match get_battery_characteristic_contexts(&target_device).await {
             Ok(c) => c,
             Err(e) => {
-                log::warn!("BLE I/O: connection watcher failed to get characteristics device_id={device_id}: {e}");
+                log::warn!(
+                    "BLE I/O: connection watcher failed to get characteristics device_id={device_id}: {e}"
+                );
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
                     disconnect_device(&adapter, &target_device).await;
                     return;
@@ -902,11 +908,7 @@ pub(crate) async fn stop_battery_notification_monitor_if_session(id: String, ses
             .get(&id)
             .map(|monitor| monitor.session_id == session_id)
             .unwrap_or(false);
-        if matches {
-            monitors.remove(&id)
-        } else {
-            None
-        }
+        if matches { monitors.remove(&id) } else { None }
     };
 
     if let Some(monitor) = monitor {

@@ -263,10 +263,10 @@ fn read_battery_history_from_dir(
         }
         let timestamp = rec.get(0).unwrap_or("").to_string();
         // RFC3339 UTC timestamps sort lexicographically (same as the prune filter).
-        if let Some(s) = since {
-            if timestamp.as_str() < s {
-                continue;
-            }
+        if let Some(s) = since
+            && timestamp.as_str() < s
+        {
+            continue;
         }
         let battery_level: i32 = rec.get(2).unwrap_or("").parse().unwrap_or(-1);
         out.push(BatteryHistoryRecord {

@@ -72,7 +72,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{cached_update, newer_release, GithubRelease, UpdateInfo};
+    use super::{GithubRelease, UpdateInfo, cached_update, newer_release};
     use semver::Version;
     use tokio::sync::OnceCell;
 

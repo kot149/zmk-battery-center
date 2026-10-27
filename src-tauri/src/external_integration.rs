@@ -417,9 +417,10 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&path).expect("read")).expect("strict JSON");
         assert_eq!(parsed["revision"], 2);
-        assert!(!dir
-            .path()
-            .join(format!(".{BATTERY_STATE_FILENAME}.tmp"))
-            .exists());
+        assert!(
+            !dir.path()
+                .join(format!(".{BATTERY_STATE_FILENAME}.tmp"))
+                .exists()
+        );
     }
 }

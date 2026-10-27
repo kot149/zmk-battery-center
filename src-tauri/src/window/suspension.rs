@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 use webview2_com::{Microsoft::Web::WebView2::Win32::ICoreWebView2_3, TrySuspendCompletedHandler};
 use windows::core::{Interface, Result};
 
-use super::{should_suspend, WindowState};
+use super::{WindowState, should_suspend};
 
 pub(super) fn schedule(app: &AppHandle) {
     let state = app.state::<WindowState>();
