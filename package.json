@@ -9,6 +9,7 @@
   "repository": "https://github.com/kot149/zmk-battery-center",
   "type": "module",
   "scripts": {
+    "prepare": "vp config --no-agent",
     "dev": "bun tauri dev",
     "dev:frontend": "vp dev",
     "build:ui": "tsc && vp build",

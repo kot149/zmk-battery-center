@@ -8,6 +8,14 @@ const host = process.env.TAURI_DEV_HOST;
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  staged: {
+    "!(*.rs)": "vp fmt",
+    "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}": "vp lint",
+    "*.rs": [
+      "rustfmt --edition 2021 --config skip_children=true",
+      () => "cargo clippy --workspace --all-targets -- -D warnings",
+    ],
+  },
   lint: {
     plugins: ["typescript", "unicorn", "oxc", "react"],
     categories: {
