@@ -330,12 +330,7 @@ fn draw_battery_icon(bat_x: CGFloat, icon_y: CGFloat, pct: Option<u8>, muted: bo
     nub.fill();
 }
 
-fn draw_app_icon(
-    icon: Option<&NSImage>,
-    icon_x: CGFloat,
-    icon_y: CGFloat,
-    muted: bool,
-) {
+fn draw_app_icon(icon: Option<&NSImage>, icon_x: CGFloat, icon_y: CGFloat, muted: bool) {
     let Some(icon) = icon else {
         return;
     };
@@ -644,7 +639,10 @@ pub fn apply_tray_battery_state<R: Runtime>(
     let payload = payload.clone();
     let app_icon_path = app
         .path()
-        .resolve("icons/icon_template.png", tauri::path::BaseDirectory::Resource)
+        .resolve(
+            "icons/icon_template.png",
+            tauri::path::BaseDirectory::Resource,
+        )
         .ok()
         .and_then(|path| path.to_str().map(ToOwned::to_owned));
     match tray.with_inner_tray_icon(move |inner| -> Result<(), String> {
