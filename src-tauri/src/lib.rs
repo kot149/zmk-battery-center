@@ -36,7 +36,8 @@ pub fn run() {
             .map(|v| v.eq_ignore_ascii_case("wayland"))
             .unwrap_or(false)
         {
-            std::env::set_var("GDK_BACKEND", "x11");
+            // SAFETY: Called from main before Tauri or any worker threads start.
+            unsafe { std::env::set_var("GDK_BACKEND", "x11") };
         }
     }
 

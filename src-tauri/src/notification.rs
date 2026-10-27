@@ -63,7 +63,7 @@ mod tests {
             summary: &str,
             body: &str,
             _actions: Vec<String>,
-            _hints: HashMap<String, zbus::zvariant::OwnedValue>,
+            _hints: HashMap<String, zbus::OwnedVariant>,
             _expire_timeout: i32,
             #[zbus(header)] header: zbus::message::Header<'_>,
         ) -> u32 {
@@ -105,14 +105,11 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), async {
             let (tx, rx) = tokio::sync::oneshot::channel();
             let service = zbus::connection::Builder::session()
-                .unwrap()
                 .name("org.freedesktop.Notifications")
-                .unwrap()
                 .serve_at(
                     "/org/freedesktop/Notifications",
                     Notifications { sender: Some(tx) },
                 )
-                .unwrap()
                 .build()
                 .await
                 .unwrap();
