@@ -278,7 +278,7 @@ Core scenarios:
 The `.github/workflows/ci.yml` workflow runs on `push`, `pull_request`, and manual `workflow_dispatch` events:
 
 - `frontend` job: `bun run lint`, `bun run format:check`, typecheck via `bun run build:ui`, frontend unit tests
-- `rust` job: `bun run build:ui` (required by `tauri::generate_context!`), then `cargo test`
+- `rust` job: `cargo fmt --all -- --check`, `bun run build:ui` (required by `tauri::generate_context!`), then `cargo test`. Run `cargo fmt --all` to format Rust code locally.
 - `e2e` job: Layer 1 mocked Playwright E2E (`bun run e2e`)
 - `audit` job: `cargo audit` (non-blocking, `continue-on-error`)
 
