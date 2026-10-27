@@ -82,7 +82,7 @@ jobs:
     if: needs.select-platforms.outputs.macos_aarch64 == 'true'
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/tauri-platform-build
         with:
@@ -96,7 +96,7 @@ jobs:
     if: needs.select-platforms.outputs.macos_x64 == 'true'
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/tauri-platform-build
         with:
@@ -110,7 +110,7 @@ jobs:
     if: needs.select-platforms.outputs.windows_x64 == 'true'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/tauri-platform-build
         with:
@@ -122,7 +122,7 @@ jobs:
     if: needs.select-platforms.outputs.windows_arm64 == 'true'
     runs-on: windows-11-arm
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/tauri-platform-build
         with:
@@ -135,7 +135,7 @@ jobs:
     if: needs.select-platforms.outputs.linux_x64 == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/tauri-platform-build
         with:
@@ -148,7 +148,7 @@ jobs:
     if: needs.select-platforms.outputs.linux_arm64 == 'true'
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: ./.github/actions/tauri-platform-build
         with:
