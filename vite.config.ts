@@ -11,7 +11,7 @@ export default defineConfig({
   staged: {
     "!(*.rs)": "vp fmt",
     "*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}": "vp lint",
-    "*.rs": ["vp run format:rust:staged", () => "vp run lint:rust"],
+    "*.rs": ["bun run format:rust:staged", () => "vp run lint:rust"],
   },
   lint: {
     plugins: ["typescript", "unicorn", "oxc", "react"],
