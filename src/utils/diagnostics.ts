@@ -22,7 +22,8 @@ export async function setLogLevel(level: LogLevel) {
   applyLogLevel(state);
   return state;
 }
-export const openLogsFolder = () => invoke<void>("open_logs_folder");
+export const openAppFolder = (folder: "logs" | "data") =>
+  invoke<void>("open_app_folder", { folder });
 
 export function initializeLogLevel(): () => void {
   if (window.__INITIAL_LOG_LEVEL__) applyLogLevel(window.__INITIAL_LOG_LEVEL__);

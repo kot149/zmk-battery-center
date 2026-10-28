@@ -12,6 +12,22 @@ test("first launch shows no registered devices", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "No devices registered" })).toBeVisible();
 });
 
+test("log level selection survives reopening and a new page", async ({ page, context }) => {
+  await page.getByRole("button", { name: "Settings" }).click();
+  const select = page.getByRole("combobox", { name: "Log level" });
+  await expect(select).toBeEnabled();
+  await select.click();
+  await page.getByRole("option", { name: "Info", exact: true }).click();
+  await expect(select).toHaveText("Info");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(select).toHaveText("Info");
+  const reopened = await createSeededPage(context, baseSeed);
+  await reopened.getByRole("button", { name: "Settings" }).click();
+  await expect(reopened.getByRole("combobox", { name: "Log level" })).toHaveText("Info");
+  await reopened.close();
+});
+
 test("add device flow uses the canonical monitor command", async ({ page }) => {
   await addFirstDevice(page);
   await expect(page.getByTestId(batteryLevelTestId("kbd-1", "Central"))).toHaveText("87%");

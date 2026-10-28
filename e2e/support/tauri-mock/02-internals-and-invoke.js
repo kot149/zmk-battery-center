@@ -260,6 +260,19 @@
       if (cmd === "window_ready") return null;
 
       if (cmd === "get_monitor_state") return snapshot();
+      if (cmd === "get_log_level_state")
+        return { level: state.config.logLevel ?? "debug", generation: state.revision };
+      if (cmd === "set_log_level") {
+        if (!["warn", "info", "debug"].includes(args.level)) throw new Error("Invalid log level");
+        if (state.config.logLevel !== args.level)
+          commit(() => {
+            state.config.logLevel = args.level;
+          });
+        const next = { level: state.config.logLevel, generation: state.revision };
+        emitEvent("log-level-changed", next);
+        return next;
+      }
+      if (cmd === "open_app_folder") return null;
       if (cmd === "monitor_is_update_dismissed") {
         const versions = readStoreData("config.json").dismissedVersions;
         return Array.isArray(versions) && versions.includes(args.version);

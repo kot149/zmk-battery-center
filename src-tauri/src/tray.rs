@@ -303,7 +303,8 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
         Submenu::with_id_and_items(app, "control", "Control", true, &[&refresh, &manual, &pin])?;
     let about = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &control, &about, &quit])?;
+    let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &control, &logs, &about, &quit])?;
     if let Some(tray) = app.tray_by_id("tray_icon") {
         tray.set_menu(Some(menu))?;
         tray.set_show_menu_on_left_click(false)?;

@@ -104,9 +104,10 @@ describe("App", () => {
     mocks.context.reloadMonitor.mockReset();
     mocks.context.reloadMonitor.mockResolvedValue(undefined);
     mocks.invoke.mockReset();
-    mocks.invoke.mockImplementation(async (command: unknown) =>
-      command === "check_for_update" ? null : undefined,
-    );
+    mocks.invoke.mockImplementation(async (command: unknown) => {
+      if (command === "get_log_level_state") return { level: "warn", generation: 0 };
+      return command === "check_for_update" ? null : undefined;
+    });
     mocks.resizeWindowToContent.mockClear();
     mocks.moveWindowToTrayCenter.mockClear();
     mocks.listBatteryDevices.mockReset();
@@ -145,6 +146,71 @@ describe("App", () => {
     await user.click(updateSwitch);
     const updateConfig = mocks.context.setConfig.mock.calls[0]?.[0] as (config: Config) => Config;
     expect(updateConfig(defaultConfig).updateCheckEnabled).toBe(true);
+  });
+
+  it("shows logging controls last without a heading", async () => {
+    const user = userEvent.setup();
+    mocks.invoke.mockImplementation(async (command: unknown) => {
+      if (command === "get_log_level_state") return { level: "info", generation: 0 };
+      return null;
+    });
+    renderApp();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const select = await screen.findByRole("combobox", { name: "Log level" });
+    await waitFor(() => expect(select.textContent).toBe("Info"));
+    expect(screen.queryByRole("heading", { name: "Logging" })).toBeNull();
+    const logging = select.parentElement!.parentElement!;
+    expect(logging.querySelector("p")).toBeNull();
+    expect(logging.parentElement!.lastElementChild).toBe(logging);
+    expect(
+      within(logging)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual(["Open logs folder", "Open data folder"]);
+  });
+
+  it("opens the requested app folder", async () => {
+    const user = userEvent.setup();
+    mocks.invoke.mockImplementation(async (command: unknown) => {
+      if (command === "get_log_level_state") return { level: "info", generation: 0 };
+      return null;
+    });
+    renderApp();
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(await screen.findByRole("button", { name: "Open data folder" }));
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("open_app_folder", { folder: "data" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Open logs folder" }));
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith("open_app_folder", { folder: "logs" }),
+    );
+  });
+
+  it("keeps the selected log level when saving fails", async () => {
+    const scroll = vi.fn();
+    const previousScroll = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scroll;
+    try {
+      const user = userEvent.setup();
+      mocks.invoke.mockImplementation(async (command: unknown) => {
+        if (command === "get_log_level_state") return { level: "warn", generation: 0 };
+        if (command === "set_log_level") throw new Error("Could not save log level");
+        return null;
+      });
+      renderApp();
+      await user.click(screen.getByRole("button", { name: "Settings" }));
+      const select = await screen.findByRole("combobox", { name: "Log level" });
+      await waitFor(() => expect(select.textContent).toBe("Warn"));
+      select.focus();
+      await user.keyboard("{ArrowDown}");
+      await user.click(await screen.findByRole("option", { name: "Debug" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Could not save log level");
+      expect(select.textContent).toBe("Warn");
+    } finally {
+      if (previousScroll) HTMLElement.prototype.scrollIntoView = previousScroll;
+      else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+    }
   });
 
   it("reveals the window when monitor hydration fails", async () => {
