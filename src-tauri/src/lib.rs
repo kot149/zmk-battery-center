@@ -1,9 +1,9 @@
-use owo_colors::OwoColorize;
 use tauri::Manager;
 use tauri_plugin_autostart::MacosLauncher;
 
 mod ble;
 mod common;
+mod diagnostics;
 mod external_integration;
 mod history;
 mod licenses;
@@ -16,12 +16,6 @@ mod tray_battery_payload;
 mod tray_native_macos;
 mod update;
 mod window;
-
-#[cfg(debug_assertions)] // for development
-const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Debug;
-
-#[cfg(not(debug_assertions))] // for production
-const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Warn;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,30 +37,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(LOG_LEVEL)
-                .format(|out, message, record| {
-                    let paint = |s: &str| -> String {
-                        match record.level() {
-                            log::Level::Error => s.red().bold().to_string(),
-                            log::Level::Warn => s.yellow().to_string(),
-                            log::Level::Info => s.green().to_string(),
-                            log::Level::Debug => s.blue().to_string(),
-                            log::Level::Trace => s.purple().to_string(),
-                        }
-                    };
-
-                    out.finish(format_args!(
-                        "{}{}{} {}",
-                        paint("["),
-                        paint(&record.level().to_string()),
-                        paint("]"),
-                        message
-                    ))
-                })
-                .build(),
-        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
@@ -80,6 +50,9 @@ pub fn run() {
         .plugin(tauri_plugin_positioner::init())
         .manage(external_integration::ExternalIntegrationState::default())
         .invoke_handler(tauri::generate_handler![
+            diagnostics::get_log_level_state,
+            diagnostics::set_log_level,
+            diagnostics::open_app_folder,
             common::exit_app,
             ble::list_battery_devices,
             ble::get_battery_info,
@@ -125,6 +98,7 @@ pub fn run() {
             });
 
             app.manage(window::WindowState::default());
+            diagnostics::initialize(app.handle()).map_err(std::io::Error::other)?;
             monitor::initialize(app.handle()).map_err(std::io::Error::other)?;
             tray::init_tray(app.handle().clone());
 

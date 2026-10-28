@@ -109,6 +109,19 @@ impl ksni::Tray for LinuxTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
+                label: "Open logs folder".into(),
+                activate: Box::new(|this: &mut Self| {
+                    if let Err(error) = crate::diagnostics::open_app_folder(
+                        this.app.clone(),
+                        crate::diagnostics::AppFolder::Logs,
+                    ) {
+                        log::warn!("Failed to open logs folder: {error}");
+                    }
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
                 label: "Quit".into(),
                 activate: Box::new(|this: &mut Self| {
                     let app = this.app.clone();
@@ -300,6 +313,14 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
             "manual_window_positioning" => toggle_config(app, "manualWindowPositioning"),
             "pin_window" => toggle_config(app, "pinWindow"),
             "about" => crate::window::show_about_window(app),
+            "logs" => {
+                if let Err(error) = crate::diagnostics::open_app_folder(
+                    app.clone(),
+                    crate::diagnostics::AppFolder::Logs,
+                ) {
+                    log::warn!("Failed to open logs folder: {error}");
+                }
+            }
             "quit" => {
                 tauri::async_runtime::spawn(crate::common::exit_app(app.clone()));
             }
