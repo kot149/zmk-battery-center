@@ -29,6 +29,7 @@ export const FETCH_INTERVAL_AUTO = "auto" as const;
 export type FetchInterval = number | typeof FETCH_INTERVAL_AUTO;
 
 export type Config = {
+  logLevel: import("./log").LogLevel;
   theme: Theme;
   fetchInterval: FetchInterval;
   autoStart: boolean;
@@ -53,6 +54,7 @@ export type Config = {
 };
 
 export const defaultConfig: Config = {
+  logLevel: import.meta.env.DEV ? "debug" : "warn",
   theme: "dark" as Theme,
   fetchInterval: FETCH_INTERVAL_AUTO,
   autoStart: false,

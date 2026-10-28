@@ -109,6 +109,19 @@ impl ksni::Tray for LinuxTray {
             .into(),
             MenuItem::Separator,
             StandardItem {
+                label: "Open logs folder".into(),
+                activate: Box::new(|this: &mut Self| {
+                    if let Err(error) = crate::diagnostics::open_app_folder(
+                        this.app.clone(),
+                        crate::diagnostics::AppFolder::Logs,
+                    ) {
+                        log::warn!("Failed to open logs folder: {error}");
+                    }
+                }),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
                 label: "Quit".into(),
                 activate: Box::new(|this: &mut Self| {
                     let app = this.app.clone();
@@ -290,7 +303,8 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
         Submenu::with_id_and_items(app, "control", "Control", true, &[&refresh, &manual, &pin])?;
     let about = MenuItem::with_id(app, "about", "About", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &control, &about, &quit])?;
+    let logs = MenuItem::with_id(app, "logs", "Open logs folder", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &control, &logs, &about, &quit])?;
     if let Some(tray) = app.tray_by_id("tray_icon") {
         tray.set_menu(Some(menu))?;
         tray.set_show_menu_on_left_click(false)?;
@@ -300,6 +314,14 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
             "manual_window_positioning" => toggle_config(app, "manualWindowPositioning"),
             "pin_window" => toggle_config(app, "pinWindow"),
             "about" => crate::window::show_about_window(app),
+            "logs" => {
+                if let Err(error) = crate::diagnostics::open_app_folder(
+                    app.clone(),
+                    crate::diagnostics::AppFolder::Logs,
+                ) {
+                    log::warn!("Failed to open logs folder: {error}");
+                }
+            }
             "quit" => {
                 tauri::async_runtime::spawn(crate::common::exit_app(app.clone()));
             }

@@ -33,20 +33,21 @@ fn resolve_dev_store_path(manifest_dir: Option<&str>, env_dir: Option<&str>) -> 
     Some(dev_data.to_string_lossy().to_string())
 }
 
-pub fn resolve_store_file_path(app: &AppHandle, filename: &str) -> Result<PathBuf, String> {
+pub fn resolve_store_dir_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(debug_assertions)]
     {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").ok();
         let env_dir = std::env::var(DATA_DIR_ENV).ok();
         if let Some(dir) = resolve_dev_store_path(manifest_dir.as_deref(), env_dir.as_deref()) {
-            return Ok(PathBuf::from(dir).join(filename));
+            return Ok(PathBuf::from(dir));
         }
     }
 
-    app.path()
-        .app_data_dir()
-        .map(|dir| dir.join(filename))
-        .map_err(|e| e.to_string())
+    app.path().app_data_dir().map_err(|e| e.to_string())
+}
+
+pub fn resolve_store_file_path(app: &AppHandle, filename: &str) -> Result<PathBuf, String> {
+    Ok(resolve_store_dir_path(app)?.join(filename))
 }
 
 pub fn load_store_value(

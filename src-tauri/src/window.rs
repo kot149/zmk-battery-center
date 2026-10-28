@@ -103,6 +103,12 @@ pub fn show_main_window(app: &AppHandle) {
                 } else {
                     builder
                 };
+                let builder = builder.initialization_script(format!(
+                    "window.__INITIAL_LOG_LEVEL__ = {};",
+                    serde_json::to_string(&crate::diagnostics::get_log_level_state(
+                        handle.clone()
+                    ))?
+                ));
                 builder.visible(false).build()
             });
         if let Err(error) = result {
@@ -191,6 +197,11 @@ pub fn show_about_window(app: &AppHandle) {
             )
             .title("zmk-battery-center - About")
             .inner_size(600.0, 500.0)
+            .initialization_script(format!(
+                "window.__INITIAL_LOG_LEVEL__ = {};",
+                serde_json::to_string(&crate::diagnostics::get_log_level_state(handle.clone()))
+                    .unwrap_or_default()
+            ))
             .center()
             .build(),
         };

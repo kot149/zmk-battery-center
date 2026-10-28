@@ -296,6 +296,7 @@ static SERVICE: OnceLock<MonitorService> = OnceLock::new();
 fn default_config() -> Value {
     json!({
         "theme": "dark",
+        "logLevel": crate::diagnostics::LogLevel::default_level(),
         "fetchInterval": DEFAULT_FETCH_INTERVAL,
         "autoStart": false,
         "updateCheckEnabled": false,
@@ -360,6 +361,13 @@ fn normalize_config(raw: Option<Value>) -> Value {
     let mut result = object_or_empty(Some(&defaults));
     for (key, value) in raw_object {
         result.insert(key, value);
+    }
+    if crate::diagnostics::config_level(&Value::Object(result.clone())).is_err() {
+        log::warn!("event=invalid_log_level action=use_default");
+        result.insert(
+            "logLevel".into(),
+            json!(crate::diagnostics::LogLevel::default_level()),
+        );
     }
 
     if !result
@@ -1020,6 +1028,8 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn(actor_loop(
         actor_app,
         snapshot,
+    crate::diagnostics::update_identities(&devices);
+    crate::diagnostics::apply_config(app, &config);
         PersistedValues {
             config: stored_config,
             devices: stored_devices,
@@ -1294,11 +1304,17 @@ impl MonitorCore {
     fn schedule_device_persistence_retry(&mut self) {
         if self.device_retry_pending || !self.device_persistence_dirty {
             return;
+        let level_changed =
+            self.snapshot.config.get("logLevel") != candidate.config.get("logLevel");
         }
         let delay = MONITOR_RETRY_DELAYS[self
             .device_retry_attempt
             .min(MONITOR_RETRY_DELAYS.len() - 1)];
         self.device_retry_attempt = self.device_retry_attempt.saturating_add(1);
+        crate::diagnostics::update_identities(&self.snapshot.devices);
+        if save_config && level_changed {
+            crate::diagnostics::apply_config(&self.app, &self.snapshot.config);
+        }
         self.device_retry_pending = true;
         self.device_retry_generation = self.device_retry_generation.saturating_add(1);
         let generation = self.device_retry_generation;
@@ -1411,6 +1427,12 @@ impl MonitorCore {
             return Ok(self.snapshot.clone());
         }
         let disconnected = true;
+        crate::diagnostics::config_level(&patch)?;
+        if patch.as_object().is_some_and(|p| {
+            p.len() == 1 && p.get("logLevel") == self.snapshot.config.get("logLevel")
+        }) {
+            return Ok(self.snapshot.clone());
+        }
         let mut registered = MonitorDevice {
             id: device.id.clone(),
             name: device.name,
@@ -2167,6 +2189,24 @@ mod tests {
             true,
             |filename, _, value| {
                 if filename == DEVICES_FILENAME && value.is_some() {
+    #[test]
+    fn saved_log_levels_survive_config_normalization_and_serialization() {
+        for level in ["warn", "info", "debug"] {
+            let config = normalize_config(Some(json!({"logLevel": level})));
+            let saved = serde_json::to_string(&config).unwrap();
+            let restored = normalize_config(Some(serde_json::from_str(&saved).unwrap()));
+            assert_eq!(restored["logLevel"], level);
+            assert_eq!(
+                crate::diagnostics::config_level(&restored).unwrap(),
+                serde_json::from_value(json!(level)).unwrap()
+            );
+        }
+        assert_eq!(
+            crate::diagnostics::config_level(&normalize_config(Some(json!({})))).unwrap(),
+            crate::diagnostics::LogLevel::default_level()
+        );
+    }
+
                     return Err("device save failed".into());
                 }
                 disk.insert(filename.to_string(), value);

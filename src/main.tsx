@@ -5,10 +5,13 @@ import { ThemeProvider } from "@/providers/theme-provider";
 import { ConfigProvider } from "@/providers/config-provider";
 import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { initializeLogging } from "@/utils/log";
+import { initializeLogLevel } from "@/utils/diagnostics";
 
 const disposeLogging = initializeLogging();
+const disposeLevel = initializeLogLevel();
 if (import.meta.hot)
   import.meta.hot.dispose(() => {
+    disposeLevel();
     disposeLogging();
   });
 
