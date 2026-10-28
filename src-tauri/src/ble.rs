@@ -316,7 +316,7 @@ async fn get_battery_characteristic_contexts(
                     .read()
                     .await
                     .map_err(|e| e.to_string())?;
-                log::debug!(
+                log::trace!(
                     "BLE I/O: read user description bytes={} for device id={}",
                     bytes_to_hex(&desc_value),
                     format_device_id_for_store(target_device)
@@ -352,7 +352,7 @@ async fn read_battery_infos_strict(
             .read()
             .await
             .map_err(|e| e.to_string())?;
-        log::debug!(
+        log::trace!(
             "BLE I/O: read response battery_level descriptor={} bytes={} parsed={:?}",
             label,
             bytes_to_hex(&value),
@@ -382,7 +382,7 @@ async fn read_battery_infos_best_effort(
             .and_then(|value| value.first().copied());
         match read_result {
             Ok(value) => {
-                log::debug!(
+                log::trace!(
                     "BLE I/O: best-effort read response descriptor={} bytes={} parsed={:?}",
                     label,
                     bytes_to_hex(&value),
@@ -497,13 +497,18 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
         context,
         mut stop_rx,
     } = args;
+    let device_ref = crate::diagnostics::device_ref(&device_id);
+    let started = std::time::Instant::now();
+    log::debug!(
+        "event=worker_started device_ref={device_ref} session_id={session_id} worker_id={worker_id}"
+    );
     // Subscribe to connection events
     let conn_events_result = adapter.device_connection_events(&target_device).await;
     let mut conn_events = match conn_events_result {
         Ok(s) => Some(s),
         Err(e) => {
             log::warn!(
-                "BLE I/O: failed to subscribe to connection events device_id={device_id}: {e}"
+                "event=connection_subscription_failed device_ref={device_ref} session_id={session_id} worker_id={worker_id} error={e}"
             );
             None
         }
@@ -545,7 +550,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
         tokio::select! {
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
-                    log::debug!("BLE I/O: notification worker stop event device_id={device_id}");
+                    log::debug!("event=worker_stopped device_ref={device_ref} session_id={session_id} worker_id={worker_id} elapsed_ms={}", started.elapsed().as_millis());
                     disconnect_device(&adapter, &target_device).await;
                     return;
                 }
@@ -553,7 +558,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
             value = stream.next() => {
                 match &value {
                     Some(Ok(data)) => {
-                        log::debug!(
+                        log::trace!(
                             "BLE I/O: notify event device_id={} description={} bytes={} parsed={:?}",
                             device_id,
                             context.user_description.as_deref().unwrap_or("Central"),
@@ -600,11 +605,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                 match classify_worker_connection_event(conn_event) {
                     WorkerConnectionOutcome::Continue => {}
                     WorkerConnectionOutcome::Stop => {
-                        log::warn!(
-                            "BLE I/O: device disconnected (connection event) device_id={} description={}",
-                            device_id,
-                            context.user_description.as_deref().unwrap_or("Central")
-                        );
+                        log::info!("event=worker_disconnected device_ref={device_ref} session_id={session_id} worker_id={worker_id}");
                         break;
                     }
                 }
@@ -621,6 +622,10 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
         &monitor_connection_state,
     )
     .await;
+    log::debug!(
+        "event=worker_finished device_ref={device_ref} session_id={session_id} worker_id={worker_id} elapsed_ms={}",
+        started.elapsed().as_millis()
+    );
 }
 
 async fn battery_connection_watcher(

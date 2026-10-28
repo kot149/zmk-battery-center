@@ -856,6 +856,10 @@ fn emit_connection_notification(
     device: &MonitorDevice,
     connected: bool,
 ) {
+    log::info!(
+        "event=connection_changed device_ref={} connected={connected}",
+        crate::diagnostics::device_ref(&device.id)
+    );
     if !config_bool(config, "pushNotification", false) {
         return;
     }
@@ -969,21 +973,49 @@ pub fn on_battery_info_notification(payload: ble::BatteryInfoNotificationEvent) 
     let Some(service) = SERVICE.get() else {
         return;
     };
-    if service.tx.try_send(Request::BatteryInfo(payload)).is_err() {
-        log::warn!("Dropping battery info event because monitor queue is full");
-    }
+    enqueue_observation(service, Request::BatteryInfo(payload));
 }
 
 pub fn on_battery_monitor_status(payload: ble::BatteryMonitorStatusEvent) {
     let Some(service) = SERVICE.get() else {
         return;
     };
-    if service
-        .tx
-        .try_send(Request::MonitorStatus(payload))
-        .is_err()
-    {
-        log::warn!("Dropping monitor status event because monitor queue is full");
+    enqueue_observation(service, Request::MonitorStatus(payload));
+}
+
+fn enqueue_observation(service: &MonitorService, request: Request) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static DROPPED: AtomicU64 = AtomicU64::new(0);
+    match service.tx.try_send(request) {
+        Ok(()) => {
+            let count = DROPPED.swap(0, Ordering::Relaxed);
+            if count > 0 {
+                log::info!("event=monitor_queue_recovered dropped={count}");
+            }
+        }
+        Err(error) => {
+            let reason = if matches!(&error, mpsc::error::TrySendError::Full(_)) {
+                "full"
+            } else {
+                "closed"
+            };
+            let (kind, id, session) = match error.into_inner() {
+                Request::BatteryInfo(event) => ("battery_info", event.id, event.session_id),
+                Request::MonitorStatus(event) => ("monitor_status", event.id, event.session_id),
+                _ => unreachable!(),
+            };
+            let count = DROPPED.fetch_add(1, Ordering::Relaxed) + 1;
+            let level = if count == 1 {
+                log::Level::Warn
+            } else {
+                log::Level::Debug
+            };
+            log::log!(
+                level,
+                "event=monitor_queue_drop reason={reason} kind={kind} device_ref={} session_id={session} dropped={count}",
+                crate::diagnostics::device_ref(&id)
+            );
+        }
     }
 }
 
@@ -996,6 +1028,8 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     let stored_devices = storage::load_store_value(app, DEVICES_FILENAME, DEVICES_KEY)?;
     let config = normalize_config(stored_config.clone());
     let devices = normalize_devices(stored_devices.clone());
+    crate::diagnostics::update_identities(&devices);
+    crate::diagnostics::apply_config(app, &config);
     let snapshot = MonitorSnapshot {
         revision: 1,
         config,
@@ -1028,8 +1062,6 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn(actor_loop(
         actor_app,
         snapshot,
-    crate::diagnostics::update_identities(&devices);
-    crate::diagnostics::apply_config(app, &config);
         PersistedValues {
             config: stored_config,
             devices: stored_devices,
@@ -1272,11 +1304,17 @@ impl MonitorCore {
         save_config: bool,
         save_devices: bool,
     ) -> Result<(), String> {
+        let level_changed =
+            self.snapshot.config.get("logLevel") != candidate.config.get("logLevel");
         self.persist(&candidate, save_config, save_devices)?;
         if save_devices {
             self.clear_device_persistence_retry();
         }
         self.snapshot = candidate;
+        crate::diagnostics::update_identities(&self.snapshot.devices);
+        if save_config && level_changed {
+            crate::diagnostics::apply_config(&self.app, &self.snapshot.config);
+        }
         self.broadcast();
         Ok(())
     }
@@ -1286,7 +1324,12 @@ impl MonitorCore {
         match self.persist(&candidate, false, true) {
             Ok(()) => self.clear_device_persistence_retry(),
             Err(error) => {
-                log::warn!("Failed to persist monitor observation: {error}");
+                let level = if self.device_persistence_dirty {
+                    log::Level::Debug
+                } else {
+                    log::Level::Warn
+                };
+                log::log!(level, "event=device_persistence_failed error={error}");
                 self.device_persistence_dirty = true;
                 self.schedule_device_persistence_retry();
             }
@@ -1295,6 +1338,12 @@ impl MonitorCore {
     }
 
     fn clear_device_persistence_retry(&mut self) {
+        if self.device_persistence_dirty {
+            log::info!(
+                "event=device_persistence_recovered attempts={}",
+                self.device_retry_attempt
+            );
+        }
         self.device_persistence_dirty = false;
         self.device_retry_pending = false;
         self.device_retry_attempt = 0;
@@ -1304,20 +1353,18 @@ impl MonitorCore {
     fn schedule_device_persistence_retry(&mut self) {
         if self.device_retry_pending || !self.device_persistence_dirty {
             return;
-        let level_changed =
-            self.snapshot.config.get("logLevel") != candidate.config.get("logLevel");
         }
         let delay = MONITOR_RETRY_DELAYS[self
             .device_retry_attempt
             .min(MONITOR_RETRY_DELAYS.len() - 1)];
         self.device_retry_attempt = self.device_retry_attempt.saturating_add(1);
-        crate::diagnostics::update_identities(&self.snapshot.devices);
-        if save_config && level_changed {
-            crate::diagnostics::apply_config(&self.app, &self.snapshot.config);
-        }
         self.device_retry_pending = true;
         self.device_retry_generation = self.device_retry_generation.saturating_add(1);
         let generation = self.device_retry_generation;
+        log::debug!(
+            "event=device_persistence_retry attempt={} delay_secs={delay}",
+            self.device_retry_attempt
+        );
         let tx = self.tx.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(delay)).await;
@@ -1336,7 +1383,7 @@ impl MonitorCore {
         match self.persist(&candidate, false, true) {
             Ok(()) => self.clear_device_persistence_retry(),
             Err(error) => {
-                log::warn!("Failed to retry device persistence: {error}");
+                log::debug!("event=device_persistence_retry_failed error={error}");
                 self.schedule_device_persistence_retry();
             }
         }
@@ -1380,6 +1427,12 @@ impl MonitorCore {
     }
 
     fn update_config(&mut self, patch: Value) -> Result<MonitorSnapshot, String> {
+        crate::diagnostics::config_level(&patch)?;
+        if patch.as_object().is_some_and(|p| {
+            p.len() == 1 && p.get("logLevel") == self.snapshot.config.get("logLevel")
+        }) {
+            return Ok(self.snapshot.clone());
+        }
         let previous_mode = config_fetch_interval(&self.snapshot.config);
         let previous_auto_collapse = self.auto_collapse();
         let mut candidate = self.snapshot.clone();
@@ -1427,12 +1480,6 @@ impl MonitorCore {
             return Ok(self.snapshot.clone());
         }
         let disconnected = true;
-        crate::diagnostics::config_level(&patch)?;
-        if patch.as_object().is_some_and(|p| {
-            p.len() == 1 && p.get("logLevel") == self.snapshot.config.get("logLevel")
-        }) {
-            return Ok(self.snapshot.clone());
-        }
         let mut registered = MonitorDevice {
             id: device.id.clone(),
             name: device.name,
@@ -1719,6 +1766,11 @@ impl MonitorCore {
             return;
         }
         self.starting_monitors.remove(id);
+        log::info!(
+            "event=monitor_started device_ref={} session_id={session_id} recovered={}",
+            crate::diagnostics::device_ref(id),
+            self.monitor_retries.attempts.contains_key(id)
+        );
         self.monitor_retries.succeeded(id);
         self.active_monitors.insert(id.to_string());
         self.active_monitor_sessions
@@ -1735,35 +1787,60 @@ impl MonitorCore {
         if !self.starting_monitors.remove(id) || self.device_index(id).is_none() {
             return;
         }
-        log::warn!("Failed to start battery monitor for {id}: {error}");
+        let level = if self.monitor_retries.attempts.contains_key(id) {
+            log::Level::Debug
+        } else {
+            log::Level::Warn
+        };
+        log::log!(
+            level,
+            "event=monitor_start_failed device_ref={} error={error}",
+            crate::diagnostics::device_ref(id)
+        );
         if self.apply_monitor_failure(id) {
             self.publish_observation();
         }
         if matches!(error, ble::MonitorStartError::Transient(_))
             && let Some((attempt, delay)) = self.monitor_retries.failed(id)
         {
+            log::debug!(
+                "event=monitor_retry device_ref={} attempt={attempt} delay_secs={}",
+                crate::diagnostics::device_ref(id),
+                delay.as_secs()
+            );
             schedule_monitor_retry(self.tx.clone(), token, id.to_string(), attempt, delay);
         }
     }
 
     fn spawn_stop_monitor(&self, id: String, session_id: Option<u64>) {
         tauri::async_runtime::spawn(async move {
-            match session_id {
-                Some(session_id) => {
-                    let _ = tokio::time::timeout(
-                        Duration::from_secs(10),
-                        ble::stop_battery_notification_monitor_if_session(id, session_id),
-                    )
-                    .await;
-                }
-                None => {
-                    let _ = tokio::time::timeout(
-                        Duration::from_secs(10),
-                        ble::stop_battery_notification_monitor(id),
-                    )
-                    .await;
-                }
-            }
+            let device_ref = crate::diagnostics::device_ref(&id);
+            let started = std::time::Instant::now();
+            let timed_out = match session_id {
+                Some(session_id) => tokio::time::timeout(
+                    Duration::from_secs(10),
+                    ble::stop_battery_notification_monitor_if_session(id, session_id),
+                )
+                .await
+                .is_err(),
+                None => tokio::time::timeout(
+                    Duration::from_secs(10),
+                    ble::stop_battery_notification_monitor(id),
+                )
+                .await
+                .map(|result| {
+                    if let Err(error) = result {
+                        log::debug!(
+                            "event=monitor_stop_failed device_ref={device_ref} error={error}"
+                        );
+                    }
+                })
+                .is_err(),
+            };
+            log::debug!(
+                "event=monitor_stop_finished device_ref={device_ref} session_id={session_id:?} timed_out={timed_out} elapsed_ms={}",
+                started.elapsed().as_millis()
+            );
         });
     }
 
@@ -2112,6 +2189,24 @@ pub async fn monitor_reload() -> Result<MonitorSnapshot, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn saved_log_levels_survive_config_normalization_and_serialization() {
+        for level in ["warn", "info", "debug"] {
+            let config = normalize_config(Some(json!({"logLevel": level})));
+            let saved = serde_json::to_string(&config).unwrap();
+            let restored = normalize_config(Some(serde_json::from_str(&saved).unwrap()));
+            assert_eq!(restored["logLevel"], level);
+            assert_eq!(
+                crate::diagnostics::config_level(&restored).unwrap(),
+                serde_json::from_value(json!(level)).unwrap()
+            );
+        }
+        assert_eq!(
+            crate::diagnostics::config_level(&normalize_config(Some(json!({})))).unwrap(),
+            crate::diagnostics::LogLevel::default_level()
+        );
+    }
+
     fn transaction_snapshot() -> MonitorSnapshot {
         MonitorSnapshot {
             revision: 4,
@@ -2189,24 +2284,6 @@ mod tests {
             true,
             |filename, _, value| {
                 if filename == DEVICES_FILENAME && value.is_some() {
-    #[test]
-    fn saved_log_levels_survive_config_normalization_and_serialization() {
-        for level in ["warn", "info", "debug"] {
-            let config = normalize_config(Some(json!({"logLevel": level})));
-            let saved = serde_json::to_string(&config).unwrap();
-            let restored = normalize_config(Some(serde_json::from_str(&saved).unwrap()));
-            assert_eq!(restored["logLevel"], level);
-            assert_eq!(
-                crate::diagnostics::config_level(&restored).unwrap(),
-                serde_json::from_value(json!(level)).unwrap()
-            );
-        }
-        assert_eq!(
-            crate::diagnostics::config_level(&normalize_config(Some(json!({})))).unwrap(),
-            crate::diagnostics::LogLevel::default_level()
-        );
-    }
-
                     return Err("device save failed".into());
                 }
                 disk.insert(filename.to_string(), value);
