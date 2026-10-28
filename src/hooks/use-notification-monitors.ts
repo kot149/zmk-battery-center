@@ -55,7 +55,7 @@ export function useNotificationMonitors({
         try {
           await stopBatteryNotificationMonitor(id);
         } catch (e) {
-          logger.warn(`Failed to stop notification monitor for ${id}: ${String(e)}`);
+          logger.warn(`Failed to stop notification monitor for ${id}`, e);
         }
         active.delete(id);
       }
@@ -140,9 +140,7 @@ export function useNotificationMonitors({
 
     syncChainRef.current = syncChainRef.current
       .then(syncNotificationMonitors)
-      .catch((e) =>
-        logger.warn(`Failed to synchronize battery notification monitors: ${String(e)}`),
-      );
+      .catch((e) => logger.warn("Failed to synchronize battery notification monitors", e));
 
     return () => {
       // Bump the generation so an in-flight run stops mutating state.

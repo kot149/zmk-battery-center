@@ -118,7 +118,7 @@ export async function loadSavedConfig(): Promise<Config> {
   const config = await getConfigStore().then((store: Store) =>
     store.get<Partial<Config>>("config"),
   );
-  logger.info(`Loaded config: ${JSON.stringify(config, null, 4)}`);
+  logger.info(() => ["Loaded config", config]);
   const merged: Config = {
     ...defaultConfig,
     ...config,
@@ -171,5 +171,5 @@ export async function setConfig(config: Config) {
     }
   }
 
-  logger.info(`Set config: ${JSON.stringify(config, null, 4)}`);
+  logger.info(() => ["Set config", config]);
 }
