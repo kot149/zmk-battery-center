@@ -11,7 +11,17 @@ concurrency:
 
 jobs:
   frontend:
-    name: Frontend / Checks & Unit Tests
+    name: Frontend / ${{ matrix.check.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        check:
+          - name: Lint
+            command: bunx --no-install vp run lint
+          - name: Formatting
+            command: bunx --no-install vp run format:check
+          - name: Unit Tests
+            command: bun run test:frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -19,21 +29,32 @@ jobs:
         with:
           bun-version: "1.3.14"
       - run: bun install --frozen-lockfile
-      - name: Lint
-        run: bunx --no-install vp run lint
+      - name: ${{ matrix.check.name }}
+        run: ${{ matrix.check.command }}
+
+  rust-format:
+    name: Rust / Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
+        with:
+          toolchain: stable
+          components: rustfmt
       - name: Check Formatting
-        run: bunx --no-install vp run format:check
-      - name: Build
-        run: bun run build:ui
-      - name: Unit Tests
-        run: bun run test:frontend
+        run: cargo fmt --all -- --check
 
   rust:
-    name: Rust / Checks & Unit Tests (${{ matrix.os }})
+    name: Rust / ${{ matrix.check.name }} (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-26]
+        check:
+          - name: Lint
+            command: cargo clippy --workspace --all-targets -- -D warnings
+          - name: Unit Tests
+            command: cargo test
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,20 +69,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
         with:
           toolchain: stable
-          components: rustfmt, clippy
+          components: clippy
       - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: ". -> target"
       - run: bun install --frozen-lockfile
       - name: Build frontend (required by tauri::generate_context!)
         run: bun run build:ui
-      - name: Check Formatting
-        if: runner.os == 'Linux'
-        run: bunx --no-install vp run format:rust:check
-      - name: Lint
-        run: bunx --no-install vp run lint:rust
-      - name: Unit Tests
-        run: cargo test
+      - name: ${{ matrix.check.name }}
+        run: ${{ matrix.check.command }}
 
   e2e:
     name: Frontend / E2E Tests
