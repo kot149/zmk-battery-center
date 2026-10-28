@@ -335,10 +335,9 @@ pub fn init_tray(app_handle: AppHandle) {
             if let Ok(icon_path) = app_handle.path().resolve(
                 "icons/icon_template.png",
                 tauri::path::BaseDirectory::Resource,
-            ) {
-                if let Ok(icon) = tauri::image::Image::from_path(&icon_path) {
-                    let _ = tray.set_icon(Some(icon));
-                }
+            ) && let Ok(icon) = tauri::image::Image::from_path(&icon_path)
+            {
+                let _ = tray.set_icon(Some(icon));
             }
             let _ = tray.set_icon_as_template(true);
         }
