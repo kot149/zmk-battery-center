@@ -52,6 +52,18 @@ Rust owns device state, polling, BLE subscriptions, battery history, notificatio
 
 UI edits use narrow `monitor_*` commands. They do not write device snapshots or config files independently. Existing `config.json` and `devices.json` formats are retained. The main window is revealed after hydration and layout, or with an error message if hydration fails. Hiding or closing it retains the WebView on all platforms, and monitoring continues. On Windows, after one hidden second the app sets the WebView2 controller invisible and calls `TrySuspend` on a best-effort basis; the runtime can decline or fail suspension. Reopening resumes the controller and makes it visible before showing the window. Background monitor and history events are not delivered to a hidden window; `main-window-shown` triggers a fresh monitor snapshot and battery-history read. About is a separate window and stays alive until closed.
 
+## Logging
+
+`config.logLevel` stores `warn`, `info`, or `debug`. Existing configurations without this field default to Warn in release and Debug in development. Selection is persisted through the monitor actor before the runtime filter changes; a failed save leaves the previous level active. No timeout, restart reset, polling task, or diagnostic WebView is used.
+
+`diagnostics.rs` owns runtime level and generation. Both entrypoints initialize safe console/error forwarding and synchronize the level through an injected initial state, `get_log_level_state`, and `log-level-changed`. Hidden main windows resynchronize on `main-window-shown`. Disabled levels skip serialization and IPC; use lazy logger arguments for expensive values. Never reduce an Error to just its message before logging.
+
+The existing `tauri-plugin-log` handles dispatch and frontend commands. Its supported `TargetKind::Dispatch` extension writes files using `diagnostics/log_file.rs`. `fern` is a direct dependency solely to construct this extension; it was already a transitive dependency of the plugin. No plugin source, version, or vendored copy is changed. The app writer uses an active file and four numbered archives, rotates before exceeding 2 MiB, and caps individual formatted records at 32 KiB. Legacy timestamp archives and `.log.bak` files count toward retention; unrelated files are untouched.
+
+Release logs use Tauri's `app_log_dir`. Development logs use `logs/` under the existing isolated store-directory resolver. Settings, devices, and battery history use `app_data_dir`, or the same resolver in development. Settings exposes one action per location, and the backend resolves both from a fixed allowlist. UTC Unix milliseconds, target, level, and boot session are included, without ANSI colors. Device aliases are process-local. Known device identifiers, names, and the home directory are replaced at write time, but unknown personal information can remain; sharing is manual.
+
+For performance comparisons, build unchanged and changed releases with `bun run build:app` using the same toolchain. Record binary byte counts and sample CPU/RSS after initial stabilization for at least 60 seconds over three runs per state: headless, main visible, hidden, Info, Debug, and back to Warn. Include related WebView processes. Do not stop an installed instance without permission or treat an immediate single-instance exit as a measurement. Report medians, ranges, conditions, and any untested hardware/OS cases; size alone is not a memory/CPU comparison.
+
 ## Update banner preview
 
 Run `bun run preview:update` and open `http://127.0.0.1:1421/`. This builds the current React UI and serves it with sample keyboard and update data. It does not require the Tauri app or a keyboard. Enable **Check for zmk-battery-center update** in Settings to show the sample update. Re-run the command after editing the UI.
@@ -208,6 +220,7 @@ Primary unit targets:
   - non-existing history file returns empty list.
 - `src-tauri/src/storage.rs`
   - `get_dev_store_path` honors `ZMK_BATTERY_CENTER_DATA_DIR` (absolute and relative).
+  - `resolve_store_dir_path` / `resolve_store_file_path` share the same debug/release resolution.
   - fallback to `.dev-data` in debug builds.
 
 Recommended Rust refactor for easier testing:

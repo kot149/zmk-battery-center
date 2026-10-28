@@ -94,6 +94,16 @@ Also there are some limitations specifically on Linux:
 
 ## Troubleshooting
 
+### Collect logs
+
+Open **Settings → Logging → Log level** and choose **Warn** (warnings and errors), **Info** (connection changes and recovery), or **Debug** (detailed retry information). The release default is Warn. Your selection is saved and stays unchanged when you hide the window or restart the app. Dependencies remain at Warn, and Trace is not recorded.
+
+Use **Open logs folder** in Settings or the tray menu to find the files. Logs use the OS application log directory: `~/Library/Logs/com.zmk-battery-center.app` on macOS, the app's local-data `logs` directory on Windows, and its XDG data `logs` directory on Linux. The folder action resolves the exact location on your system. Logs rotate at 2 MiB and retain at most five files, including the current file.
+
+**Open data folder** in Settings opens the folder that holds your settings, device list, and battery history. These files are not redacted, so treat that folder as private.
+
+To share logs, use **Open logs folder** and attach the files. Known device identifiers, names, and your home directory are replaced when each line is written, but unknown personal information can remain in error messages. **Review the files before sharing.** Nothing is uploaded automatically.
+
 ### Cannot open the app on macOS
 
 On macOS, the app is blocked from opening as it is not signed. Allow the app to open by either:
