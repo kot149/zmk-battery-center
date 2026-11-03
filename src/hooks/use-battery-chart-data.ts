@@ -116,7 +116,7 @@ export function useBatteryChartData(options: {
       if (generation !== loadGeneration.current) return;
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
-      logger.warn(`Failed to load battery history: ${msg}`);
+      logger.warn("Failed to load battery history", e);
     } finally {
       if (generation === loadGeneration.current) {
         loading.current = false;

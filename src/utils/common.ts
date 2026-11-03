@@ -6,8 +6,7 @@ export async function sleep(ms: number) {
 }
 
 export function logAsyncWarning(context: string, error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  logger.warn(`${context}: ${message}`);
+  void logger.warn(context, error);
 }
 
 export function fireAndForget(promise: Promise<unknown>, context: string) {

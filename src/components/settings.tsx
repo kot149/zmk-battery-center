@@ -24,6 +24,69 @@ import TopRightButtons from "./top-right-buttons";
 import { platform } from "@tauri-apps/plugin-os";
 
 import { cn } from "@/utils/cn";
+import { getLogLevelState, setLogLevel } from "@/utils/diagnostics";
+import type { LogLevel } from "@/utils/log";
+
+function LoggingSettings() {
+  const [level, setLevel] = React.useState<LogLevel | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    let cancelled = false;
+    void getLogLevelState()
+      .then((state) => {
+        if (!cancelled) setLevel(state.level);
+      })
+      .catch(() => {
+        if (!cancelled) setError("Failed to load log level.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const run = async (operation: () => Promise<unknown>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await operation();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SettingsGroup>
+      <div className="flex items-center justify-between gap-3">
+        <span>Log level</span>
+        <Select
+          value={level ?? ""}
+          disabled={busy || level === null}
+          onValueChange={(value) =>
+            void run(async () => {
+              const state = await setLogLevel(value as LogLevel);
+              setLevel(state.level);
+            })
+          }
+        >
+          <SelectTrigger aria-label="Log level" className="w-28">
+            <SelectValue placeholder="Loading" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="warn">Warn</SelectItem>
+            <SelectItem value="info">Info</SelectItem>
+            <SelectItem value="debug">Debug</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </SettingsGroup>
+  );
+}
 
 type SettingsGroupProps = {
   children: React.ReactNode;
@@ -484,6 +547,7 @@ const Settings: React.FC<SettingsScreenProps> = ({ onExit }) => {
               />
             </div>
           </SettingsGroup>
+          <LoggingSettings />
         </div>
       </div>
     </div>

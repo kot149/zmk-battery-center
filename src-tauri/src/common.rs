@@ -5,11 +5,11 @@ use tauri::Manager;
 
 #[tauri::command]
 pub async fn exit_app(app: AppHandle) {
-    log::debug!("exit_app: hiding tray icon");
+    log::debug!("event=exit_request step=hide_tray_icon");
     if let Some(tray) = app.tray_by_id("tray_icon")
         && let Err(e) = tray.set_visible(false)
     {
-        log::warn!("exit_app: failed to hide tray icon: {e}");
+        log::warn!("event=tray_icon_hide_failed error={e}");
     }
     #[cfg(target_os = "linux")]
     {
@@ -23,9 +23,9 @@ pub async fn exit_app(app: AppHandle) {
             handle.shutdown().await;
         }
     }
-    log::debug!("exit_app: stopping all BLE monitors");
+    log::debug!("event=exit_request step=stop_ble_monitors");
     ble::stop_all_battery_monitors().await;
-    log::debug!("exit_app: all BLE monitors stopped");
-    log::debug!("exit_app: exiting");
+    log::debug!("event=ble_monitors_stopped");
+    log::debug!("event=exit");
     app.exit(0);
 }

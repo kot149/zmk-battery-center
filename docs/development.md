@@ -52,6 +52,22 @@ Rust owns device state, polling, BLE subscriptions, battery history, notificatio
 
 UI edits use narrow `monitor_*` commands. They do not write device snapshots or config files independently. Existing `config.json` and `devices.json` formats are retained. The main window is revealed after hydration and layout, or with an error message if hydration fails. Hiding or closing it retains the WebView on all platforms, and monitoring continues. On Windows, after one hidden second the app sets the WebView2 controller invisible and calls `TrySuspend` on a best-effort basis; the runtime can decline or fail suspension. Reopening resumes the controller and makes it visible before showing the window. Background monitor and history events are not delivered to a hidden window; `main-window-shown` triggers a fresh monitor snapshot and battery-history read. About is a separate window and stays alive until closed.
 
+## Logging
+
+`config.logLevel` stores `warn`, `info`, or `debug`. Without it, the level defaults to Warn in release and Debug in development. `diagnostics.rs` owns the runtime level and syncs it to the frontend through `get_log_level_state` and `log-level-changed`. Disabled levels skip serialization and IPC, so use lazy logger arguments for expensive values. Never reduce an Error to just its message before logging.
+
+`diagnostics/log_file.rs` writes the file through `tauri-plugin-log`'s `TargetKind::Dispatch`. It rotates at 2 MiB and keeps four archives.
+
+Each line looks like this:
+
+```text
+2026-11-03T02:40:02.468Z DEBUG zmk_battery_center_lib::ble: run_id=1a19f472344-26464 event=adapter_ready
+```
+
+`run_id` identifies one app launch. Backend messages start with `event=<snake_case>` followed by `key=value` fields; do not write prose so lines stay greppable. Frontend console messages appear under the `webview` target.
+
+Release logs go to `app_log_dir`; development logs go to `logs/` under the dev data directory. Known device identifiers, names, and the home directory are redacted at write time.
+
 ## Update banner preview
 
 Run `bun run preview:update` and open `http://127.0.0.1:1421/`. This builds the current React UI and serves it with sample keyboard and update data. It does not require the Tauri app or a keyboard. Enable **Check for zmk-battery-center update** in Settings to show the sample update. Re-run the command after editing the UI.
@@ -208,6 +224,7 @@ Primary unit targets:
   - non-existing history file returns empty list.
 - `src-tauri/src/storage.rs`
   - `get_dev_store_path` honors `ZMK_BATTERY_CENTER_DATA_DIR` (absolute and relative).
+  - `resolve_store_dir_path` / `resolve_store_file_path` share the same debug/release resolution.
   - fallback to `.dev-data` in debug builds.
 
 Recommended Rust refactor for easier testing:

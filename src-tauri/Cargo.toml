@@ -33,11 +33,12 @@ tauri-plugin-store = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-log = "2"
 log = "^0.4"
+fern = "0.7"
 tauri-plugin-os = "2"
 csv = "1"
-owo-colors = "4.4.0"
 semver = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+time = { version = "0.3.55", features = ["formatting", "macros"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

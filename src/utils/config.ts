@@ -29,6 +29,7 @@ export const FETCH_INTERVAL_AUTO = "auto" as const;
 export type FetchInterval = number | typeof FETCH_INTERVAL_AUTO;
 
 export type Config = {
+  logLevel: import("./log").LogLevel;
   theme: Theme;
   fetchInterval: FetchInterval;
   autoStart: boolean;
@@ -53,6 +54,7 @@ export type Config = {
 };
 
 export const defaultConfig: Config = {
+  logLevel: import.meta.env.DEV ? "debug" : "warn",
   theme: "dark" as Theme,
   fetchInterval: FETCH_INTERVAL_AUTO,
   autoStart: false,
@@ -118,7 +120,7 @@ export async function loadSavedConfig(): Promise<Config> {
   const config = await getConfigStore().then((store: Store) =>
     store.get<Partial<Config>>("config"),
   );
-  logger.info(`Loaded config: ${JSON.stringify(config, null, 4)}`);
+  logger.info(() => ["Loaded config", config]);
   const merged: Config = {
     ...defaultConfig,
     ...config,
@@ -171,5 +173,5 @@ export async function setConfig(config: Config) {
     }
   }
 
-  logger.info(`Set config: ${JSON.stringify(config, null, 4)}`);
+  logger.info(() => ["Set config", config]);
 }

@@ -126,7 +126,7 @@ export function useRegisteredDevices() {
       registeredDevicesRef.current = loadedDevices;
       registeredDevicesRevisionRef.current = 1;
       setRegisteredDevices(loadedDevices);
-      logger.info(`Loaded saved registered devices: ${JSON.stringify(devices, null, 4)}`);
+      logger.info(() => ["Loaded saved registered devices", devices]);
     };
     fireAndForget(fetchRegisteredDevices(), "Failed to load registered devices");
     return () => {

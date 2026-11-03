@@ -108,7 +108,7 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
         const next = await command();
         applySnapshot(next);
       } catch (error) {
-        logger.error(`Monitor command failed: ${String(error)}`);
+        logger.error("Monitor command failed", error);
         throw error;
       }
     },
@@ -225,9 +225,7 @@ export const ConfigProvider = ({ children }: { children: ReactNode }) => {
           const latest = await getMonitorState();
           applySnapshot(latest, true);
         } catch (rollbackError) {
-          logger.error(
-            `Failed to recover monitor state after config update: ${String(rollbackError)}`,
-          );
+          logger.error("Failed to recover monitor state after config update", rollbackError);
         }
       });
     },
