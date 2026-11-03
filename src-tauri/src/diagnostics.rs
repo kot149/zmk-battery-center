@@ -332,6 +332,12 @@ pub fn open_app_folder(app: AppHandle, folder: AppFolder) -> Result<(), String> 
     }
 }
 
+pub fn open_url(app: &AppHandle, url: &str) -> Result<(), String> {
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 fn now_ms() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
