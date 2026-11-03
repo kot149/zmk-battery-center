@@ -35,7 +35,7 @@ pub fn run() {
         }
     }
 
-    tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -118,16 +118,18 @@ pub fn run() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| match event {
-            tauri::RunEvent::ExitRequested {
-                api, code: None, ..
-            } => api.prevent_exit(),
-            tauri::RunEvent::WindowEvent {
-                label,
-                event: tauri::WindowEvent::Destroyed,
-                ..
-            } if label == "main" => window::on_main_destroyed(app),
-            _ => {}
-        });
+        .expect("error while building tauri application");
+    // Raw input left pending in the queue stalls the tray context menu loop on Windows.
+    app.set_device_event_filter(tauri::DeviceEventFilter::Always);
+    app.run(|app, event| match event {
+        tauri::RunEvent::ExitRequested {
+            api, code: None, ..
+        } => api.prevent_exit(),
+        tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } if label == "main" => window::on_main_destroyed(app),
+        _ => {}
+    });
 }
