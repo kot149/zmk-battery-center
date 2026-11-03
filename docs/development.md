@@ -1,312 +1,199 @@
-# Development and testing
+# Development guide
 
-## Development
+This guide covers local development, testing, and implementation conventions for zmk-battery-center. For user-facing installation and troubleshooting, see the [README](../README.md). For the battery snapshot file API, see [external integration](external_integration.md).
 
-1. Install [Bun](https://bun.sh)
-1. Install [Rustup](https://www.rust-lang.org/ja/tools/install)
-1. Clone this repo
-   ```sh
-   git clone https://github.com/kot149/zmk-battery-center.git
-   cd zmk-battery-center
-   ```
-1. Install frontend dependencies
-   ```sh
-   bun install
-   ```
-1. Install Cargo tools
-   ```sh
-   cargo install cargo-about cargo-deny
-   ```
-1. Run in development mode
+## Setup
 
-   ```sh
-   bun tauri dev
-   ```
+### Prerequisites
 
-   In development mode, config and device list are saved to `.dev-data/` at the project root. Use the `ZMK_BATTERY_CENTER_DATA_DIR` environment variable to switch directories (e.g. for tests):
+- [Bun](https://bun.sh/) for the frontend and project scripts.
+- [Rustup](https://rustup.rs/) with the stable Rust toolchain.
+- Platform-specific dependencies for Tauri v2. Follow the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system. On Ubuntu, the packages used in [CI](../.github/workflows/ci.yml) are `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, and `patchelf`.
 
-   ```sh
-   bunx cross-env ZMK_BATTERY_CENTER_DATA_DIR=./.dev-data-test bun tauri dev
-   ```
+### First run
 
-1. Build for production
-   ```sh
-   bun tauri build
-   ```
-   - If build fails, try cleaning the build cache
-     ```sh
-     cargo clean
-     ```
-   - Specify the target platform with `--target` option. If omitted, the app will be built for the current platform.
-     ```sh
-     # for macOS arm64
-     bun tauri build --target aarch64-apple-darwin
+```sh
+git clone https://github.com/kot149/zmk-battery-center.git
+cd zmk-battery-center
+bun install
+bun run dev
+```
 
-     # for macOS x86_64
-     bun tauri build --target x86_64-apple-darwin
-     ```
+`bun run dev` starts the Tauri application with the frontend development server. The equivalent direct command is `bun tauri dev`.
 
-## Background monitoring and window lifetime
+### Development data
 
-Rust owns device state, polling, BLE subscriptions, battery history, notifications, external snapshots, and tray actions. The process starts without a main WebView. A tray action creates the window and injects the current monitor snapshot into its initialization script. The frontend subscribes to `monitor-state-changed` before requesting `get_monitor_state`; revisions prevent an older response from replacing a newer event.
+Debug builds store settings, registered devices, battery history, and logs under `.dev-data/` at the project root. Logs are in `.dev-data/logs/`. Release builds use the operating system's application data and log directories instead.
 
-UI edits use narrow `monitor_*` commands. They do not write device snapshots or config files independently. Existing `config.json` and `devices.json` formats are retained. The main window is revealed after hydration and layout, or with an error message if hydration fails. Hiding or closing it retains the WebView on all platforms, and monitoring continues. On Windows, after one hidden second the app sets the WebView2 controller invisible and calls `TrySuspend` on a best-effort basis; the runtime can decline or fail suspension. Reopening resumes the controller and makes it visible before showing the window. Background monitor and history events are not delivered to a hidden window; `main-window-shown` triggers a fresh monitor snapshot and battery-history read. About is a separate window and stays alive until closed.
+For a debug build, `ZMK_BATTERY_CENTER_DATA_DIR` changes the data directory. A relative path is resolved from the project root:
+
+```sh
+# macOS / Linux shell
+ZMK_BATTERY_CENTER_DATA_DIR=.dev-data-alt bun run dev
+```
+
+```powershell
+# Windows PowerShell
+$env:ZMK_BATTERY_CENTER_DATA_DIR = ".dev-data-alt"
+bun run dev
+Remove-Item Env:ZMK_BATTERY_CENTER_DATA_DIR
+```
+
+**Note:** The environment-variable override applies only to debug builds. Do not rely on it to isolate data when launching a release binary.
+
+## Build and code checks
+
+| Command | Purpose |
+| --- | --- |
+| `bun run build:ui` | Type-check and build the frontend |
+| `bun run build:app` | Build the Tauri release binary without an installer (`--no-bundle`) |
+| `bun run build` | Build the application and platform bundles |
+| `bun run lint` | Lint the frontend and scripts |
+| `bun run lint:rust` | Run Clippy on the Rust workspace |
+| `bun run format:check` | Check frontend and script formatting |
+| `bun run format:rust:check` | Check Rust formatting |
+| `bun run check-versions` | Verify version consistency |
+
+Use `bun run format` and `bun run format:rust` to apply formatting. `vite.config.ts` holds the Vite+ configuration for frontend tooling.
+
+To target a different architecture, pass a supported Rust target to Tauri (and install that target and any required toolchain first). For example, on macOS:
+
+```sh
+bun tauri build --target aarch64-apple-darwin
+bun tauri build --target x86_64-apple-darwin
+```
+
+If an incremental Rust build appears stale, `cargo clean` removes Cargo's build artifacts and forces a rebuild.
+
+## Project structure
+
+| Path | Responsibility |
+| --- | --- |
+| `src/` | React/TypeScript frontend |
+| `src/components/` | UI components; `shadcn/` contains UI primitives |
+| `src/providers/` | React context providers |
+| `src/hooks/` | React hooks |
+| `src/utils/` | Shared frontend utilities and Tauri command wrappers |
+| `src-tauri/src/` | Rust backend, BLE monitoring, storage, windows, and tray integration |
+| `e2e/` | Playwright UI-flow tests and mocked Tauri APIs |
+| `scripts/` | Build support, previews, smoke tests, and maintenance tools |
+| `.github/workflows/` | CI, security audit, build, and release workflows |
+
+TypeScript and TSX filenames use **kebab-case**. Keep unit tests in the nearest `__tests__/` directory, with the same basename as the code being tested.
+
+## Runtime architecture
+
+### Background monitoring and state ownership
+
+Rust owns device state, BLE polling and subscriptions, battery history, notifications, external snapshots, and tray actions. React renders the monitor state and sends user edits through narrow `monitor_*` commands; it does not independently write device snapshots or configuration files. Existing `config.json` and `devices.json` formats remain supported.
+
+The process starts without a main WebView. Opening the tray window creates it on demand and injects the current monitor snapshot into its initialization script. The frontend subscribes to `monitor-state-changed` before requesting `get_monitor_state`; snapshot revisions prevent an older response from overwriting a newer event. The main window is shown after hydration and layout, or with an error message if hydration fails.
+
+### Window lifetime
+
+Hiding or closing the main window retains its WebView on all supported platforms, while Rust monitoring continues. On Windows, after one second hidden the application sets the WebView2 controller invisible and attempts `TrySuspend`; WebView2 may decline or fail the request. Reopening resumes the controller and restores visibility.
+
+Background monitor and history events are not delivered to the hidden main window. The `main-window-shown` event triggers fresh monitor and battery-history reads. The About window is independent and remains alive until closed.
 
 ## Logging
 
-`config.logLevel` stores `warn`, `info`, or `debug`. Without it, the level defaults to Warn in release and Debug in development. `diagnostics.rs` owns the runtime level and syncs it to the frontend through `get_log_level_state` and `log-level-changed`. Disabled levels skip serialization and IPC, so use lazy logger arguments for expensive values. Never reduce an Error to just its message before logging.
+`config.logLevel` supports `warn`, `info`, and `debug`. When unset, the default is **Warn** in release builds and **Debug** in development builds. `src-tauri/src/diagnostics.rs` manages the runtime level and publishes `get_log_level_state` / `log-level-changed` to the frontend. Dependencies stay at Warn; Trace is not captured.
 
-`diagnostics/log_file.rs` writes the file through `tauri-plugin-log`'s `TargetKind::Dispatch`. It rotates at 2 MiB and keeps four archives.
-
-Each line looks like this:
+Log lines contain a UTC timestamp, severity, target, `run_id`, and structured message:
 
 ```text
 2026-11-03T02:40:02.468Z DEBUG zmk_battery_center_lib::ble: run_id=1a19f472344-26464 event=adapter_ready
 ```
 
-`run_id` identifies one app launch. Backend messages start with `event=<snake_case>` followed by `key=value` fields; do not write prose so lines stay greppable. Frontend console messages appear under the `webview` target.
+`run_id` identifies one application launch. Backend messages should start with `event=<snake_case>` and use `key=value` fields rather than free-form prose so events remain searchable. Frontend logs use the `webview` target.
 
-Release logs go to `app_log_dir`; development logs go to `logs/` under the dev data directory. Known device identifiers, names, and the home directory are redacted at write time.
+The file writer (`src-tauri/src/diagnostics/log_file.rs`) rotates files at **2 MiB**, retaining **four archives plus the current file**. Debug logs are in `logs/` under the development data directory; release logs are in Tauri's `app_log_dir`.
 
-## Update banner preview
-
-Run `bun run preview:update` and open `http://127.0.0.1:1421/`. This builds the current React UI and serves it with sample keyboard and update data. It does not require the Tauri app or a keyboard. Enable **Check for zmk-battery-center update** in Settings to show the sample update. Re-run the command after editing the UI.
-
-Dismissal persists across page reloads in the preview. Open `http://127.0.0.1:1421/?reset=1` to enable update checks and show the sample update again.
-
-## Frontend file conventions
-
-- TypeScript and TSX filenames use kebab-case.
-- React components live in `src/components/`, with shadcn primitives in `src/components/shadcn/`.
-- Providers live in `src/providers/`, hooks in `src/hooks/`, and shared utilities in `src/utils/`.
-- Unit tests live in the nearest `__tests__/` directory and use the same kebab-case basename as the files they test.
-
-Vite+ runs the frontend build, tests, linting, and formatting. Use `bun run build:ui`, `bun run test:frontend`, `bun run lint`, and `bun run format:check` after installing dependencies with Bun. The shared tool configuration is in `vite.config.ts`.
+Known device IDs and names, MAC addresses, UUIDs, and the home directory are redacted when the line is written, but this is not a guarantee that every sensitive value is removed. Review logs before sharing. Avoid expensive string construction at disabled levels by using lazy logger arguments; preserve error context when logging errors.
 
 ## Testing
 
-Data directory for unit tests and E2E tests is isolated by default, so test-run data does not mix with local development data.
-Default data directory is `<project>/.dev-data-test`. To override the directory, set `ZMK_BATTERY_CENTER_DEV_TEST_DIR`.
-
 ### Unit tests
 
-1. Frontend unit test:
-   ```sh
-   bun run test:frontend
-   ```
-2. Rust unit test:
-   ```sh
-   bun run test:rust
-   ```
-3. Run both frontend and Rust unit tests
-   ```sh
-   bun run test
-   ```
+| Command | Coverage |
+| --- | --- |
+| `bun run test:frontend` | Frontend unit/component tests (`src/**/__tests__/`), using Vite+ and jsdom |
+| `bun run test:rust` | Rust unit tests (`cargo test`) |
+| `bun run test` | Both suites |
 
-### E2E tests
+Rust tests that compile Tauri context may require frontend output. If that output is missing, run `bun run build:ui` first, as done in CI.
 
-This project includes Playwright-based E2E tests that run against the Vite frontend and use deterministic mocked Tauri APIs in the browser context (no real BLE or tray dependencies).
+Frontend unit tests run through `scripts/with_dev_data_dir.ts`, which selects an isolated test directory (default: `.dev-data-test/`). Set `ZMK_BATTERY_CENTER_DEV_TEST_DIR` to change that directory. Rust filesystem tests use their own temporary fixtures where applicable.
 
-Layer 1 E2E does not launch a Tauri shell, so that directory is not read by the browser; persistence under test is driven by the in-page Tauri mock (localStorage-backed store simulation).
+### Browser E2E tests
 
-1. Install Playwright browser once
-   ```sh
-   bun run e2e:install
-   ```
-2. Run full E2E suite
-   ```sh
-   bun run test:e2e
-   ```
-3. Run specific tests only (example: smoke)
-   ```sh
-   bun run test:e2e -g "first launch"
-   ```
+Playwright tests in `e2e/specs/` run against the Vite frontend using deterministic, mocked Tauri APIs. They validate UI flows, not native BLE, tray, or WebView2 behavior. The mock simulates persistence in browser storage; it does not use the native test data directory.
+
+```sh
+bun run e2e:install       # Install Chromium once
+bun run test:e2e          # Run the suite
+bun run test:e2e -g "first launch"  # Filter tests by title
+```
+
+### Built-app smoke test
+
+```sh
+bun run test:app
+```
+
+This builds a release binary without installers, launches it, checks that it remains alive for a short interval (default: 8 seconds), and then terminates the launched process. The test does not verify BLE functionality.
+
+Optional variables:
+
+- `ZMK_BATTERY_CENTER_SMOKE_BIN`: path of the binary to launch.
+- `ZMK_BATTERY_CENTER_SMOKE_WAIT_MS`: startup observation interval in milliseconds.
+- `ZMK_BATTERY_CENTER_DEV_TEST_DIR`: test data directory used by the wrapper.
+
+**Data safety:** The data-directory override in the wrapper does not apply to release binaries. The release smoke test may therefore access the normal application data location. Take that into account when testing on a machine with an existing installation.
 
 ### Windows window-lifecycle test
 
-Build an isolated debug app, then exercise the real tray and WebView2:
+This manual integration test uses a real debug Tauri app, system tray interaction, and WebView2 through the Windows tray driver and Playwright CDP:
 
 ```sh
 bun tauri build --debug --no-bundle --config '{"identifier":"com.zmk-battery-center.lifecycle-test"}'
 bun scripts/test_window_lifecycle.ts
 ```
 
-This test uses a fresh fixture directory under `test-results/`, leaves an installed instance alone, and stops only the process it launches. It verifies headless startup, tray-driven opening, quick-reopen reuse, a retained WebView across suspension and reopening, continued background snapshot publication, UI state reconciliation, and the native close action. It records the native suspension result, screenshots, and whole-process-tree working-set/private-byte measurements. The `webviews` metric counts descendant WebView2 processes, not retained controllers, so the DOM marker and native result verify the lifecycle instead. Open timings include CDP connection and visibility checks, so they are not pure paint latency. An invalid fixture BLE ID exercises disconnected-device handling without requiring hardware; successful BLE reads and OS notifications still need a real keyboard.
+Run these commands on Windows. The test uses a fresh fixture directory under `test-results/` and checks headless startup, tray-driven opening, WebView retention and suspension, reopening, continued background snapshots, UI reconciliation, and native close. It records screenshots, native suspension results, and process memory measurements. Its `webviews` metric counts descendant WebView2 processes, not retained controllers. BLE reads and operating-system notifications still require real hardware for validation.
 
-The test opens a local WebView2 debugging port only for its own process. `window_test_driver.ps1` sends tray-icon's Windows mouse callback to that process; update its message constant if the tray-icon backend changes.
+The test opens a local WebView2 debugging port for its own process. `scripts/window_test_driver.ps1` sends the tray icon's Windows mouse callback; its message constant may need updating if the underlying tray-icon implementation changes.
 
-### Smoke test for built app launch
+## CI and automation
 
-To verify that a locally built desktop app binary actually launches, run:
+- [`ci.yml`](../.github/workflows/ci.yml) runs on push, pull requests, and manual dispatch. It checks frontend linting, formatting, and unit tests; Rust formatting, Clippy, and unit tests (Windows, macOS, Linux); and mocked browser E2E tests.
+- [`audit.yml`](../.github/workflows/audit.yml) runs dependency audits on `bun.lock` / `Cargo.lock` changes and on manual dispatch. Both Bun and Rust audits are non-blocking.
+- [`build.yml`](../.github/workflows/build.yml) builds Tauri artifacts for macOS, Windows, and Linux, including supported x64/ARM64 targets.
+- [`release.yml`](../.github/workflows/release.yml) handles release automation.
+
+The browser E2E suite does **not** replace platform-specific Tauri integration tests. The Windows lifecycle test above is run manually; broader cross-platform native window and tray automation is not part of the current CI suite.
+
+## Additional workflows
+
+### Update banner preview
 
 ```sh
-bun run test:app
+bun run preview:update
 ```
 
-This does the following:
+Open `http://127.0.0.1:1421/`. The command builds the frontend and serves it with mocked keyboard and update data, without running Tauri or connecting a keyboard. Enable **Check for zmk-battery-center update** in Settings to display the sample banner. Restart the preview command after UI edits to rebuild it.
 
-1. Build app binary without installers (`bun tauri build --no-bundle`)
-2. Launch the built binary
-3. Wait for a short smoke window (default 8s) and fail if it exits early
-4. Terminate the process
+Dismissal persists across preview reloads. Open `http://127.0.0.1:1421/?reset=1` to reset it and enable the sample update again.
 
-Useful environment variables:
+### Dependency licenses
 
-- `ZMK_BATTERY_CENTER_SMOKE_BIN`: explicit binary path for smoke launch test
-- `ZMK_BATTERY_CENTER_SMOKE_WAIT_MS`: startup wait time in milliseconds (default: `8000`)
-- `ZMK_BATTERY_CENTER_DEV_TEST_DIR`: override isolated data directory root used during tests
+These tools are only needed when maintaining dependency license information, not for routine development:
 
-You can also build using [GitHub Actions](../.github/workflows).
+```sh
+cargo install cargo-about --features cli
+cargo install cargo-deny
+bun run check-licenses
+bun run generate-licenses
+```
 
-## Test Design
-
-This section describes a practical test design for this project. It is intentionally split into fast unit tests (run on every PR) and slower desktop E2E tests (run as smoke tests on PR + fuller coverage on schedule).
-
-### Goals
-
-- Catch regressions in battery parsing, state transitions, and config persistence early.
-- Keep most tests deterministic by avoiding real BLE devices in CI.
-- Verify critical user flows end-to-end with Tauri window/tray behavior.
-
-### Unit Test Design
-
-#### Frontend (TypeScript/React)
-
-Recommended stack:
-
-- Test runner: Vite+ (`vp test`)
-- Component tests: `@testing-library/react`
-- DOM environment: `jsdom`
-- Mocking Tauri APIs: module mocks for `@tauri-apps/api/*` and Tauri plugins
-
-Primary unit targets:
-
-- `src/app.tsx`
-  - Render the backend device snapshot and route user actions to narrow monitor commands.
-  - Reveal the main window only after state hydration and layout.
-- `src/utils/monitor.ts`
-  - Send the expected command names and arguments for device/config mutations.
-- `src/utils/battery-history.ts`
-  - `appendBatteryHistory` sends expected payload to Tauri `invoke`.
-  - `readBatteryHistory` returns typed records and passes IDs correctly.
-- `src/providers/config-provider.tsx`
-  - Subscribe before hydration and reject stale revisions.
-  - Apply native config/device events and recover from failed writes.
-- `src/components/*`
-  - `RegisteredDevicesPanel`: renders multiple devices, remove callback wiring.
-  - `DateRangePicker` / `BatteryHistoryChart`: range changes and empty data rendering.
-
-Suggested assertions:
-
-- Use fake timers for polling/timeout behavior.
-- Verify listener cleanup (`unlisten`) on unmount.
-- Verify persistence calls happen only after initial config/device load flags are true.
-
-#### Backend (Rust)
-
-Recommended stack:
-
-- Built-in Rust tests (`cargo test`)
-- `tempfile` crate for isolated filesystem tests
-
-Primary unit targets:
-
-- `src-tauri/src/monitor.rs`
-  - Normalize legacy config/devices and preserve previous battery values after failed reads.
-  - Detect threshold edges by array index and honor notification settings.
-  - Ignore stale I/O results after mode or device changes; keep IPC responsive during BLE reads.
-- `src-tauri/src/window.rs`
-  - Suspend only the current ready hidden window, never a reopened one.
-- `src-tauri/src/history.rs`
-  - `safe_filename`: sanitizes special characters and preserves allowed characters.
-  - append/read round-trip for CSV records.
-  - malformed CSV lines are skipped safely.
-  - non-existing history file returns empty list.
-- `src-tauri/src/storage.rs`
-  - `get_dev_store_path` honors `ZMK_BATTERY_CENTER_DATA_DIR` (absolute and relative).
-  - `resolve_store_dir_path` / `resolve_store_file_path` share the same debug/release resolution.
-  - fallback to `.dev-data` in debug builds.
-
-Recommended Rust refactor for easier testing:
-
-- Extract pure helpers from Tauri command functions (path resolution, CSV parse/format), then test helpers directly without requiring a full `AppHandle`.
-
-### E2E Test Design
-
-Use two E2E layers to balance reliability and realism.
-
-#### Layer 1: UI-flow E2E with mocked backend (PR required)
-
-Purpose: validate user-visible behavior deterministically, without OS BLE/tray dependencies.
-
-Recommended stack:
-
-- `playwright`
-- Test fixture that mocks Tauri `invoke`, event `listen`, and plugin APIs in the renderer
-
-Core scenarios:
-
-1. First launch
-   - shows "No devices registered"
-   - Add Device modal opens and lists available devices from mocked backend
-2. Add/remove device
-   - adding device renders it in list with battery info
-   - removing device updates UI and persistence payload
-3. Polling mode
-   - settings update the backend interval
-   - backend snapshots refresh battery levels without a frontend timer
-4. Notification monitor mode (`fetchInterval = auto`)
-   - settings select backend BLE subscriptions
-   - native state events update matching device rows and connection status
-   - the frontend does not duplicate backend notifications
-5. Persistence and reload
-   - saved devices/config are loaded on next app start
-   - legacy device payload shape is normalized correctly
-6. Battery history + chart
-   - history update event triggers chart refresh
-   - date range/custom range/smoothing options change plotted output (smoke-level assertion)
-
-#### Layer 2: Desktop integration E2E on real Tauri shell (scheduled or manual)
-
-The Windows lifecycle test above drives a real Tauri shell and WebView2 through the native tray callback and Playwright CDP. It covers process lifetime, on-demand creation, WebView retention, background suspension, and state recovery. Broader tray menu coverage and macOS/Linux desktop automation remain manual.
-
-Purpose: cover integration points that browser-only tests cannot validate.
-
-Core scenarios:
-
-1. App boot + single-instance behavior
-2. Tray menu opens and toggles manual window positioning
-3. Window positioning behavior around tray icon (platform-specific smoke checks)
-4. App exit flow stops monitors cleanly (no crashes/hangs)
-
-### BLE Test Data Strategy
-
-- Use deterministic fake devices:
-  - split keyboard: central + peripheral battery entries
-  - single-side keyboard
-  - unstable device alternating connected/disconnected
-- Use scripted event timelines for monitor mode:
-  - reconnect bursts
-  - `battery_level = null` updates to verify previous value retention
-  - threshold crossings around 20% for low-battery notifications
-
-### CI Execution Plan
-
-The `.github/workflows/ci.yml` workflow runs on `push`, `pull_request`, and manual `workflow_dispatch` events:
-
-- `frontend` job: `bun run lint`, `bun run format:check`, typecheck via `bun run build:ui`, frontend unit tests
-- `rust` job: `cargo fmt --all -- --check`, `bun run build:ui` (required by `tauri::generate_context!`), then `cargo test`. Run `cargo fmt --all` to format Rust code locally.
-- `e2e` job: Layer 1 mocked Playwright E2E (`bun run e2e`)
-- `audit` job: `cargo audit` (non-blocking, `continue-on-error`)
-
-Planned, not implemented:
-
-- Nightly (or manual dispatch): Layer 2 desktop integration E2E on Windows/macOS matrix
-
-### Initial Minimal Suite (recommended starting point)
-
-If you want to introduce tests incrementally, start with these high-value cases:
-
-- Unit: `upsertBatteryInfo`, `mergeBatteryInfos`, `normalizeLoadedDevices`.
-- Unit: `history.rs` CSV round-trip + malformed-line handling.
-- E2E: first launch, add device, notification event update, persistence reload.
+`check-licenses` verifies JavaScript licenses and, when `cargo-deny` is installed, Rust licenses. `generate-licenses` uses `cargo-about` to regenerate Rust license information. The generated files are kept under `licenses/`.
