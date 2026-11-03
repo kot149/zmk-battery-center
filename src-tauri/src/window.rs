@@ -47,10 +47,10 @@ fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
     suspension::resume(window);
     let config = crate::monitor::current_config(app);
     if let Err(error) = window.set_always_on_top(config["pinWindow"].as_bool().unwrap_or(false)) {
-        log::warn!("Failed to set main window pin state: {error}");
+        log::warn!("event=window_pin_failed error={error}");
     }
     if let Err(error) = position_main_window(app, window) {
-        log::warn!("Failed to position main window: {error}");
+        log::warn!("event=window_position_failed error={error}");
     }
     #[cfg(target_os = "linux")]
     {
@@ -71,7 +71,7 @@ fn reveal_main_window(app: &AppHandle, window: &WebviewWindow) -> tauri::Result<
     {
         window.show()?;
         if let Err(error) = window.set_focus() {
-            log::warn!("Failed to focus main window: {error}");
+            log::warn!("event=window_focus_failed error={error}");
         }
     }
     let _ = app.emit_to("main", "main-window-shown", ());
@@ -88,7 +88,7 @@ pub fn show_main_window(app: &AppHandle) {
             if state.ready.load(Ordering::SeqCst)
                 && let Err(error) = reveal_main_window(&handle, &window)
             {
-                log::error!("Failed to show main window: {error}");
+                log::error!("event=window_show_failed error={error}");
             }
             return;
         }
@@ -113,10 +113,10 @@ pub fn show_main_window(app: &AppHandle) {
             });
         if let Err(error) = result {
             state.requested_visible.store(false, Ordering::SeqCst);
-            log::error!("Failed to create main window: {error}");
+            log::error!("event=window_create_failed error={error}");
         }
     }) {
-        log::error!("Failed to schedule main window creation: {error}");
+        log::error!("event=window_create_schedule_failed error={error}");
     }
 }
 
@@ -126,7 +126,7 @@ pub fn hide_main_window(app: &AppHandle) {
         if let Some(window) = handle.get_webview_window("main")
             && let Err(error) = window.hide()
         {
-            log::error!("Failed to hide main window: {error}");
+            log::error!("event=window_hide_failed error={error}");
             return;
         }
         let state = handle.state::<WindowState>();
@@ -135,7 +135,7 @@ pub fn hide_main_window(app: &AppHandle) {
         #[cfg(target_os = "windows")]
         suspension::schedule(&handle);
     }) {
-        log::error!("Failed to schedule main window dismissal: {error}");
+        log::error!("event=window_dismiss_schedule_failed error={error}");
     }
 }
 
@@ -176,12 +176,12 @@ pub fn refresh_main_window(app: &AppHandle) {
             let was_ready = state.ready.swap(false, Ordering::SeqCst);
             if let Err(error) = window.reload() {
                 state.ready.store(was_ready, Ordering::SeqCst);
-                log::warn!("Failed to reload main window: {error}");
+                log::warn!("event=window_reload_failed error={error}");
             }
         }
         show_main_window(&handle);
     }) {
-        log::error!("Failed to schedule main window reload: {error}");
+        log::error!("event=window_reload_schedule_failed error={error}");
     }
 }
 
@@ -210,7 +210,7 @@ pub fn show_about_window(app: &AppHandle) {
                 let _ = window.show();
                 let _ = window.set_focus();
             }
-            Err(error) => log::error!("Failed to open About window: {error}"),
+            Err(error) => log::error!("event=about_window_open_failed error={error}"),
         }
     });
 }
@@ -235,7 +235,7 @@ pub async fn window_ready(
     app.run_on_main_thread(move || {
         let state = handle.state::<WindowState>();
         if let Err(error) = resize_main_window(&window, width, height) {
-            log::warn!("Failed to size main window: {error}");
+            log::warn!("event=window_size_failed error={error}");
         }
         state.ready.store(true, Ordering::SeqCst);
         let revealed = if state.requested_visible.load(Ordering::SeqCst) {
@@ -284,16 +284,16 @@ pub fn get_windows_text_scale_factor() -> f64 {
         match UISettings::new() {
             Ok(settings) => match settings.TextScaleFactor() {
                 Ok(factor) => {
-                    log::debug!("Text scale factor: {}", factor);
+                    log::debug!("event=text_scale_factor_read value={factor}");
                     factor
                 }
                 Err(e) => {
-                    log::error!("Failed to get TextScaleFactor: {:?}. Using default 1.0", e);
+                    log::error!("event=text_scale_factor_read_failed error={e:?} using=1.0");
                     1.0
                 }
             },
             Err(e) => {
-                log::error!("Failed to create UISettings: {:?}. Using default 1.0", e);
+                log::error!("event=ui_settings_create_failed error={e:?} using=1.0");
                 1.0
             }
         }
@@ -301,7 +301,7 @@ pub fn get_windows_text_scale_factor() -> f64 {
 
     #[cfg(not(target_os = "windows"))]
     {
-        log::info!("Non-Windows OS detected. Using default text scale factor 1.0");
+        log::info!("event=text_scale_factor_default reason=non_windows value=1.0");
         1.0
     }
 }

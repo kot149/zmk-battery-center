@@ -176,13 +176,13 @@ fn sanitize_device_text(s: &str) -> String {
 }
 
 async fn get_adapter() -> Result<Adapter, String> {
-    log::debug!("BLE I/O: requesting default adapter");
+    log::debug!("event=adapter_request");
     let adapter = Adapter::default()
         .await
         .ok_or("Bluetooth adapter not found")
         .map_err(|e| e.to_string())?;
     adapter.wait_available().await.map_err(|e| e.to_string())?;
-    log::debug!("BLE I/O: adapter is available");
+    log::debug!("event=adapter_ready");
     Ok(adapter)
 }
 
@@ -203,7 +203,7 @@ async fn disconnect_device(adapter: &Adapter, device: &Device) {
     {
         let _ = adapter.disconnect_device(device).await.map_err(|e| {
             log::warn!(
-                "BLE I/O: disconnect_device failed device_id={}: {}",
+                "event=disconnect_failed device_id={} error={}",
                 format_device_id_for_store(device),
                 e
             );
@@ -213,7 +213,7 @@ async fn disconnect_device(adapter: &Adapter, device: &Device) {
 }
 
 async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String> {
-    log::debug!("BLE I/O: searching target device id={id}");
+    log::debug!("event=device_search device_id={id}");
     let devices = connected_devices_for_lookup(adapter).await?;
 
     let target = devices
@@ -224,7 +224,7 @@ async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String
 
     let name = target.name().unwrap_or_else(|_| "(unknown)".to_string());
     log::debug!(
-        "BLE I/O: target device found id={} name={}",
+        "event=device_found device_id={} name={}",
         format_device_id_for_store(&target),
         name
     );
@@ -254,14 +254,14 @@ async fn filter_battery_devices(devices: Vec<Device>) -> Vec<Device> {
                 .then_some(device),
             Ok(Err(error)) => {
                 log::warn!(
-                    "BLE I/O: battery service query failed device_id={}: {error}",
+                    "event=battery_service_query_failed device_id={} error={error}",
                     device.id()
                 );
                 None
             }
             Err(_) => {
                 log::warn!(
-                    "BLE I/O: battery service query timed out device_id={}",
+                    "event=battery_service_query_timeout device_id={}",
                     device.id()
                 );
                 None
@@ -280,7 +280,7 @@ async fn get_battery_characteristic_contexts(
 ) -> Result<Vec<BatteryCharacteristicContext>, String> {
     let mut contexts = Vec::new();
     log::debug!(
-        "BLE I/O: discovering battery services for device id={}",
+        "event=battery_service_discovery device_id={}",
         format_device_id_for_store(target_device)
     );
     let services = target_device.services().await.map_err(|e| e.to_string())?;
@@ -298,10 +298,6 @@ async fn get_battery_characteristic_contexts(
             .iter()
             .filter(|c| c.uuid() == BATTERY_LEVEL_UUID)
         {
-            log::debug!(
-                "BLE I/O: found battery level characteristic for device id={}",
-                format_device_id_for_store(target_device)
-            );
             let mut user_description = None;
             let descriptors = battery_level_characteristic
                 .descriptors()
@@ -317,7 +313,7 @@ async fn get_battery_characteristic_contexts(
                     .await
                     .map_err(|e| e.to_string())?;
                 log::trace!(
-                    "BLE I/O: read user description bytes={} for device id={}",
+                    "event=user_description_read bytes={} device_id={}",
                     bytes_to_hex(&desc_value),
                     format_device_id_for_store(target_device)
                 );
@@ -329,6 +325,11 @@ async fn get_battery_characteristic_contexts(
                 }
             }
 
+            log::debug!(
+                "event=battery_characteristic_found device_id={} description={}",
+                format_device_id_for_store(target_device),
+                user_description.as_deref().unwrap_or("Central")
+            );
             contexts.push(BatteryCharacteristicContext {
                 characteristic: battery_level_characteristic.clone(),
                 user_description,
@@ -346,14 +347,14 @@ async fn read_battery_infos_strict(
 
     for context in contexts {
         let label = context.user_description.as_deref().unwrap_or("Central");
-        log::debug!("BLE I/O: read request battery_level descriptor={label}");
+        log::debug!("event=battery_level_read_request mode=strict descriptor={label}");
         let value = context
             .characteristic
             .read()
             .await
             .map_err(|e| e.to_string())?;
         log::trace!(
-            "BLE I/O: read response battery_level descriptor={} bytes={} parsed={:?}",
+            "event=battery_level_read_response mode=strict descriptor={} bytes={} parsed={:?}",
             label,
             bytes_to_hex(&value),
             value.first().copied()
@@ -374,7 +375,7 @@ async fn read_battery_infos_best_effort(
 
     for context in contexts {
         let label = context.user_description.as_deref().unwrap_or("Central");
-        log::debug!("BLE I/O: best-effort read request battery_level descriptor={label}");
+        log::debug!("event=battery_level_read_request mode=best_effort descriptor={label}");
         let read_result = context.characteristic.read().await;
         let battery_level = read_result
             .as_ref()
@@ -383,7 +384,7 @@ async fn read_battery_infos_best_effort(
         match read_result {
             Ok(value) => {
                 log::trace!(
-                    "BLE I/O: best-effort read response descriptor={} bytes={} parsed={:?}",
+                    "event=battery_level_read_response mode=best_effort descriptor={} bytes={} parsed={:?}",
                     label,
                     bytes_to_hex(&value),
                     battery_level
@@ -391,7 +392,7 @@ async fn read_battery_infos_best_effort(
             }
             Err(e) => {
                 log::debug!(
-                    "BLE I/O: best-effort read failed descriptor={} error={}",
+                    "event=battery_level_read_failed mode=best_effort descriptor={} error={}",
                     label,
                     e
                 );
@@ -515,7 +516,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
     };
 
     log::debug!(
-        "BLE I/O: notify subscribe request device_id={} description={}",
+        "event=notify_subscribe_request device_id={} description={}",
         device_id,
         context.user_description.as_deref().unwrap_or("Central")
     );
@@ -523,7 +524,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
         Ok(stream) => stream,
         Err(e) => {
             log::warn!(
-                "Failed to start notification stream for {} ({}): {}",
+                "event=notify_subscribe_failed device_id={} description={} error={}",
                 device_id,
                 context.user_description.as_deref().unwrap_or("Central"),
                 e
@@ -532,7 +533,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
         }
     };
     log::debug!(
-        "BLE I/O: notify subscribe response success device_id={} description={}",
+        "event=notify_subscribe_ok device_id={} description={}",
         device_id,
         context.user_description.as_deref().unwrap_or("Central")
     );
@@ -559,7 +560,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                 match &value {
                     Some(Ok(data)) => {
                         log::trace!(
-                            "BLE I/O: notify event device_id={} description={} bytes={} parsed={:?}",
+                            "event=notification device_id={} description={} bytes={} parsed={:?}",
                             device_id,
                             context.user_description.as_deref().unwrap_or("Central"),
                             bytes_to_hex(data),
@@ -568,7 +569,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                     }
                     Some(Err(e)) => {
                         log::warn!(
-                            "Battery notification stream error for {} ({}): {}",
+                            "event=notification_stream_error device_id={} description={} error={}",
                             device_id,
                             context.user_description.as_deref().unwrap_or("Central"),
                             e
@@ -576,7 +577,7 @@ async fn battery_notification_worker(args: BatteryNotificationWorkerArgs) {
                     }
                     None => {
                         log::warn!(
-                            "Battery notification stream ended for {} ({})",
+                            "event=notification_stream_ended device_id={} description={}",
                             device_id,
                             context.user_description.as_deref().unwrap_or("Central")
                         );
@@ -635,11 +636,11 @@ async fn battery_connection_watcher(
     session_id: u64,
     mut stop_rx: watch::Receiver<bool>,
 ) {
-    log::debug!("BLE I/O: connection watcher started device_id={device_id}");
+    log::debug!("event=connection_watcher_started device_id={device_id}");
 
     'outer: loop {
         if *stop_rx.borrow() {
-            log::debug!("BLE I/O: connection watcher stopped by signal device_id={device_id}");
+            log::debug!("event=connection_watcher_stopped device_id={device_id}");
             return;
         }
 
@@ -651,7 +652,7 @@ async fn battery_connection_watcher(
         // devices each run their own scan concurrently.
         // ZMK keyboards reconnect through OS-level BLE bonding, so we only need
         // to check whether the device has appeared in the connected list.
-        log::debug!("BLE I/O: connection watcher polling for device device_id={device_id}");
+        log::debug!("event=connection_poll device_id={device_id}");
         let target_device = loop {
             match connected_devices_for_lookup(&adapter).await {
                 Ok(devices) => {
@@ -659,16 +660,12 @@ async fn battery_connection_watcher(
                         .into_iter()
                         .find(|d| is_target_device(d, &device_id))
                     {
-                        log::debug!(
-                            "BLE I/O: connection watcher found target device device_id={device_id}"
-                        );
+                        log::debug!("event=connection_target_found device_id={device_id}");
                         break device;
                     }
                 }
                 Err(e) => {
-                    log::warn!(
-                        "BLE I/O: connection watcher query failed device_id={device_id}: {e}"
-                    );
+                    log::warn!("event=connection_poll_failed device_id={device_id} error={e}");
                 }
             }
             if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
@@ -676,13 +673,11 @@ async fn battery_connection_watcher(
             }
         };
 
-        log::debug!("BLE I/O: connection watcher calling connect_device device_id={device_id}");
+        log::debug!("event=connect_request mode=watcher device_id={device_id}");
         // On macOS, bluest connection should be Established before subscribing to device_connection_events().
         // See https://docs.rs/bluest/latest/bluest/struct.Adapter.html#method.device_connection_events
         if let Err(e) = adapter.connect_device(&target_device).await {
-            log::warn!(
-                "BLE I/O: connection watcher connect_device failed device_id={device_id}: {e}"
-            );
+            log::warn!("event=connect_failed mode=watcher device_id={device_id} error={e}");
             if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
                 return;
             }
@@ -693,7 +688,7 @@ async fn battery_connection_watcher(
             Ok(s) => s,
             Err(e) => {
                 log::warn!(
-                    "BLE I/O: connection watcher failed to subscribe to connection events device_id={device_id}: {e}"
+                    "event=connection_events_subscribe_failed device_id={device_id} error={e}"
                 );
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
                     disconnect_device(&adapter, &target_device).await;
@@ -711,9 +706,7 @@ async fn battery_connection_watcher(
 
         if !already_connected {
             // Wait for ConnectionEvent::Connected.
-            log::debug!(
-                "BLE I/O: connection watcher waiting for ConnectionEvent::Connected device_id={device_id}"
-            );
+            log::debug!("event=connection_wait device_id={device_id}");
             loop {
                 tokio::select! {
                     changed = stop_rx.changed() => {
@@ -725,13 +718,13 @@ async fn battery_connection_watcher(
                     event = conn_events.next() => {
                         match &event {
                             Some(bluest::ConnectionEvent::Connected) => {
-                                log::debug!("BLE I/O: connection watcher got ConnectionEvent::Connected device_id={device_id}");
+                                log::debug!("event=connection_event_connected device_id={device_id}");
                             }
                             Some(bluest::ConnectionEvent::Disconnected) => {
-                                log::debug!("BLE I/O: connection watcher got Disconnected while waiting device_id={device_id}");
+                                log::debug!("event=connection_event_disconnected device_id={device_id}");
                             }
                             None => {
-                                log::warn!("BLE I/O: connection watcher connection events stream ended device_id={device_id}");
+                                log::warn!("event=connection_events_ended device_id={device_id}");
                             }
                         }
 
@@ -749,17 +742,13 @@ async fn battery_connection_watcher(
                 }
             }
         } else {
-            log::debug!(
-                "BLE I/O: connection watcher device already connected device_id={device_id}"
-            );
+            log::debug!("event=device_already_connected device_id={device_id}");
         }
 
         let contexts = match get_battery_characteristic_contexts(&target_device).await {
             Ok(c) => c,
             Err(e) => {
-                log::warn!(
-                    "BLE I/O: connection watcher failed to get characteristics device_id={device_id}: {e}"
-                );
+                log::warn!("event=characteristic_lookup_failed device_id={device_id} error={e}");
                 if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(2)).await {
                     disconnect_device(&adapter, &target_device).await;
                     return;
@@ -777,9 +766,7 @@ async fn battery_connection_watcher(
         }
 
         if notify_contexts.is_empty() {
-            log::warn!(
-                "BLE I/O: connection watcher no notify characteristics device_id={device_id}"
-            );
+            log::warn!("event=notify_characteristic_missing device_id={device_id}");
             if wait_for_retry_or_stop(&mut stop_rx, Duration::from_secs(5)).await {
                 disconnect_device(&adapter, &target_device).await;
                 return;
@@ -810,7 +797,7 @@ async fn battery_connection_watcher(
         }
 
         log::debug!(
-            "BLE I/O: connection watcher starting {} workers device_id={device_id}",
+            "event=notification_workers_started workers={} device_id={device_id}",
             notify_contexts.len()
         );
 
@@ -851,9 +838,7 @@ async fn battery_connection_watcher(
             !state.ever_connected
         };
         if never_connected {
-            log::warn!(
-                "BLE I/O: no notification worker connected this session, reporting disconnected device_id={device_id}"
-            );
+            log::warn!("event=notification_workers_never_connected device_id={device_id}");
             emit_battery_monitor_status(
                 &app,
                 BatteryMonitorStatusEvent {
@@ -864,9 +849,7 @@ async fn battery_connection_watcher(
             );
         }
 
-        log::debug!(
-            "BLE I/O: connection watcher all workers finished, restarting device_id={device_id}"
-        );
+        log::debug!("event=notification_workers_finished device_id={device_id}");
 
         if *stop_rx.borrow() {
             disconnect_device(&adapter, &target_device).await;
@@ -880,7 +863,7 @@ async fn battery_connection_watcher(
 }
 
 async fn stop_monitor_task(id: &str, monitor: MonitorTask) {
-    log::debug!("BLE I/O: sending stop signal to monitor device_id={id}");
+    log::debug!("event=monitor_stop_request device_id={id}");
     let _ = monitor.stop_tx.send(true);
     for handle in monitor.join_handles {
         let abort_handle = handle.abort_handle();
@@ -888,11 +871,11 @@ async fn stop_monitor_task(id: &str, monitor: MonitorTask) {
             .await
             .is_err()
         {
-            log::warn!("BLE I/O: monitor did not stop in time, aborting device_id={id}");
+            log::warn!("event=monitor_stop_timeout device_id={id}");
             abort_handle.abort();
         }
     }
-    log::debug!("BLE I/O: monitor stopped device_id={id}");
+    log::debug!("event=monitor_stopped device_id={id}");
 }
 
 async fn stop_battery_notification_monitor_internal(id: &str) {
@@ -928,23 +911,20 @@ pub async fn stop_all_battery_monitors() {
         monitors.drain().collect()
     };
 
-    log::debug!(
-        "BLE I/O: stopping all monitors count={}",
-        all_monitors.len()
-    );
+    log::debug!("event=monitors_stop_request count={}", all_monitors.len());
 
     for (id, monitor) in all_monitors {
         stop_monitor_task(&id, monitor).await;
     }
 
-    log::debug!("BLE I/O: all monitors stopped");
+    log::debug!("event=monitors_stopped");
 }
 
 #[tauri::command]
 pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
     let adapter = get_adapter().await?;
 
-    log::debug!("BLE I/O: list connected battery devices request");
+    log::debug!("event=device_list_request");
     let devices = connected_devices_for_lookup(&adapter).await?;
     #[cfg(target_os = "windows")]
     let devices = filter_battery_devices(devices).await;
@@ -959,10 +939,7 @@ pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
         let id = format_device_id_for_store(&device);
         result.push(BleDeviceInfo { name, id });
     }
-    log::debug!(
-        "BLE I/O: list connected battery devices response count={}",
-        result.len()
-    );
+    log::debug!("event=device_list_response count={}", result.len());
 
     Ok(result)
 }
@@ -972,19 +949,19 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
     let adapter = get_adapter().await?;
     let target_device = get_target_device(&adapter, &id).await?;
 
-    log::debug!("BLE I/O: connect request (polling) device_id={id}");
+    log::debug!("event=connect_request mode=polling device_id={id}");
     adapter
         .connect_device(&target_device)
         .await
         .map_err(|e| e.to_string())?;
-    log::debug!("BLE I/O: connect response success (polling) device_id={id}");
+    log::debug!("event=connect_ok mode=polling device_id={id}");
 
     let contexts = get_battery_characteristic_contexts(&target_device).await?;
     let battery_infos = read_battery_infos_strict(&contexts).await?;
 
-    log::debug!("BLE I/O: disconnect request (polling) device_id={id}");
+    log::debug!("event=disconnect_request mode=polling device_id={id}");
     disconnect_device(&adapter, &target_device).await;
-    log::debug!("BLE I/O: disconnect response success (polling) device_id={id}");
+    log::debug!("event=disconnect_ok mode=polling device_id={id}");
 
     Ok(battery_infos)
 }
@@ -993,10 +970,7 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
     app: AppHandle,
     id: String,
 ) -> Result<BatteryMonitorStartResult, MonitorStartError> {
-    log::debug!(
-        "BLE I/O: start notification monitor request device_id={}",
-        id
-    );
+    log::debug!("event=notification_monitor_start_request device_id={}", id);
     let session_id = next_session_id();
     let adapter = get_adapter().await.map_err(MonitorStartError::Transient)?;
 
@@ -1006,12 +980,12 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
     // Try to read initial battery info if the device is currently connected.
     match get_target_device(&adapter, &id).await {
         Ok(target_device) => {
-            log::debug!("BLE I/O: connect request (notification) device_id={id}");
+            log::debug!("event=connect_request mode=notification device_id={id}");
             adapter
                 .connect_device(&target_device)
                 .await
                 .map_err(|e| MonitorStartError::Transient(e.to_string()))?;
-            log::debug!("BLE I/O: connect response success (notification) device_id={id}");
+            log::debug!("event=connect_ok mode=notification device_id={id}");
 
             let contexts = get_battery_characteristic_contexts(&target_device)
                 .await
@@ -1039,9 +1013,7 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
             notification_capability(properties)?;
         }
         Err(e) => {
-            log::info!(
-                "BLE I/O: device not found at startup, connection watcher will discover it device_id={id}: {e}"
-            );
+            log::info!("event=device_missing_at_start device_id={id} error={e}");
             initial_battery_infos = vec![];
         }
     }
@@ -1082,7 +1054,7 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
         stop_monitor_task(&id, monitor).await;
     }
 
-    log::debug!("BLE I/O: start notification monitor response success");
+    log::debug!("event=notification_monitor_start_ok");
 
     Ok(BatteryMonitorStartResult {
         session_id,
@@ -1103,9 +1075,9 @@ pub async fn start_battery_notification_monitor(
 
 #[tauri::command]
 pub async fn stop_battery_notification_monitor(id: String) -> Result<(), String> {
-    log::debug!("BLE I/O: stop notification monitor request device_id={id}");
+    log::debug!("event=notification_monitor_stop_request device_id={id}");
     stop_battery_notification_monitor_internal(&id).await;
-    log::debug!("BLE I/O: stop notification monitor response success device_id={id}");
+    log::debug!("event=notification_monitor_stop_ok device_id={id}");
     Ok(())
 }
 

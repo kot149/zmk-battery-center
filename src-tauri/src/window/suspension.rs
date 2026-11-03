@@ -50,21 +50,21 @@ pub(super) fn schedule(app: &AppHandle) {
                             return Ok(());
                         }
                         if let Err(error) = result {
-                            log::warn!("Failed to suspend main WebView: {error}");
+                            log::warn!("event=webview_suspend_failed error={error}");
                         } else if suspended {
-                            log::debug!("Suspended hidden main WebView");
+                            log::debug!("event=webview_suspended");
                         } else {
-                            log::debug!("Main WebView declined suspension");
+                            log::debug!("event=webview_suspend_declined");
                         }
                         Ok(())
                     }));
                 unsafe { core.TrySuspend(&completed) }
             })();
             if let Err(error) = result {
-                log::warn!("Failed to suspend main WebView: {error}");
+                log::warn!("event=webview_suspend_failed error={error}");
             }
         }) {
-            log::warn!("Failed to schedule main WebView suspension: {error}");
+            log::warn!("event=webview_suspend_schedule_failed error={error}");
         }
     });
 }
@@ -91,12 +91,12 @@ fn resume_for_generation(window: &WebviewWindow, expected_generation: Option<u64
             unsafe { core.Resume() }
         })();
         if let Err(error) = result {
-            log::warn!("Failed to resume main WebView: {error}");
+            log::warn!("event=webview_resume_failed error={error}");
         }
         if let Err(error) = unsafe { controller.SetIsVisible(true) } {
-            log::warn!("Failed to show main WebView controller: {error}");
+            log::warn!("event=webview_show_failed error={error}");
         }
     }) {
-        log::warn!("Failed to schedule main WebView resume: {error}");
+        log::warn!("event=webview_resume_schedule_failed error={error}");
     }
 }

@@ -46,7 +46,7 @@ impl HelpAction {
             Self::Url(url) => crate::diagnostics::open_url(app, url),
         };
         if let Err(error) = result {
-            log::warn!("Failed to open {label}: {error}");
+            log::warn!("event=open_failed item={label} error={error}");
         }
     }
 }
@@ -236,7 +236,7 @@ fn init_linux_tray(app_handle: AppHandle) {
     let tauri_image = match Image::from_bytes(include_bytes!("../icons/32x32.png")) {
         Ok(img) => img,
         Err(e) => {
-            log::error!("init_linux_tray: failed to decode embedded tray icon: {e}");
+            log::error!("event=tray_icon_decode_failed error={e}");
             return;
         }
     };
@@ -272,7 +272,7 @@ fn init_linux_tray(app_handle: AppHandle) {
                 *state.tray_handle.lock().unwrap() = Some(handle);
             }
             Err(e) => {
-                log::error!("init_linux_tray: failed to spawn D-Bus tray: {e}");
+                log::error!("event=tray_dbus_spawn_failed error={e}");
             }
         }
     });
@@ -286,7 +286,7 @@ fn toggle_config(app: &AppHandle, key: &'static str) {
         match crate::monitor::patch_config(&app, serde_json::json!({key: enabled})).await {
             Ok(_) if key == "manualWindowPositioning" => crate::window::show_main_window(&app),
             Ok(_) => {}
-            Err(error) => log::error!("Failed to update {key}: {error}"),
+            Err(error) => log::error!("event=tray_menu_update_failed item={key} error={error}"),
         }
     });
 }
@@ -376,7 +376,10 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
                     ISSUES_URL
                 };
                 if let Err(error) = crate::diagnostics::open_url(app, url) {
-                    log::warn!("Failed to open {}: {error}", event.id.as_ref());
+                    log::warn!(
+                        "event=tray_action_open_failed action={} error={error}",
+                        event.id.as_ref()
+                    );
                 }
             }
             "data" | "logs" => {
@@ -386,7 +389,10 @@ fn init_native_menu(app: &AppHandle) -> tauri::Result<()> {
                     crate::diagnostics::AppFolder::Logs
                 };
                 if let Err(error) = crate::diagnostics::open_app_folder(app.clone(), folder) {
-                    log::warn!("Failed to open {} directory: {error}", event.id.as_ref());
+                    log::warn!(
+                        "event=tray_folder_open_failed folder={} error={error}",
+                        event.id.as_ref()
+                    );
                 }
             }
             "quit" => {
@@ -403,7 +409,7 @@ pub fn init_tray(app_handle: AppHandle) {
     sync_config(&app_handle, &crate::monitor::current_config(&app_handle));
     #[cfg(not(target_os = "linux"))]
     if let Err(error) = init_native_menu(&app_handle) {
-        log::error!("Failed to create tray menu: {error}");
+        log::error!("event=tray_menu_create_failed error={error}");
     }
     #[cfg(target_os = "linux")]
     {
@@ -413,9 +419,7 @@ pub fn init_tray(app_handle: AppHandle) {
     #[cfg(not(target_os = "linux"))]
     {
         let Some(tray) = app_handle.tray_by_id("tray_icon") else {
-            log::error!(
-                "init_tray: tray icon 'tray_icon' not found; tray events will be unavailable"
-            );
+            log::error!("event=tray_icon_missing id=tray_icon");
             return;
         };
 
@@ -464,6 +468,6 @@ pub fn init_tray(app_handle: AppHandle) {
     if let Some(snapshot) = crate::monitor::current_snapshot()
         && let Err(error) = crate::tray_battery_payload::refresh(&app_handle, &snapshot)
     {
-        log::warn!("Failed to initialize battery tray icon: {error}");
+        log::warn!("event=tray_battery_icon_init_failed error={error}");
     }
 }

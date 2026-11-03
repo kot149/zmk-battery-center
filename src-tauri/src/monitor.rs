@@ -178,7 +178,7 @@ fn persist_snapshot_values(
         if let Err(compensation_error) =
             write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
         {
-            log::error!("Failed to restore configuration after save failure: {compensation_error}");
+            log::error!("event=config_restore_failed error={compensation_error}");
         }
         return Err(error);
     }
@@ -188,14 +188,14 @@ fn persist_snapshot_values(
         if let Err(compensation_error) =
             write(DEVICES_FILENAME, DEVICES_KEY, persisted.devices.clone())
         {
-            log::error!("Failed to restore devices after save failure: {compensation_error}");
+            log::error!("event=devices_restore_failed error={compensation_error}");
         }
         if save_config
             && let Err(compensation_error) =
                 write(CONFIG_FILENAME, CONFIG_KEY, persisted.config.clone())
         {
             log::error!(
-                "Failed to restore configuration after device save failure: {compensation_error}"
+                "event=config_restore_failed reason=device_save_failure error={compensation_error}"
             );
         }
         return Err(error);
@@ -465,10 +465,10 @@ fn sync_autostart(app: &AppHandle, config: &Value) {
                 manager.disable()
             };
             if let Err(error) = result {
-                log::warn!("Failed to update autostart: {error}");
+                log::warn!("event=autostart_update_failed error={error}");
             }
         }
-        Err(error) => log::warn!("Failed to read autostart state: {error}"),
+        Err(error) => log::warn!("event=autostart_read_failed error={error}"),
         _ => {}
     }
 }
@@ -829,11 +829,11 @@ fn edge_notification_messages(
 }
 
 fn send_notification(app: &AppHandle, message: String) {
-    log::info!("{message}");
+    log::info!("event=notification message={message}");
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = crate::notification::send_notification(app, message, None).await {
-            log::warn!("Failed to send notification: {error}");
+            log::warn!("event=notification_send_failed error={error}");
         }
     });
 }
@@ -897,7 +897,10 @@ fn history_records(infos: &[MonitorBatteryInfo], timestamp: &str) -> Vec<History
 
 fn record_history(app: &AppHandle, device: &MonitorDevice, infos: &[MonitorBatteryInfo]) {
     let Ok(timestamp) = history::current_timestamp_rfc3339() else {
-        log::warn!("Failed to obtain history timestamp for {}", device.id);
+        log::warn!(
+            "event=history_timestamp_failed device_ref={}",
+            crate::diagnostics::device_ref(&device.id)
+        );
         return;
     };
     let pending = history_records(infos, &timestamp);
@@ -924,8 +927,8 @@ fn record_history(app: &AppHandle, device: &MonitorDevice, infos: &[MonitorBatte
             }
             Err(error) => {
                 log::warn!(
-                    "Failed to append battery history for {}: {error}",
-                    device.id
+                    "event=history_append_failed device_ref={} error={error}",
+                    crate::diagnostics::device_ref(&device.id)
                 );
             }
         }
@@ -1054,7 +1057,7 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
             crate::external_integration::publish_monitor_snapshot(&initial_app, &initial_snapshot)
                 .await
         {
-            log::warn!("Failed to publish initial external battery snapshot: {error}");
+            log::warn!("event=external_snapshot_initial_publish_failed error={error}");
         }
     });
 
@@ -1194,12 +1197,12 @@ async fn actor_loop(
             }
             Request::BatteryInfo(payload) => {
                 if let Err(error) = core.handle_battery_info(payload) {
-                    log::warn!("Failed to process battery info notification: {error}");
+                    log::warn!("event=battery_info_process_failed error={error}");
                 }
             }
             Request::MonitorStatus(payload) => {
                 if let Err(error) = core.handle_monitor_status(payload) {
-                    log::warn!("Failed to process battery monitor status: {error}");
+                    log::warn!("event=monitor_status_process_failed error={error}");
                 }
             }
             Request::Poll { reply } => {
@@ -1403,10 +1406,10 @@ impl MonitorCore {
             if let Err(error) =
                 crate::external_integration::publish_monitor_snapshot(&app, &snapshot).await
             {
-                log::warn!("Failed to publish external battery snapshot: {error}");
+                log::warn!("event=external_snapshot_publish_failed error={error}");
             }
             if let Err(error) = crate::tray_battery_payload::refresh(&app, &snapshot) {
-                log::debug!("Failed to refresh tray battery payload: {error}");
+                log::debug!("event=tray_payload_refresh_failed error={error}");
             }
         });
     }
@@ -1652,7 +1655,10 @@ impl MonitorCore {
                         )
                         .await;
                         if let Ok(Err(error)) = result {
-                            log::warn!("Failed to stop battery monitor for {id}: {error}");
+                            log::warn!(
+                                "event=monitor_stop_failed device_ref={} error={error}",
+                                crate::diagnostics::device_ref(&id)
+                            );
                         }
                     }
                 }
@@ -1919,7 +1925,10 @@ impl MonitorCore {
                 self.snapshot.devices[index] = next;
             }
             Err(error) => {
-                log::debug!("Polling failed for {id}: {error}");
+                log::debug!(
+                    "event=poll_failed device_ref={} error={error}",
+                    crate::diagnostics::device_ref(id)
+                );
                 let mut next = previous.clone();
                 next.battery_infos = mark_infos_failed(&previous.battery_infos);
                 next.is_disconnected = true;
