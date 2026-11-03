@@ -43,16 +43,16 @@ Remove-Item Env:ZMK_BATTERY_CENTER_DATA_DIR
 
 ## Build and code checks
 
-| Command | Purpose |
-| --- | --- |
-| `bun run build:ui` | Type-check and build the frontend |
-| `bun run build:app` | Build the Tauri release binary without an installer (`--no-bundle`) |
-| `bun run build` | Build the application and platform bundles |
-| `bun run lint` | Lint the frontend and scripts |
-| `bun run lint:rust` | Run Clippy on the Rust workspace |
-| `bun run format:check` | Check frontend and script formatting |
-| `bun run format:rust:check` | Check Rust formatting |
-| `bun run check-versions` | Verify version consistency |
+| Command                     | Purpose                                                             |
+| --------------------------- | ------------------------------------------------------------------- |
+| `bun run build:ui`          | Type-check and build the frontend                                   |
+| `bun run build:app`         | Build the Tauri release binary without an installer (`--no-bundle`) |
+| `bun run build`             | Build the application and platform bundles                          |
+| `bun run lint`              | Lint the frontend and scripts                                       |
+| `bun run lint:rust`         | Run Clippy on the Rust workspace                                    |
+| `bun run format:check`      | Check frontend and script formatting                                |
+| `bun run format:rust:check` | Check Rust formatting                                               |
+| `bun run check-versions`    | Verify version consistency                                          |
 
 Use `bun run format` and `bun run format:rust` to apply formatting. `vite.config.ts` holds the Vite+ configuration for frontend tooling.
 
@@ -67,17 +67,17 @@ If an incremental Rust build appears stale, `cargo clean` removes Cargo's build 
 
 ## Project structure
 
-| Path | Responsibility |
-| --- | --- |
-| `src/` | React/TypeScript frontend |
-| `src/components/` | UI components; `shadcn/` contains UI primitives |
-| `src/providers/` | React context providers |
-| `src/hooks/` | React hooks |
-| `src/utils/` | Shared frontend utilities and Tauri command wrappers |
-| `src-tauri/src/` | Rust backend, BLE monitoring, storage, windows, and tray integration |
-| `e2e/` | Playwright UI-flow tests and mocked Tauri APIs |
-| `scripts/` | Build support, previews, smoke tests, and maintenance tools |
-| `.github/workflows/` | CI, security audit, build, and release workflows |
+| Path                 | Responsibility                                                       |
+| -------------------- | -------------------------------------------------------------------- |
+| `src/`               | React/TypeScript frontend                                            |
+| `src/components/`    | UI components; `shadcn/` contains UI primitives                      |
+| `src/providers/`     | React context providers                                              |
+| `src/hooks/`         | React hooks                                                          |
+| `src/utils/`         | Shared frontend utilities and Tauri command wrappers                 |
+| `src-tauri/src/`     | Rust backend, BLE monitoring, storage, windows, and tray integration |
+| `e2e/`               | Playwright UI-flow tests and mocked Tauri APIs                       |
+| `scripts/`           | Build support, previews, smoke tests, and maintenance tools          |
+| `.github/workflows/` | CI, security audit, build, and release workflows                     |
 
 TypeScript and TSX filenames use **kebab-case**. Keep unit tests in the nearest `__tests__/` directory, with the same basename as the code being tested.
 
@@ -115,11 +115,11 @@ Known device IDs and names, MAC addresses, UUIDs, and the home directory are red
 
 ### Unit tests
 
-| Command | Coverage |
-| --- | --- |
+| Command                 | Coverage                                                                   |
+| ----------------------- | -------------------------------------------------------------------------- |
 | `bun run test:frontend` | Frontend unit/component tests (`src/**/__tests__/`), using Vite+ and jsdom |
-| `bun run test:rust` | Rust unit tests (`cargo test`) |
-| `bun run test` | Both suites |
+| `bun run test:rust`     | Rust unit tests (`cargo test`)                                             |
+| `bun run test`          | Both suites                                                                |
 
 Rust tests that compile Tauri context may require frontend output. If that output is missing, run `bun run build:ui` first, as done in CI.
 
