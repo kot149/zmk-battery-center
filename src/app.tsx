@@ -353,7 +353,7 @@ function App() {
             : state === State.fetchingBatteryInfo
               ? "w-90 min-h-58"
               : state === State.settings
-                ? "w-95 min-h-90"
+                ? "w-95 min-h-120"
                 : "w-90 min-h-90"
       }`}
     >
