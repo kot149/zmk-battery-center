@@ -36,14 +36,14 @@ runs:
 
     - name: install Rust stable (with extra targets)
       if: ${{ inputs.rust-extra-targets != '' }}
-      uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
       with:
         toolchain: stable
         targets: ${{ inputs.rust-extra-targets }}
 
     - name: install Rust stable
       if: ${{ inputs.rust-extra-targets == '' }}
-      uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch, pinned 2026-07-10
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
       with:
         toolchain: stable
 
