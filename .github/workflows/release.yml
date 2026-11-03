@@ -128,7 +128,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target aarch64-apple-darwin"
           rust-extra-targets: aarch64-apple-darwin
@@ -149,7 +149,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target x86_64-apple-darwin"
           rust-extra-targets: x86_64-apple-darwin
@@ -170,7 +170,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-windows-x64
@@ -189,7 +189,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target aarch64-pc-windows-msvc"
           ubuntu-deps: "none"
@@ -209,7 +209,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target x86_64-unknown-linux-gnu"
           ubuntu-deps: "x64"
@@ -229,7 +229,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target aarch64-unknown-linux-gnu"
           ubuntu-deps: "arm64"
