@@ -11,6 +11,9 @@ on:
       - Cargo.lock
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: audit-${{ github.ref }}
   cancel-in-progress: true

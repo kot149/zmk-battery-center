@@ -32,6 +32,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 # This workflow will build your tauri app without uploading it anywhere.
 jobs:
   select-platforms:
