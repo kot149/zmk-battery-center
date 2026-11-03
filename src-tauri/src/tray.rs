@@ -284,7 +284,9 @@ fn toggle_config(app: &AppHandle, key: &'static str) {
         let config = crate::monitor::current_config(&app);
         let enabled = !config[key].as_bool().unwrap_or(false);
         match crate::monitor::patch_config(&app, serde_json::json!({key: enabled})).await {
-            Ok(_) if key == "manualWindowPositioning" => crate::window::show_main_window(&app),
+            Ok(_) if key == "manualWindowPositioning" || (key == "pinWindow" && enabled) => {
+                crate::window::show_main_window(&app)
+            }
             Ok(_) => {}
             Err(error) => log::error!("event=tray_menu_update_failed item={key} error={error}"),
         }
