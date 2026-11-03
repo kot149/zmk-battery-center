@@ -1,0 +1,5 @@
+# actionlint <= 1.7.12 does not know GitHub's `$/` self-repository syntax.
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      - 'specifying action "\$/.+" in invalid format'

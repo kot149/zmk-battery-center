@@ -32,6 +32,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: read
+
 # This workflow will build your tauri app without uploading it anywhere.
 jobs:
   select-platforms:
@@ -83,8 +86,10 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target aarch64-apple-darwin"
           rust-extra-targets: aarch64-apple-darwin
@@ -97,8 +102,10 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target x86_64-apple-darwin"
           rust-extra-targets: x86_64-apple-darwin
@@ -111,8 +118,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-windows-x64
@@ -123,8 +132,10 @@ jobs:
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target aarch64-pc-windows-msvc"
           ubuntu-deps: "none"
@@ -136,8 +147,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target x86_64-unknown-linux-gnu"
           ubuntu-deps: "x64"
@@ -149,8 +162,10 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: ./.github/actions/tauri-platform-build
+      - uses: $/.github/actions/tauri-platform-build
         with:
           tauri-args: "--target aarch64-unknown-linux-gnu"
           ubuntu-deps: "arm64"
