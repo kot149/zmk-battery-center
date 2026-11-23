@@ -1,11 +1,11 @@
 use crate::{ble, history, storage};
-use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::async_runtime::JoinHandle;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_autostart::ManagerExt as AutoStartManagerExt;
 use tokio::sync::{Notify, mpsc, oneshot};
@@ -129,9 +129,10 @@ enum Request {
     Poll {
         reply: oneshot::Sender<Result<(), String>>,
     },
-    PollBatchResult {
+    PollResult {
         token: u64,
-        results: Vec<(String, Result<Vec<ble::BatteryInfo>, String>)>,
+        id: String,
+        result: Result<Vec<ble::BatteryInfo>, String>,
     },
     MonitorStarted {
         token: u64,
@@ -1135,7 +1136,7 @@ async fn actor_loop(
         device_retry_generation: 0,
         monitor_token: 0,
         poll_token: 0,
-        poll_in_flight: false,
+        pending_polls: HashMap::new(),
         wake,
     };
     core.schedule_reconfigure();
@@ -1209,8 +1210,8 @@ async fn actor_loop(
                 core.schedule_poll();
                 let _ = reply.send(Ok(()));
             }
-            Request::PollBatchResult { token, results } => {
-                core.handle_poll_batch_result(token, results);
+            Request::PollResult { token, id, result } => {
+                core.handle_poll_result(token, &id, result);
             }
             Request::MonitorStarted {
                 token,
@@ -1232,7 +1233,13 @@ async fn actor_loop(
         }
     }
 
+    core.cancel_pending_polls();
     let _ = core.stop_all_monitors().await;
+}
+
+struct PendingPoll {
+    token: u64,
+    task: JoinHandle<()>,
 }
 
 struct MonitorCore {
@@ -1251,7 +1258,7 @@ struct MonitorCore {
     device_retry_generation: u64,
     monitor_token: u64,
     poll_token: u64,
-    poll_in_flight: bool,
+    pending_polls: HashMap<String, PendingPoll>,
     wake: Arc<Notify>,
 }
 
@@ -1514,6 +1521,9 @@ impl MonitorCore {
         let mut candidate = self.snapshot.clone();
         candidate.devices.remove(index);
         self.commit_requested(candidate, false, true)?;
+        if let Some(poll) = self.pending_polls.remove(id) {
+            poll.task.abort();
+        }
         let was_active = self.active_monitors.remove(id);
         let session_id = self.active_monitor_sessions.remove(id);
         if was_active || session_id.is_some() {
@@ -1621,6 +1631,7 @@ impl MonitorCore {
         self.starting_monitors.clear();
         self.monitor_retries.clear();
         let desired: Vec<String> = if config_fetch_interval(&self.snapshot.config).is_none() {
+            self.cancel_pending_polls();
             self.snapshot
                 .devices
                 .iter()
@@ -1717,43 +1728,50 @@ impl MonitorCore {
     }
 
     fn schedule_poll(&mut self) {
-        if config_fetch_interval(&self.snapshot.config).is_none() || self.poll_in_flight {
-            return;
-        }
-        self.poll_in_flight = true;
-        self.poll_token = self.poll_token.saturating_add(1);
-        let token = self.poll_token;
-        let devices = self.snapshot.devices.clone();
-        let tx = self.tx.clone();
-        tauri::async_runtime::spawn(async move {
-            let results = join_all(devices.iter().map(|device| {
-                let id = device.id.clone();
-                let disconnected = device.is_disconnected;
-                async move { (id.clone(), read_poll_with_retries(&id, disconnected).await) }
-            }))
-            .await;
-            let _ = tx.send(Request::PollBatchResult { token, results }).await;
-        });
-    }
-
-    fn handle_poll_batch_result(
-        &mut self,
-        token: u64,
-        results: Vec<(String, Result<Vec<ble::BatteryInfo>, String>)>,
-    ) {
-        if token != self.poll_token {
-            return;
-        }
-        self.poll_in_flight = false;
         if config_fetch_interval(&self.snapshot.config).is_none() {
             return;
         }
-        let mut changed = false;
-        for (id, result) in results {
-            changed |= self.apply_poll_result(&id, result);
+        for device in &self.snapshot.devices {
+            let std::collections::hash_map::Entry::Vacant(poll) =
+                self.pending_polls.entry(device.id.clone())
+            else {
+                continue;
+            };
+            self.poll_token = self.poll_token.saturating_add(1);
+            let token = self.poll_token;
+            let id = device.id.clone();
+            let was_disconnected = device.is_disconnected;
+            let tx = self.tx.clone();
+            let task = tauri::async_runtime::spawn(async move {
+                let result = read_poll_with_retries(&id, was_disconnected).await;
+                let _ = tx.send(Request::PollResult { token, id, result }).await;
+            });
+            poll.insert(PendingPoll { token, task });
         }
-        if changed {
+    }
+
+    fn handle_poll_result(
+        &mut self,
+        token: u64,
+        id: &str,
+        result: Result<Vec<ble::BatteryInfo>, String>,
+    ) {
+        if self
+            .pending_polls
+            .get(id)
+            .is_none_or(|poll| poll.token != token)
+        {
+            return;
+        }
+        self.pending_polls.remove(id);
+        if self.apply_poll_result(id, result) {
             self.publish_observation();
+        }
+    }
+
+    fn cancel_pending_polls(&mut self) {
+        for (_, poll) in self.pending_polls.drain() {
+            poll.task.abort();
         }
     }
 
