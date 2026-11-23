@@ -36,6 +36,8 @@ struct MockDevice {
 
 #[zbus::interface(name = "org.bluez.Device1")]
 impl MockDevice {
+    fn connect(&self) {}
+
     #[zbus(property)]
     fn alias(&self) -> &str {
         "Test keyboard"
@@ -168,4 +170,12 @@ async fn gatt_uuid_queries_are_bounded_and_isolated_per_device() {
         get_battery_characteristic_contexts(&missing).await,
         Err(GattDiscoveryError::Bluetooth(_))
     ));
+
+    // A connected device can lack the battery service or its level characteristic.
+    for id in [NO_BATTERY_ID, HEALTHY_ID] {
+        assert_eq!(
+            get_battery_info(id.to_string()).await.unwrap_err(),
+            "Battery level characteristic not found"
+        );
+    }
 }

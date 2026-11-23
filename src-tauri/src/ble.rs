@@ -993,16 +993,17 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
         .map_err(|e| e.to_string())?;
     log::debug!("event=connect_ok mode=polling device_id={id}");
 
-    let contexts = get_battery_characteristic_contexts(&target_device)
-        .await
-        .map_err(|error| error.to_string())?;
-    let battery_infos = read_battery_infos_strict(&contexts).await?;
+    let battery_infos = match get_battery_characteristic_contexts(&target_device).await {
+        Ok(contexts) if !contexts.is_empty() => read_battery_infos_strict(&contexts).await,
+        Ok(_) => Err("Battery level characteristic not found".to_string()),
+        Err(error) => Err(error.to_string()),
+    };
 
     log::debug!("event=disconnect_request mode=polling device_id={id}");
     disconnect_device(&adapter, &target_device).await;
     log::debug!("event=disconnect_ok mode=polling device_id={id}");
 
-    Ok(battery_infos)
+    battery_infos
 }
 
 pub(crate) async fn start_battery_notification_monitor_with_session(
