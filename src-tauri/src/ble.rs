@@ -1,5 +1,5 @@
 use bluest::btuuid::descriptors::CHARACTERISTIC_USER_DESCRIPTION;
-use bluest::{Adapter, Characteristic, Device};
+use bluest::{Adapter, Characteristic, Device, Service};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -10,11 +10,15 @@ use std::sync::{
 use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, watch};
 use tokio::task::JoinHandle;
-use tokio::time::{Duration, sleep};
+use tokio::time::{Duration, Instant, sleep, timeout_at};
 use uuid::Uuid;
+
+#[cfg(all(test, target_os = "linux"))]
+mod bluez_test;
 
 const BATTERY_SERVICE_UUID: Uuid = Uuid::from_u128(0x0000180F_0000_1000_8000_00805F9B34FB);
 const BATTERY_LEVEL_UUID: Uuid = Uuid::from_u128(0x00002A19_0000_1000_8000_00805F9B34FB);
+const SERVICES_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(8);
 const BATTERY_INFO_NOTIFICATION_EVENT: &str = "battery-info-notification";
 const BATTERY_MONITOR_STATUS_EVENT: &str = "battery-monitor-status";
 
@@ -60,6 +64,32 @@ pub struct BatteryMonitorStatusEvent {
 struct BatteryCharacteristicContext {
     characteristic: Characteristic,
     user_description: Option<String>,
+}
+
+#[derive(Debug)]
+enum GattDiscoveryError {
+    ServiceListTimedOut,
+    ServiceUuidTimedOut,
+    Bluetooth(bluest::Error),
+}
+
+impl From<bluest::Error> for GattDiscoveryError {
+    fn from(error: bluest::Error) -> Self {
+        Self::Bluetooth(error)
+    }
+}
+
+impl std::fmt::Display for GattDiscoveryError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ServiceListTimedOut | Self::ServiceUuidTimedOut => write!(
+                formatter,
+                "GATT service discovery timed out after {}s",
+                SERVICES_DISCOVERY_TIMEOUT.as_secs()
+            ),
+            Self::Bluetooth(error) => std::fmt::Display::fmt(error, formatter),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -222,7 +252,10 @@ async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String
         .cloned()
         .ok_or_else(|| "Device not found".to_string())?;
 
-    let name = target.name().unwrap_or_else(|_| "(unknown)".to_string());
+    let name = target
+        .name_async()
+        .await
+        .unwrap_or_else(|_| "(unknown)".to_string());
     log::debug!(
         "event=device_found device_id={} name={}",
         format_device_id_for_store(&target),
@@ -233,35 +266,52 @@ async fn get_target_device(adapter: &Adapter, id: &str) -> Result<Device, String
 }
 
 async fn connected_devices_for_lookup(adapter: &Adapter) -> Result<Vec<Device>, String> {
-    // Windows service-filtered enumeration waits for wireless discovery to finish.
-    #[cfg(target_os = "windows")]
-    let devices = adapter.connected_devices().await;
-    #[cfg(not(target_os = "windows"))]
+    // CoreBluetooth filters system-connected devices before the app connects to them.
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     let devices = adapter
         .connected_devices_with_services(&[BATTERY_SERVICE_UUID, BATTERY_LEVEL_UUID])
         .await;
+    // Service-filtered enumeration can wait on unrelated devices on Linux and Windows.
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    let devices = adapter.connected_devices().await;
 
     devices.map_err(|e| e.to_string())
 }
 
-#[cfg(target_os = "windows")]
+async fn find_battery_services(
+    device: &Device,
+    first_match_only: bool,
+) -> Result<Vec<Service>, GattDiscoveryError> {
+    let deadline = Instant::now() + SERVICES_DISCOVERY_TIMEOUT;
+    let services = timeout_at(deadline, device.services())
+        .await
+        .map_err(|_| GattDiscoveryError::ServiceListTimedOut)??;
+    let match_services = async {
+        let mut matching_services = Vec::new();
+        for service in services {
+            if service.uuid_async().await? == BATTERY_SERVICE_UUID {
+                matching_services.push(service);
+                if first_match_only {
+                    break;
+                }
+            }
+        }
+        Ok::<_, bluest::Error>(matching_services)
+    };
+    timeout_at(deadline, match_services)
+        .await
+        .map_err(|_| GattDiscoveryError::ServiceUuidTimedOut)?
+        .map_err(GattDiscoveryError::from)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 async fn filter_battery_devices(devices: Vec<Device>) -> Vec<Device> {
     let checks = devices.into_iter().map(|device| async move {
-        match tokio::time::timeout(Duration::from_secs(8), device.services()).await {
-            Ok(Ok(services)) => services
-                .iter()
-                .any(|service| service.uuid() == BATTERY_SERVICE_UUID)
-                .then_some(device),
-            Ok(Err(error)) => {
-                log::warn!(
+        match find_battery_services(&device, true).await {
+            Ok(services) => (!services.is_empty()).then_some(device),
+            Err(error) => {
+                log::debug!(
                     "event=battery_service_query_failed device_id={} error={error}",
-                    device.id()
-                );
-                None
-            }
-            Err(_) => {
-                log::warn!(
-                    "event=battery_service_query_timeout device_id={}",
                     device.id()
                 );
                 None
@@ -277,52 +327,39 @@ async fn filter_battery_devices(devices: Vec<Device>) -> Vec<Device> {
 
 async fn get_battery_characteristic_contexts(
     target_device: &Device,
-) -> Result<Vec<BatteryCharacteristicContext>, String> {
+) -> Result<Vec<BatteryCharacteristicContext>, GattDiscoveryError> {
     let mut contexts = Vec::new();
     log::debug!(
         "event=battery_service_discovery device_id={}",
         format_device_id_for_store(target_device)
     );
-    let services = target_device.services().await.map_err(|e| e.to_string())?;
+    for battery_service in find_battery_services(target_device, false).await? {
+        let characteristics = battery_service.characteristics().await?;
 
-    for battery_service in services
-        .iter()
-        .filter(|service| service.uuid() == BATTERY_SERVICE_UUID)
-    {
-        let characteristics = battery_service
-            .characteristics()
-            .await
-            .map_err(|e| e.to_string())?;
-
-        for battery_level_characteristic in characteristics
-            .iter()
-            .filter(|c| c.uuid() == BATTERY_LEVEL_UUID)
-        {
+        for battery_level_characteristic in characteristics {
+            if battery_level_characteristic.uuid_async().await? != BATTERY_LEVEL_UUID {
+                continue;
+            }
             let mut user_description = None;
-            let descriptors = battery_level_characteristic
-                .descriptors()
-                .await
-                .map_err(|e| e.to_string())?;
+            let descriptors = battery_level_characteristic.descriptors().await?;
 
-            if let Some(user_description_descriptor) = descriptors
-                .iter()
-                .find(|d| d.uuid() == CHARACTERISTIC_USER_DESCRIPTION)
-            {
-                let desc_value = user_description_descriptor
-                    .read()
-                    .await
-                    .map_err(|e| e.to_string())?;
+            for descriptor in descriptors {
+                if descriptor.uuid_async().await? != CHARACTERISTIC_USER_DESCRIPTION {
+                    continue;
+                }
+                let desc_value = descriptor.read().await?;
                 log::trace!(
                     "event=user_description_read bytes={} device_id={}",
                     bytes_to_hex(&desc_value),
                     format_device_id_for_store(target_device)
                 );
-                if let Ok(desc_str) = String::from_utf8(desc_value.clone()) {
+                if let Ok(desc_str) = String::from_utf8(desc_value) {
                     let sanitized = sanitize_device_text(&desc_str);
                     if !sanitized.is_empty() {
                         user_description = Some(sanitized);
                     }
                 }
+                break;
             }
 
             log::debug!(
@@ -331,7 +368,7 @@ async fn get_battery_characteristic_contexts(
                 user_description.as_deref().unwrap_or("Central")
             );
             contexts.push(BatteryCharacteristicContext {
-                characteristic: battery_level_characteristic.clone(),
+                characteristic: battery_level_characteristic,
                 user_description,
             });
         }
@@ -644,7 +681,7 @@ async fn battery_connection_watcher(
             return;
         }
 
-        // Poll connected_devices_with_services instead of discover_devices.
+        // Poll the connected-device list without starting an active scan.
         // discover_devices starts an active BLE radio scan which is expensive:
         // on Windows the WinRT BluetoothLEAdvertisementWatcher floods the
         // message pump with callbacks, making the system tray menu unresponsive
@@ -698,7 +735,7 @@ async fn battery_connection_watcher(
             }
         };
 
-        // Check whether the device is already connected (returned in the connected-first batch).
+        // Check whether the device is still in the connected-device list.
         let already_connected = connected_devices_for_lookup(&adapter)
             .await
             .map(|devs| devs.iter().any(|d| is_target_device(d, &device_id)))
@@ -926,14 +963,14 @@ pub async fn list_battery_devices() -> Result<Vec<BleDeviceInfo>, String> {
 
     log::debug!("event=device_list_request");
     let devices = connected_devices_for_lookup(&adapter).await?;
-    #[cfg(target_os = "windows")]
+    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     let devices = filter_battery_devices(devices).await;
 
     let mut result = Vec::new();
 
     for device in devices.into_iter() {
-        let name = match device.name() {
-            Ok(n) => n.to_string(),
+        let name = match device.name_async().await {
+            Ok(name) => name,
             Err(_) => continue,
         };
         let id = format_device_id_for_store(&device);
@@ -956,7 +993,9 @@ pub async fn get_battery_info(id: String) -> Result<Vec<BatteryInfo>, String> {
         .map_err(|e| e.to_string())?;
     log::debug!("event=connect_ok mode=polling device_id={id}");
 
-    let contexts = get_battery_characteristic_contexts(&target_device).await?;
+    let contexts = get_battery_characteristic_contexts(&target_device)
+        .await
+        .map_err(|error| error.to_string())?;
     let battery_infos = read_battery_infos_strict(&contexts).await?;
 
     log::debug!("event=disconnect_request mode=polling device_id={id}");
@@ -975,10 +1014,9 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
     let adapter = get_adapter().await.map_err(MonitorStartError::Transient)?;
 
     let (stop_tx, stop_rx) = watch::channel(false);
-    let initial_battery_infos;
 
     // Try to read initial battery info if the device is currently connected.
-    match get_target_device(&adapter, &id).await {
+    let initial_battery_infos = match get_target_device(&adapter, &id).await {
         Ok(target_device) => {
             log::debug!("event=connect_request mode=notification device_id={id}");
             adapter
@@ -989,34 +1027,38 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
 
             let contexts = get_battery_characteristic_contexts(&target_device)
                 .await
-                .map_err(MonitorStartError::Transient)?;
-            if contexts.is_empty() {
-                return Err(MonitorStartError::Transient(
-                    "Battery level characteristic not found".to_string(),
-                ));
-            }
+                .map_err(|error| MonitorStartError::Transient(error.to_string()))?;
+            match contexts.as_slice() {
+                [] => {
+                    return Err(MonitorStartError::Transient(
+                        "Battery level characteristic not found".to_string(),
+                    ));
+                }
+                contexts => {
+                    let infos = read_battery_infos_best_effort(contexts).await;
 
-            initial_battery_infos = read_battery_infos_best_effort(&contexts).await;
-
-            // Verify that at least one characteristic supports notifications.
-            let mut properties = Vec::new();
-            for context in contexts.iter() {
-                properties.push(
-                    context
-                        .characteristic
-                        .properties()
-                        .await
-                        .map(|props| (props.notify, props.indicate))
-                        .map_err(|error| error.to_string()),
-                );
+                    // Verify that at least one characteristic supports notifications.
+                    let mut properties = Vec::new();
+                    for context in contexts {
+                        properties.push(
+                            context
+                                .characteristic
+                                .properties()
+                                .await
+                                .map(|props| (props.notify, props.indicate))
+                                .map_err(|error| error.to_string()),
+                        );
+                    }
+                    notification_capability(properties)?;
+                    infos
+                }
             }
-            notification_capability(properties)?;
         }
         Err(e) => {
             log::info!("event=device_missing_at_start device_id={id} error={e}");
-            initial_battery_infos = vec![];
+            Vec::new()
         }
-    }
+    };
 
     // Always use the connection watcher so that reconnections after a power-off
     // cycle obtain a fresh Device handle instead of reusing a potentially stale
@@ -1107,10 +1149,10 @@ mod tests {
         ));
     }
 
-    #[cfg(target_os = "windows")]
-    #[tokio::test]
+    #[cfg(any(target_os = "linux", target_os = "windows"))]
+    #[tokio::test(flavor = "multi_thread")]
     #[ignore = "requires a connected BLE battery device and Bluetooth access"]
-    async fn windows_battery_lookup_and_read_without_discovery_wait() {
+    async fn battery_lookup_and_read_without_discovery_wait() {
         let devices = tokio::time::timeout(Duration::from_secs(15), list_battery_devices())
             .await
             .expect("battery device listing must finish before the UI timeout")
@@ -1126,7 +1168,9 @@ mod tests {
         .expect("registered device lookup must not wait for service discovery")
         .unwrap();
         let infos = tokio::time::timeout(Duration::from_secs(10), async {
-            let contexts = get_battery_characteristic_contexts(&target).await?;
+            let contexts = get_battery_characteristic_contexts(&target)
+                .await
+                .map_err(|error| error.to_string())?;
             read_battery_infos_strict(&contexts).await
         })
         .await
