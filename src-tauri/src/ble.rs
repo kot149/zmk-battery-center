@@ -1026,10 +1026,16 @@ pub(crate) async fn start_battery_notification_monitor_with_session(
                 .map_err(|e| MonitorStartError::Transient(e.to_string()))?;
             log::debug!("event=connect_ok mode=notification device_id={id}");
 
-            let contexts = get_battery_characteristic_contexts(&target_device)
-                .await
-                .map_err(|error| MonitorStartError::Transient(error.to_string()))?;
+            let contexts = match get_battery_characteristic_contexts(&target_device).await {
+                Ok(contexts) => contexts,
+                Err(GattDiscoveryError::ServiceListTimedOut) if cfg!(target_os = "linux") => {
+                    Vec::new()
+                }
+                Err(error) => return Err(MonitorStartError::Transient(error.to_string())),
+            };
             match contexts.as_slice() {
+                // The Linux connection watcher can retry GATT discovery on the existing link.
+                [] if cfg!(target_os = "linux") => Vec::new(),
                 [] => {
                     return Err(MonitorStartError::Transient(
                         "Battery level characteristic not found".to_string(),
