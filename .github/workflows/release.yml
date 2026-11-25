@@ -124,7 +124,8 @@ jobs:
   release-macos-aarch64:
     needs: [verify-versions, select-platforms]
     if: needs.select-platforms.outputs.macos_aarch64 == 'true'
-    runs-on: macos-latest
+    # Match the Tauri Build runner while keeping the Apple Silicon target.
+    runs-on: macos-26-intel
     permissions:
       contents: write
     steps:
