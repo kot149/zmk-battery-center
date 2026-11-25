@@ -7,6 +7,10 @@ on:
         description: "Release tag in the format vX.Y.Z (must match package.json, src-tauri/tauri.conf.json, src-tauri/Cargo.toml)"
         required: true
         type: string
+      build_only:
+        description: "Build release packages and upload them as workflow artifacts"
+        type: boolean
+        default: false
       macos_aarch64:
         description: "macOS Apple Silicon (aarch64)"
         type: boolean
@@ -120,7 +124,8 @@ jobs:
   release-macos-aarch64:
     needs: [verify-versions, select-platforms]
     if: needs.select-platforms.outputs.macos_aarch64 == 'true'
-    runs-on: macos-latest
+    # Match the Tauri Build runner while keeping the Apple Silicon target.
+    runs-on: macos-26-intel
     permissions:
       contents: write
     steps:
@@ -134,14 +139,14 @@ jobs:
           rust-extra-targets: aarch64-apple-darwin
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-macos-aarch64
-          upload-artifact: "false"
-          release: "true"
+          upload-artifact: ${{ inputs.build_only == true }}
+          release: ${{ inputs.build_only != true }}
           cache: "false"
 
   release-macos-x64:
     needs: [verify-versions, select-platforms]
     if: needs.select-platforms.outputs.macos_x64 == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     permissions:
       contents: write
     steps:
@@ -155,8 +160,8 @@ jobs:
           rust-extra-targets: x86_64-apple-darwin
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-macos-x64
-          upload-artifact: "false"
-          release: "true"
+          upload-artifact: ${{ inputs.build_only == true }}
+          release: ${{ inputs.build_only != true }}
           cache: "false"
 
   release-windows-x64:
@@ -174,8 +179,8 @@ jobs:
         with:
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-windows-x64
-          upload-artifact: "false"
-          release: "true"
+          upload-artifact: ${{ inputs.build_only == true }}
+          release: ${{ inputs.build_only != true }}
           cache: "false"
 
   release-windows-arm64:
@@ -194,8 +199,8 @@ jobs:
           tauri-args: "--target aarch64-pc-windows-msvc"
           ubuntu-deps: "none"
           artifact-name: tauri-artifacts-windows-arm64
-          upload-artifact: "false"
-          release: "true"
+          upload-artifact: ${{ inputs.build_only == true }}
+          release: ${{ inputs.build_only != true }}
           cache: "false"
 
   release-linux-x64:
@@ -214,8 +219,8 @@ jobs:
           tauri-args: "--target x86_64-unknown-linux-gnu"
           ubuntu-deps: "x64"
           artifact-name: tauri-artifacts-linux-x64
-          upload-artifact: "false"
-          release: "true"
+          upload-artifact: ${{ inputs.build_only == true }}
+          release: ${{ inputs.build_only != true }}
           cache: "false"
 
   release-linux-arm64:
@@ -234,6 +239,6 @@ jobs:
           tauri-args: "--target aarch64-unknown-linux-gnu"
           ubuntu-deps: "arm64"
           artifact-name: tauri-artifacts-linux-arm64
-          upload-artifact: "false"
-          release: "true"
+          upload-artifact: ${{ inputs.build_only == true }}
+          release: ${{ inputs.build_only != true }}
           cache: "false"

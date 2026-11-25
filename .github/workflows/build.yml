@@ -83,7 +83,8 @@ jobs:
   build-macos-aarch64:
     needs: select-platforms
     if: needs.select-platforms.outputs.macos_aarch64 == 'true'
-    runs-on: macos-26
+    # Cross-compile the Apple Silicon package when ARM64 runners are scarce.
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -99,7 +100,7 @@ jobs:
   build-macos-x64:
     needs: select-platforms
     if: needs.select-platforms.outputs.macos_x64 == 'true'
-    runs-on: macos-26
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
