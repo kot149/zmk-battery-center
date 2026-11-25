@@ -396,6 +396,7 @@ dependencies = [
  "objc2",
  "objc2-core-bluetooth",
  "objc2-foundation",
+ "serde",
  "tokio",
  "tracing",
  "uuid",
