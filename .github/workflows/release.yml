@@ -145,7 +145,7 @@ jobs:
   release-macos-x64:
     needs: [verify-versions, select-platforms]
     if: needs.select-platforms.outputs.macos_x64 == 'true'
-    runs-on: macos-latest
+    runs-on: macos-26-intel
     permissions:
       contents: write
     steps:

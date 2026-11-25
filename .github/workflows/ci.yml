@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-26]
+        os: [ubuntu-latest, windows-latest, macos-26-intel]
         check:
           - name: Lint
             command: cargo clippy --workspace --all-targets -- -D warnings
